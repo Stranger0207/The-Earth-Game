@@ -1,0 +1,70 @@
+"""هندلر شروع: /start و معرفی بازی."""
+
+from __future__ import annotations
+
+from aiogram import F, Router
+from aiogram.filters import CommandStart
+from aiogram.fsm.context import FSMContext
+from aiogram.types import (
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    Message,
+)
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from ..database.models import User
+from ..keyboards.menu import main_menu_kb
+from .deps import get_player_country
+
+router = Router(name="start")
+
+WELCOME_TEXT = (
+    "🌍 <b>به بازی کره زمین خوش آمدید!</b>\n\n"
+    "اینجا شما رهبر یک کشور هستید و باید آن را در سه محور "
+    "<b>اقتصاد</b>، <b>دیپلماسی</b> و <b>نظامی</b> مدیریت کنید.\n"
+    "سال بازی: ۲۰۲۶ | هدف: کشورتان را به قدرتمندترین کشور جهان تبدیل کنید.\n\n"
+    "برای شروع باید یک کشور انتخاب کنید."
+)
+
+
+def _claim_kb() -> InlineKeyboardMarkup:
+    """کیبورد دعوت به کشورگیری."""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="🌍 کشورگیری", callback_data="claim:start")]
+        ]
+    )
+
+
+@router.message(CommandStart())
+async def cmd_start(
+    message: Message,
+    state: FSMContext,
+    session: AsyncSession,
+    db_user: User,
+) -> None:
+    """پاسخ به /start: اگر کاربر کشور دارد پنل، در غیر این صورت دعوت به کشورگیری."""
+    await state.clear()
+    country = await get_player_country(session, db_user)
+    if country is not None:
+        await message.answer(
+            f"👑 خوش آمدید، رهبر {country.flag} <b>{country.name_fa}</b>!\n\n"
+            "پنل مدیریت کشور:",
+            reply_markup=main_menu_kb(),
+        )
+    else:
+        await message.answer(WELCOME_TEXT, reply_markup=_claim_kb())
+
+
+@router.message(F.text == "/menu")
+async def cmd_menu(
+    message: Message,
+    session: AsyncSession,
+    db_user: User,
+) -> None:
+    """نمایش پنل اصلی (در صورت داشتن کشور)."""
+    country = await get_player_country(session, db_user)
+    if country is None:
+        await message.answer("ابتدا باید کشوری بگیرید. /claim", reply_markup=_claim_kb())
+        return
+    await message.answer("پنل مدیریت کشور:", reply_markup=main_menu_kb())

@@ -1,0 +1,42 @@
+# --- اسرار و تنظیمات (هرگز کامیت نشود) ---
+.env
+*.env
+!.env.example
+
+# --- پایتون ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# --- محیط مجازی ---
+.venv/
+venv/
+env/
+ENV/
+
+# --- لاگ‌ها و فایل‌های موقت ---
+*.log
+logs/
+*.tmp
+tmp/
+
+# --- خروجی‌های موقت AI / context dump ---
+ai_context_dump/
+*.context.json
+*.context.txt
+
+# --- ابزارهای ویرایش ---
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# --- دیتابیس محلی (در صورت استفاده از sqlite برای تست) ---
+*.sqlite3
+*.db

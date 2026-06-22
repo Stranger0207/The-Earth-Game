@@ -1,0 +1,51 @@
+"""توابع دسترسی داده برای تأسیسات."""
+
+from __future__ import annotations
+
+from datetime import datetime, timezone
+
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from ..models import Facility
+
+
+async def add_facility(session: AsyncSession, facility: Facility) -> Facility:
+    """افزودن یک تأسیسات جدید."""
+    session.add(facility)
+    await session.flush()
+    return facility
+
+
+async def list_facilities(
+    session: AsyncSession, country_id: int
+) -> list[Facility]:
+    """فهرست تأسیسات یک کشور."""
+    result = await session.execute(
+        select(Facility).where(Facility.country_id == country_id)
+    )
+    return list(result.scalars().all())
+
+
+async def all_active_facilities(session: AsyncSession) -> list[Facility]:
+    """همه‌ی تأسیسات فعال (برای پردازش بازدهی توسط زمان‌بند)."""
+    result = await session.execute(
+        select(Facility).where(Facility.active.is_(True))
+    )
+    return list(result.scalars().all())
+
+
+async def count_facilities(session: AsyncSession, country_id: int) -> int:
+    """تعداد تأسیسات یک کشور."""
+    facilities = await list_facilities(session, country_id)
+    return len(facilities)
+
+
+def is_due(facility: Facility, now: datetime | None = None) -> bool:
+    """آیا زمان بازدهی این تأسیسات فرارسیده است؟"""
+    now = now or datetime.now(timezone.utc)
+    last = facility.last_yield_at
+    if last.tzinfo is None:
+        last = last.replace(tzinfo=timezone.utc)
+    elapsed_h = (now - last).total_seconds() / 3600
+    return elapsed_h >= facility.yield_interval_h

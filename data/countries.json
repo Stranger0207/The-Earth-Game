@@ -1,0 +1,745 @@
+{
+  "_comment": "داده‌ی پایه‌ی ۳۶ کشور. اعداد بازی‌گونه و تقریبی نزدیک به واقعیت ۲۰۲۶ هستند. steel همیشه can_extract=false است (باید کارخانه فولاد ساخته شود).",
+  "countries": [
+    {
+      "name_en": "China", "name_fa": "چین", "flag": "🇨🇳", "region": "east_asia", "is_vip": true, "population": 1410000000,
+      "economy": {"economic_power": 92, "budget": 3500000000000, "growth": "up", "inflation": 2.1, "unemployment": 5.2, "energy_status": "good", "foreign_trade": "positive", "govt_debt": 14000000000000, "public_satisfaction": 68, "stability": 74},
+      "reserves": {
+        "coal": {"amount": 250000000, "can_extract": true},
+        "aluminum": {"amount": 8000000, "can_extract": true},
+        "iron": {"amount": 90000000, "can_extract": true},
+        "steel": {"amount": 5000000, "can_extract": false},
+        "oil": {"amount": 600, "can_extract": true},
+        "gas": {"amount": 9000, "can_extract": true},
+        "gold": {"amount": 2000, "can_extract": true}
+      },
+      "military": [
+        {"branch": "نیروی زمینی", "category": "سرباز آماده نبرد", "name": "نیروی زمینی PLA", "unit": "نفر", "count": 2000000},
+        {"branch": "نیروی زمینی", "category": "تانک", "name": "Type 99A", "unit": "دستگاه", "count": 2500},
+        {"branch": "نیروی زمینی", "category": "تانک", "name": "Type 96", "unit": "دستگاه", "count": 2400},
+        {"branch": "نیروی هوایی", "category": "جنگنده", "name": "J-20", "unit": "فروند", "count": 250},
+        {"branch": "نیروی هوایی", "category": "جنگنده", "name": "J-16", "unit": "فروند", "count": 350},
+        {"branch": "نیروی هوایی", "category": "بمب‌افکن", "name": "H-6K", "unit": "فروند", "count": 180},
+        {"branch": "نیروی دریایی", "category": "ناو هواپیمابر", "name": "Type 003 Fujian", "unit": "فروند", "count": 3},
+        {"branch": "نیروی دریایی", "category": "ناوشکن", "name": "Type 055", "unit": "فروند", "count": 8},
+        {"branch": "نیروی دریایی", "category": "زیردریایی", "name": "Type 094", "unit": "فروند", "count": 6},
+        {"branch": "سامانه‌های دفاعی", "category": "سامانه ضدموشکی", "name": "HQ-9", "unit": "سامانه", "count": 300},
+        {"branch": "سامانه‌های حمله هوایی", "category": "موشک بالستیک", "name": "DF-26", "unit": "فروند", "count": 250},
+        {"branch": "سامانه‌های حمله هوایی", "category": "موشک کروز", "name": "CJ-10", "unit": "فروند", "count": 400}
+      ]
+    },
+    {
+      "name_en": "Japan", "name_fa": "ژاپن", "flag": "🇯🇵", "region": "east_asia", "is_vip": true, "population": 124000000,
+      "economy": {"economic_power": 85, "budget": 900000000000, "growth": "flat", "inflation": 2.8, "unemployment": 2.6, "energy_status": "medium", "foreign_trade": "positive", "govt_debt": 9500000000000, "public_satisfaction": 64, "stability": 78},
+      "reserves": {
+        "coal": {"amount": 1000000, "can_extract": false},
+        "aluminum": {"amount": 500000, "can_extract": false},
+        "iron": {"amount": 2000000, "can_extract": false},
+        "steel": {"amount": 8000000, "can_extract": false},
+        "oil": {"amount": 5, "can_extract": false},
+        "gas": {"amount": 40, "can_extract": false},
+        "gold": {"amount": 760, "can_extract": false}
+      },
+      "military": [
+        {"branch": "نیروی زمینی", "category": "سرباز آماده نبرد", "name": "نیروی دفاع زمینی", "unit": "نفر", "count": 150000},
+        {"branch": "نیروی زمینی", "category": "تانک", "name": "Type 10", "unit": "دستگاه", "count": 600},
+        {"branch": "نیروی هوایی", "category": "جنگنده", "name": "F-35A", "unit": "فروند", "count": 140},
+        {"branch": "نیروی هوایی", "category": "جنگنده", "name": "F-15J", "unit": "فروند", "count": 200},
+        {"branch": "نیروی دریایی", "category": "ناوشکن", "name": "Maya-class", "unit": "فروند", "count": 8},
+        {"branch": "نیروی دریایی", "category": "زیردریایی", "name": "Soryu-class", "unit": "فروند", "count": 12},
+        {"branch": "سامانه‌های دفاعی", "category": "سامانه ضدموشکی", "name": "Patriot PAC-3", "unit": "سامانه", "count": 24},
+        {"branch": "سامانه‌های دفاعی", "category": "سامانه ضدموشکی", "name": "Aegis BMD", "unit": "سامانه", "count": 8}
+      ]
+    },
+    {
+      "name_en": "SouthKorea", "name_fa": "کره جنوبی", "flag": "🇰🇷", "region": "east_asia", "is_vip": false, "population": 51700000,
+      "economy": {"economic_power": 80, "budget": 600000000000, "growth": "up", "inflation": 2.5, "unemployment": 3.1, "energy_status": "medium", "foreign_trade": "positive", "govt_debt": 1100000000000, "public_satisfaction": 62, "stability": 72},
+      "reserves": {
+        "coal": {"amount": 800000, "can_extract": false},
+        "aluminum": {"amount": 300000, "can_extract": false},
+        "iron": {"amount": 1500000, "can_extract": false},
+        "steel": {"amount": 7000000, "can_extract": false},
+        "oil": {"amount": 2, "can_extract": false},
+        "gas": {"amount": 10, "can_extract": false},
+        "gold": {"amount": 100, "can_extract": false}
+      },
+      "military": [
+        {"branch": "نیروی زمینی", "category": "سرباز آماده نبرد", "name": "ارتش جمهوری کره", "unit": "نفر", "count": 500000},
+        {"branch": "نیروی زمینی", "category": "تانک", "name": "K2 Black Panther", "unit": "دستگاه", "count": 400},
+        {"branch": "نیروی هوایی", "category": "جنگنده", "name": "KF-21", "unit": "فروند", "count": 40},
+        {"branch": "نیروی هوایی", "category": "جنگنده", "name": "F-35A", "unit": "فروند", "count": 40},
+        {"branch": "نیروی دریایی", "category": "ناوشکن", "name": "Sejong-class", "unit": "فروند", "count": 6},
+        {"branch": "سامانه‌های دفاعی", "category": "سامانه ضدموشکی", "name": "Cheongung-II", "unit": "سامانه", "count": 20}
+      ]
+    },
+    {
+      "name_en": "NorthKorea", "name_fa": "کره شمالی", "flag": "🇰🇵", "region": "east_asia", "is_vip": false, "population": 26000000,
+      "economy": {"economic_power": 25, "budget": 16000000000, "growth": "flat", "inflation": 12.0, "unemployment": 18.0, "energy_status": "weak", "foreign_trade": "negative", "govt_debt": 5000000000, "public_satisfaction": 45, "stability": 60},
+      "reserves": {
+        "coal": {"amount": 30000000, "can_extract": true},
+        "aluminum": {"amount": 200000, "can_extract": false},
+        "iron": {"amount": 5000000, "can_extract": true},
+        "steel": {"amount": 1000000, "can_extract": false},
+        "oil": {"amount": 1, "can_extract": false},
+        "gas": {"amount": 5, "can_extract": false},
+        "gold": {"amount": 2000, "can_extract": true}
+      },
+      "military": [
+        {"branch": "نیروی زمینی", "category": "سرباز آماده نبرد", "name": "ارتش خلق کره", "unit": "نفر", "count": 1200000},
+        {"branch": "نیروی زمینی", "category": "تانک", "name": "Pokpung-ho", "unit": "دستگاه", "count": 1000},
+        {"branch": "نیروی هوایی", "category": "جنگنده", "name": "MiG-29", "unit": "فروند", "count": 35},
+        {"branch": "سامانه‌های حمله هوایی", "category": "موشک بالستیک", "name": "Hwasong-17", "unit": "فروند", "count": 30},
+        {"branch": "سامانه‌های حمله هوایی", "category": "موشک بالستیک", "name": "Hwasong-15", "unit": "فروند", "count": 50}
+      ]
+    },
+    {
+      "name_en": "Australia", "name_fa": "استرالیا", "flag": "🇦🇺", "region": "east_asia", "is_vip": false, "population": 26600000,
+      "economy": {"economic_power": 72, "budget": 500000000000, "growth": "up", "inflation": 3.2, "unemployment": 4.0, "energy_status": "good", "foreign_trade": "positive", "govt_debt": 600000000000, "public_satisfaction": 66, "stability": 80},
+      "reserves": {
+        "coal": {"amount": 150000000, "can_extract": true},
+        "aluminum": {"amount": 6000000, "can_extract": true},
+        "iron": {"amount": 80000000, "can_extract": true},
+        "steel": {"amount": 2000000, "can_extract": false},
+        "oil": {"amount": 20, "can_extract": true},
+        "gas": {"amount": 3000, "can_extract": true},
+        "gold": {"amount": 10000, "can_extract": true}
+      },
+      "military": [
+        {"branch": "نیروی زمینی", "category": "سرباز آماده نبرد", "name": "ارتش استرالیا", "unit": "نفر", "count": 60000},
+        {"branch": "نیروی زمینی", "category": "تانک", "name": "M1A1 Abrams", "unit": "دستگاه", "count": 60},
+        {"branch": "نیروی هوایی", "category": "جنگنده", "name": "F-35A", "unit": "فروند", "count": 72},
+        {"branch": "نیروی هوایی", "category": "جنگنده", "name": "F/A-18F", "unit": "فروند", "count": 24},
+        {"branch": "نیروی دریایی", "category": "ناوشکن", "name": "Hobart-class", "unit": "فروند", "count": 3},
+        {"branch": "نیروی دریایی", "category": "زیردریایی", "name": "Collins-class", "unit": "فروند", "count": 6}
+      ]
+    },
+
+    {
+      "name_en": "India", "name_fa": "هند", "flag": "🇮🇳", "region": "middle_east", "is_vip": true, "population": 1430000000,
+      "economy": {"economic_power": 78, "budget": 550000000000, "growth": "up", "inflation": 5.0, "unemployment": 7.8, "energy_status": "medium", "foreign_trade": "balanced", "govt_debt": 3000000000000, "public_satisfaction": 60, "stability": 68},
+      "reserves": {
+        "coal": {"amount": 120000000, "can_extract": true},
+        "aluminum": {"amount": 4000000, "can_extract": true},
+        "iron": {"amount": 60000000, "can_extract": true},
+        "steel": {"amount": 6000000, "can_extract": false},
+        "oil": {"amount": 30, "can_extract": true},
+        "gas": {"amount": 1500, "can_extract": true},
+        "gold": {"amount": 800, "can_extract": false}
+      },
+      "military": [
+        {"branch": "نیروی زمینی", "category": "سرباز آماده نبرد", "name": "ارتش هند", "unit": "نفر", "count": 1200000},
+        {"branch": "نیروی زمینی", "category": "تانک", "name": "T-90 Bhishma", "unit": "دستگاه", "count": 1300},
+        {"branch": "نیروی هوایی", "category": "جنگنده", "name": "Su-30MKI", "unit": "فروند", "count": 260},
+        {"branch": "نیروی هوایی", "category": "جنگنده", "name": "Rafale", "unit": "فروند", "count": 36},
+        {"branch": "نیروی دریایی", "category": "ناو هواپیمابر", "name": "INS Vikrant", "unit": "فروند", "count": 2},
+        {"branch": "نیروی دریایی", "category": "زیردریایی", "name": "Arihant-class", "unit": "فروند", "count": 2},
+        {"branch": "سامانه‌های دفاعی", "category": "سامانه ضدموشکی", "name": "S-400", "unit": "سامانه", "count": 5},
+        {"branch": "سامانه‌های حمله هوایی", "category": "موشک کروز", "name": "BrahMos", "unit": "فروند", "count": 300}
+      ]
+    },
+    {
+      "name_en": "Iran", "name_fa": "ایران", "flag": "🇮🇷", "region": "middle_east", "is_vip": true, "population": 89000000,
+      "economy": {"economic_power": 55, "budget": 120000000000, "growth": "flat", "inflation": 35.0, "unemployment": 9.5, "energy_status": "excellent", "foreign_trade": "balanced", "govt_debt": 80000000000, "public_satisfaction": 52, "stability": 62},
+      "reserves": {
+        "coal": {"amount": 5000000, "can_extract": true},
+        "aluminum": {"amount": 800000, "can_extract": true},
+        "iron": {"amount": 40000000, "can_extract": true},
+        "steel": {"amount": 4000000, "can_extract": false},
+        "oil": {"amount": 1200, "can_extract": true},
+        "gas": {"amount": 33000, "can_extract": true},
+        "gold": {"amount": 300, "can_extract": true}
+      },
+      "military": [
+        {"branch": "نیروی زمینی", "category": "سرباز آماده نبرد", "name": "ارتش و سپاه", "unit": "نفر", "count": 610000},
+        {"branch": "نیروی زمینی", "category": "تانک", "name": "Karrar", "unit": "دستگاه", "count": 800},
+        {"branch": "نیروی هوایی", "category": "جنگنده", "name": "F-14 Tomcat", "unit": "فروند", "count": 40},
+        {"branch": "نیروی هوایی", "category": "پهپاد", "name": "Shahed-136", "unit": "فروند", "count": 2000},
+        {"branch": "سامانه‌های دفاعی", "category": "سامانه ضدموشکی", "name": "Bavar-373", "unit": "سامانه", "count": 12},
+        {"branch": "سامانه‌های دفاعی", "category": "سامانه ضدموشکی", "name": "S-300", "unit": "سامانه", "count": 4},
+        {"branch": "سامانه‌های حمله هوایی", "category": "موشک بالستیک", "name": "Fattah-1", "unit": "فروند", "count": 100},
+        {"branch": "سامانه‌های حمله هوایی", "category": "موشک بالستیک", "name": "Khorramshahr", "unit": "فروند", "count": 150}
+      ]
+    },
+    {
+      "name_en": "Pakistan", "name_fa": "پاکستان", "flag": "🇵🇰", "region": "middle_east", "is_vip": false, "population": 240000000,
+      "economy": {"economic_power": 40, "budget": 60000000000, "growth": "flat", "inflation": 20.0, "unemployment": 8.5, "energy_status": "weak", "foreign_trade": "negative", "govt_debt": 250000000000, "public_satisfaction": 48, "stability": 55},
+      "reserves": {
+        "coal": {"amount": 20000000, "can_extract": true},
+        "aluminum": {"amount": 200000, "can_extract": false},
+        "iron": {"amount": 8000000, "can_extract": true},
+        "steel": {"amount": 1000000, "can_extract": false},
+        "oil": {"amount": 5, "can_extract": true},
+        "gas": {"amount": 800, "can_extract": true},
+        "gold": {"amount": 1500, "can_extract": true}
+      },
+      "military": [
+        {"branch": "نیروی زمینی", "category": "سرباز آماده نبرد", "name": "ارتش پاکستان", "unit": "نفر", "count": 650000},
+        {"branch": "نیروی زمینی", "category": "تانک", "name": "Al-Khalid", "unit": "دستگاه", "count": 600},
+        {"branch": "نیروی هوایی", "category": "جنگنده", "name": "JF-17 Thunder", "unit": "فروند", "count": 150},
+        {"branch": "نیروی هوایی", "category": "جنگنده", "name": "F-16", "unit": "فروند", "count": 75},
+        {"branch": "سامانه‌های حمله هوایی", "category": "موشک بالستیک", "name": "Shaheen-III", "unit": "فروند", "count": 60}
+      ]
+    },
+    {
+      "name_en": "Oman", "name_fa": "عمان", "flag": "🇴🇲", "region": "middle_east", "is_vip": false, "population": 4600000,
+      "economy": {"economic_power": 48, "budget": 35000000000, "growth": "up", "inflation": 1.5, "unemployment": 3.0, "energy_status": "good", "foreign_trade": "positive", "govt_debt": 40000000000, "public_satisfaction": 64, "stability": 75},
+      "reserves": {
+        "coal": {"amount": 0, "can_extract": false},
+        "aluminum": {"amount": 100000, "can_extract": false},
+        "iron": {"amount": 1000000, "can_extract": false},
+        "steel": {"amount": 200000, "can_extract": false},
+        "oil": {"amount": 50, "can_extract": true},
+        "gas": {"amount": 700, "can_extract": true},
+        "gold": {"amount": 50, "can_extract": false}
+      },
+      "military": [
+        {"branch": "نیروی زمینی", "category": "سرباز آماده نبرد", "name": "ارتش سلطنتی عمان", "unit": "نفر", "count": 45000},
+        {"branch": "نیروی هوایی", "category": "جنگنده", "name": "F-16", "unit": "فروند", "count": 23},
+        {"branch": "نیروی هوایی", "category": "جنگنده", "name": "Eurofighter Typhoon", "unit": "فروند", "count": 12}
+      ]
+    },
+    {
+      "name_en": "SaudiArabia", "name_fa": "عربستان", "flag": "🇸🇦", "region": "middle_east", "is_vip": false, "population": 36900000,
+      "economy": {"economic_power": 70, "budget": 350000000000, "growth": "up", "inflation": 2.3, "unemployment": 5.5, "energy_status": "excellent", "foreign_trade": "positive", "govt_debt": 250000000000, "public_satisfaction": 60, "stability": 70},
+      "reserves": {
+        "coal": {"amount": 0, "can_extract": false},
+        "aluminum": {"amount": 1500000, "can_extract": true},
+        "iron": {"amount": 5000000, "can_extract": true},
+        "steel": {"amount": 2000000, "can_extract": false},
+        "oil": {"amount": 2600, "can_extract": true},
+        "gas": {"amount": 9000, "can_extract": true},
+        "gold": {"amount": 400, "can_extract": true}
+      },
+      "military": [
+        {"branch": "نیروی زمینی", "category": "سرباز آماده نبرد", "name": "ارتش عربستان", "unit": "نفر", "count": 250000},
+        {"branch": "نیروی زمینی", "category": "تانک", "name": "M1A2 Abrams", "unit": "دستگاه", "count": 370},
+        {"branch": "نیروی هوایی", "category": "جنگنده", "name": "F-15SA", "unit": "فروند", "count": 84},
+        {"branch": "نیروی هوایی", "category": "جنگنده", "name": "Eurofighter Typhoon", "unit": "فروند", "count": 72},
+        {"branch": "سامانه‌های دفاعی", "category": "سامانه ضدموشکی", "name": "Patriot PAC-3", "unit": "سامانه", "count": 30},
+        {"branch": "سامانه‌های دفاعی", "category": "سامانه ضدموشکی", "name": "THAAD", "unit": "سامانه", "count": 7}
+      ]
+    },
+    {
+      "name_en": "Azerbaijan", "name_fa": "آذربایجان", "flag": "🇦🇿", "region": "middle_east", "is_vip": false, "population": 10400000,
+      "economy": {"economic_power": 45, "budget": 30000000000, "growth": "up", "inflation": 8.0, "unemployment": 5.0, "energy_status": "good", "foreign_trade": "positive", "govt_debt": 12000000000, "public_satisfaction": 58, "stability": 68},
+      "reserves": {
+        "coal": {"amount": 0, "can_extract": false},
+        "aluminum": {"amount": 300000, "can_extract": true},
+        "iron": {"amount": 3000000, "can_extract": true},
+        "steel": {"amount": 500000, "can_extract": false},
+        "oil": {"amount": 100, "can_extract": false},
+        "gas": {"amount": 1300, "can_extract": true},
+        "gold": {"amount": 200, "can_extract": true}
+      },
+      "military": [
+        {"branch": "نیروی زمینی", "category": "سرباز آماده نبرد", "name": "ارتش آذربایجان", "unit": "نفر", "count": 65000},
+        {"branch": "نیروی زمینی", "category": "تانک", "name": "T-90S", "unit": "دستگاه", "count": 100},
+        {"branch": "نیروی هوایی", "category": "پهپاد", "name": "Bayraktar TB2", "unit": "فروند", "count": 50},
+        {"branch": "نیروی هوایی", "category": "جنگنده", "name": "MiG-29", "unit": "فروند", "count": 16}
+      ]
+    },
+    {
+      "name_en": "Qatar", "name_fa": "قطر", "flag": "🇶🇦", "region": "middle_east", "is_vip": false, "population": 2700000,
+      "economy": {"economic_power": 62, "budget": 80000000000, "growth": "up", "inflation": 2.0, "unemployment": 0.2, "energy_status": "excellent", "foreign_trade": "positive", "govt_debt": 70000000000, "public_satisfaction": 70, "stability": 80},
+      "reserves": {
+        "coal": {"amount": 0, "can_extract": false},
+        "aluminum": {"amount": 200000, "can_extract": false},
+        "iron": {"amount": 500000, "can_extract": false},
+        "steel": {"amount": 300000, "can_extract": false},
+        "oil": {"amount": 250, "can_extract": true},
+        "gas": {"amount": 24000, "can_extract": true},
+        "gold": {"amount": 50, "can_extract": false}
+      },
+      "military": [
+        {"branch": "نیروی زمینی", "category": "سرباز آماده نبرد", "name": "ارتش قطر", "unit": "نفر", "count": 16000},
+        {"branch": "نیروی هوایی", "category": "جنگنده", "name": "Rafale", "unit": "فروند", "count": 36},
+        {"branch": "نیروی هوایی", "category": "جنگنده", "name": "F-15QA", "unit": "فروند", "count": 36}
+      ]
+    },
+    {
+      "name_en": "UAE", "name_fa": "امارات", "flag": "🇦🇪", "region": "middle_east", "is_vip": false, "population": 9500000,
+      "economy": {"economic_power": 68, "budget": 130000000000, "growth": "up", "inflation": 2.5, "unemployment": 2.5, "energy_status": "excellent", "foreign_trade": "positive", "govt_debt": 140000000000, "public_satisfaction": 69, "stability": 79},
+      "reserves": {
+        "coal": {"amount": 0, "can_extract": false},
+        "aluminum": {"amount": 2500000, "can_extract": true},
+        "iron": {"amount": 1000000, "can_extract": false},
+        "steel": {"amount": 3000000, "can_extract": false},
+        "oil": {"amount": 980, "can_extract": true},
+        "gas": {"amount": 6000, "can_extract": true},
+        "gold": {"amount": 100, "can_extract": false}
+      },
+      "military": [
+        {"branch": "نیروی زمینی", "category": "سرباز آماده نبرد", "name": "ارتش امارات", "unit": "نفر", "count": 63000},
+        {"branch": "نیروی زمینی", "category": "تانک", "name": "Leclerc", "unit": "دستگاه", "count": 380},
+        {"branch": "نیروی هوایی", "category": "جنگنده", "name": "F-16E Block 60", "unit": "فروند", "count": 78},
+        {"branch": "نیروی هوایی", "category": "جنگنده", "name": "Mirage 2000", "unit": "فروند", "count": 60},
+        {"branch": "سامانه‌های دفاعی", "category": "سامانه ضدموشکی", "name": "THAAD", "unit": "سامانه", "count": 2}
+      ]
+    },
+    {
+      "name_en": "Syria", "name_fa": "سوریه", "flag": "🇸🇾", "region": "middle_east", "is_vip": false, "population": 23000000,
+      "economy": {"economic_power": 22, "budget": 5000000000, "growth": "down", "inflation": 60.0, "unemployment": 25.0, "energy_status": "weak", "foreign_trade": "negative", "govt_debt": 50000000000, "public_satisfaction": 38, "stability": 45},
+      "reserves": {
+        "coal": {"amount": 0, "can_extract": false},
+        "aluminum": {"amount": 50000, "can_extract": false},
+        "iron": {"amount": 2000000, "can_extract": true},
+        "steel": {"amount": 200000, "can_extract": false},
+        "oil": {"amount": 25, "can_extract": true},
+        "gas": {"amount": 240, "can_extract": true},
+        "gold": {"amount": 30, "can_extract": false}
+      },
+      "military": [
+        {"branch": "نیروی زمینی", "category": "سرباز آماده نبرد", "name": "ارتش سوریه", "unit": "نفر", "count": 150000},
+        {"branch": "نیروی زمینی", "category": "تانک", "name": "T-72", "unit": "دستگاه", "count": 1500},
+        {"branch": "نیروی هوایی", "category": "جنگنده", "name": "MiG-29", "unit": "فروند", "count": 20},
+        {"branch": "سامانه‌های دفاعی", "category": "سامانه ضدموشکی", "name": "S-200", "unit": "سامانه", "count": 8}
+      ]
+    },
+    {
+      "name_en": "Iraq", "name_fa": "عراق", "flag": "🇮🇶", "region": "middle_east", "is_vip": false, "population": 44000000,
+      "economy": {"economic_power": 42, "budget": 90000000000, "growth": "flat", "inflation": 6.0, "unemployment": 14.0, "energy_status": "good", "foreign_trade": "balanced", "govt_debt": 80000000000, "public_satisfaction": 47, "stability": 55},
+      "reserves": {
+        "coal": {"amount": 0, "can_extract": false},
+        "aluminum": {"amount": 100000, "can_extract": false},
+        "iron": {"amount": 2000000, "can_extract": false},
+        "steel": {"amount": 300000, "can_extract": false},
+        "oil": {"amount": 1450, "can_extract": true},
+        "gas": {"amount": 3500, "can_extract": true},
+        "gold": {"amount": 90, "can_extract": false}
+      },
+      "military": [
+        {"branch": "نیروی زمینی", "category": "سرباز آماده نبرد", "name": "ارتش عراق", "unit": "نفر", "count": 200000},
+        {"branch": "نیروی زمینی", "category": "تانک", "name": "M1A1 Abrams", "unit": "دستگاه", "count": 140},
+        {"branch": "نیروی هوایی", "category": "جنگنده", "name": "F-16IQ", "unit": "فروند", "count": 34}
+      ]
+    },
+    {
+      "name_en": "Egypt", "name_fa": "مصر", "flag": "🇪🇬", "region": "middle_east", "is_vip": false, "population": 112000000,
+      "economy": {"economic_power": 50, "budget": 100000000000, "growth": "up", "inflation": 25.0, "unemployment": 7.0, "energy_status": "medium", "foreign_trade": "negative", "govt_debt": 350000000000, "public_satisfaction": 50, "stability": 60},
+      "reserves": {
+        "coal": {"amount": 1000000, "can_extract": false},
+        "aluminum": {"amount": 1200000, "can_extract": true},
+        "iron": {"amount": 6000000, "can_extract": true},
+        "steel": {"amount": 4000000, "can_extract": false},
+        "oil": {"amount": 30, "can_extract": true},
+        "gas": {"amount": 2200, "can_extract": true},
+        "gold": {"amount": 350, "can_extract": true}
+      },
+      "military": [
+        {"branch": "نیروی زمینی", "category": "سرباز آماده نبرد", "name": "ارتش مصر", "unit": "نفر", "count": 450000},
+        {"branch": "نیروی زمینی", "category": "تانک", "name": "M1A1 Abrams", "unit": "دستگاه", "count": 1130},
+        {"branch": "نیروی هوایی", "category": "جنگنده", "name": "Rafale", "unit": "فروند", "count": 54},
+        {"branch": "نیروی هوایی", "category": "جنگنده", "name": "F-16", "unit": "فروند", "count": 220},
+        {"branch": "نیروی دریایی", "category": "ناو هواپیمابر", "name": "Mistral-class", "unit": "فروند", "count": 2}
+      ]
+    },
+    {
+      "name_en": "Yemen", "name_fa": "یمن", "flag": "🇾🇪", "region": "middle_east", "is_vip": false, "population": 34000000,
+      "economy": {"economic_power": 15, "budget": 2000000000, "growth": "down", "inflation": 45.0, "unemployment": 30.0, "energy_status": "weak", "foreign_trade": "negative", "govt_debt": 20000000000, "public_satisfaction": 30, "stability": 35},
+      "reserves": {
+        "coal": {"amount": 0, "can_extract": false},
+        "aluminum": {"amount": 0, "can_extract": false},
+        "iron": {"amount": 500000, "can_extract": false},
+        "steel": {"amount": 50000, "can_extract": false},
+        "oil": {"amount": 30, "can_extract": true},
+        "gas": {"amount": 480, "can_extract": true},
+        "gold": {"amount": 20, "can_extract": false}
+      },
+      "military": [
+        {"branch": "نیروی زمینی", "category": "سرباز آماده نبرد", "name": "نیروهای یمن", "unit": "نفر", "count": 100000},
+        {"branch": "سامانه‌های حمله هوایی", "category": "موشک بالستیک", "name": "Burkan", "unit": "فروند", "count": 40},
+        {"branch": "نیروی هوایی", "category": "پهپاد", "name": "Samad-3", "unit": "فروند", "count": 200}
+      ]
+    },
+
+    {
+      "name_en": "Russia", "name_fa": "روسیه", "flag": "🇷🇺", "region": "europe", "is_vip": true, "population": 144000000,
+      "economy": {"economic_power": 75, "budget": 400000000000, "growth": "flat", "inflation": 7.5, "unemployment": 3.0, "energy_status": "excellent", "foreign_trade": "positive", "govt_debt": 300000000000, "public_satisfaction": 58, "stability": 66},
+      "reserves": {
+        "coal": {"amount": 200000000, "can_extract": true},
+        "aluminum": {"amount": 7000000, "can_extract": true},
+        "iron": {"amount": 70000000, "can_extract": true},
+        "steel": {"amount": 6000000, "can_extract": false},
+        "oil": {"amount": 1080, "can_extract": true},
+        "gas": {"amount": 47000, "can_extract": true},
+        "gold": {"amount": 7500, "can_extract": true}
+      },
+      "military": [
+        {"branch": "نیروی زمینی", "category": "سرباز آماده نبرد", "name": "ارتش روسیه", "unit": "نفر", "count": 1320000},
+        {"branch": "نیروی زمینی", "category": "تانک", "name": "T-90M", "unit": "دستگاه", "count": 600},
+        {"branch": "نیروی زمینی", "category": "تانک", "name": "T-72B3", "unit": "دستگاه", "count": 2000},
+        {"branch": "نیروی هوایی", "category": "جنگنده", "name": "Su-57", "unit": "فروند", "count": 30},
+        {"branch": "نیروی هوایی", "category": "جنگنده", "name": "Su-35S", "unit": "فروند", "count": 110},
+        {"branch": "نیروی هوایی", "category": "بمب‌افکن", "name": "Tu-160", "unit": "فروند", "count": 16},
+        {"branch": "نیروی دریایی", "category": "زیردریایی", "name": "Borei-class", "unit": "فروند", "count": 7},
+        {"branch": "سامانه‌های دفاعی", "category": "سامانه ضدموشکی", "name": "S-400", "unit": "سامانه", "count": 56},
+        {"branch": "سامانه‌های حمله هوایی", "category": "موشک بالستیک", "name": "Iskander-M", "unit": "فروند", "count": 200},
+        {"branch": "سامانه‌های حمله هوایی", "category": "موشک کروز", "name": "Kalibr", "unit": "فروند", "count": 500}
+      ]
+    },
+    {
+      "name_en": "Britain", "name_fa": "بریتانیا", "flag": "🇬🇧", "region": "europe", "is_vip": true, "population": 68000000,
+      "economy": {"economic_power": 82, "budget": 1100000000000, "growth": "flat", "inflation": 3.5, "unemployment": 4.2, "energy_status": "medium", "foreign_trade": "balanced", "govt_debt": 3000000000000, "public_satisfaction": 60, "stability": 76},
+      "reserves": {
+        "coal": {"amount": 2000000, "can_extract": false},
+        "aluminum": {"amount": 500000, "can_extract": false},
+        "iron": {"amount": 3000000, "can_extract": false},
+        "steel": {"amount": 5000000, "can_extract": false},
+        "oil": {"amount": 35, "can_extract": true},
+        "gas": {"amount": 300, "can_extract": true},
+        "gold": {"amount": 310, "can_extract": false}
+      },
+      "military": [
+        {"branch": "نیروی زمینی", "category": "سرباز آماده نبرد", "name": "ارتش بریتانیا", "unit": "نفر", "count": 80000},
+        {"branch": "نیروی زمینی", "category": "تانک", "name": "Challenger 2", "unit": "دستگاه", "count": 220},
+        {"branch": "نیروی هوایی", "category": "جنگنده", "name": "F-35B", "unit": "فروند", "count": 34},
+        {"branch": "نیروی هوایی", "category": "جنگنده", "name": "Eurofighter Typhoon", "unit": "فروند", "count": 137},
+        {"branch": "نیروی دریایی", "category": "ناو هواپیمابر", "name": "Queen Elizabeth-class", "unit": "فروند", "count": 2},
+        {"branch": "نیروی دریایی", "category": "زیردریایی", "name": "Astute-class", "unit": "فروند", "count": 5},
+        {"branch": "سامانه‌های حمله هوایی", "category": "موشک کروز", "name": "Storm Shadow", "unit": "فروند", "count": 700}
+      ]
+    },
+    {
+      "name_en": "France", "name_fa": "فرانسه", "flag": "🇫🇷", "region": "europe", "is_vip": false, "population": 68000000,
+      "economy": {"economic_power": 80, "budget": 1500000000000, "growth": "flat", "inflation": 2.9, "unemployment": 7.3, "energy_status": "good", "foreign_trade": "balanced", "govt_debt": 3100000000000, "public_satisfaction": 58, "stability": 74},
+      "reserves": {
+        "coal": {"amount": 1000000, "can_extract": false},
+        "aluminum": {"amount": 600000, "can_extract": false},
+        "iron": {"amount": 4000000, "can_extract": true},
+        "steel": {"amount": 5000000, "can_extract": false},
+        "oil": {"amount": 5, "can_extract": false},
+        "gas": {"amount": 20, "can_extract": false},
+        "gold": {"amount": 2400, "can_extract": false}
+      },
+      "military": [
+        {"branch": "نیروی زمینی", "category": "سرباز آماده نبرد", "name": "ارتش فرانسه", "unit": "نفر", "count": 200000},
+        {"branch": "نیروی زمینی", "category": "تانک", "name": "Leclerc", "unit": "دستگاه", "count": 220},
+        {"branch": "نیروی هوایی", "category": "جنگنده", "name": "Rafale", "unit": "فروند", "count": 100},
+        {"branch": "نیروی دریایی", "category": "ناو هواپیمابر", "name": "Charles de Gaulle", "unit": "فروند", "count": 1},
+        {"branch": "نیروی دریایی", "category": "زیردریایی", "name": "Triomphant-class", "unit": "فروند", "count": 4},
+        {"branch": "سامانه‌های حمله هوایی", "category": "موشک کروز", "name": "SCALP", "unit": "فروند", "count": 500}
+      ]
+    },
+    {
+      "name_en": "Germany", "name_fa": "آلمان", "flag": "🇩🇪", "region": "europe", "is_vip": false, "population": 84000000,
+      "economy": {"economic_power": 84, "budget": 2000000000000, "growth": "flat", "inflation": 2.6, "unemployment": 5.7, "energy_status": "medium", "foreign_trade": "positive", "govt_debt": 2900000000000, "public_satisfaction": 60, "stability": 78},
+      "reserves": {
+        "coal": {"amount": 35000000, "can_extract": true},
+        "aluminum": {"amount": 800000, "can_extract": false},
+        "iron": {"amount": 3000000, "can_extract": false},
+        "steel": {"amount": 9000000, "can_extract": false},
+        "oil": {"amount": 5, "can_extract": false},
+        "gas": {"amount": 50, "can_extract": false},
+        "gold": {"amount": 3300, "can_extract": false}
+      },
+      "military": [
+        {"branch": "نیروی زمینی", "category": "سرباز آماده نبرد", "name": "بوندسور", "unit": "نفر", "count": 180000},
+        {"branch": "نیروی زمینی", "category": "تانک", "name": "Leopard 2A7", "unit": "دستگاه", "count": 320},
+        {"branch": "نیروی هوایی", "category": "جنگنده", "name": "Eurofighter Typhoon", "unit": "فروند", "count": 138},
+        {"branch": "نیروی هوایی", "category": "جنگنده", "name": "F-35A", "unit": "فروند", "count": 35},
+        {"branch": "نیروی دریایی", "category": "زیردریایی", "name": "Type 212A", "unit": "فروند", "count": 6}
+      ]
+    },
+    {
+      "name_en": "Israel", "name_fa": "اسرائیل", "flag": "🇮🇱", "region": "europe", "is_vip": false, "population": 9800000,
+      "economy": {"economic_power": 72, "budget": 200000000000, "growth": "up", "inflation": 3.0, "unemployment": 3.5, "energy_status": "good", "foreign_trade": "positive", "govt_debt": 200000000000, "public_satisfaction": 58, "stability": 65},
+      "reserves": {
+        "coal": {"amount": 0, "can_extract": false},
+        "aluminum": {"amount": 100000, "can_extract": false},
+        "iron": {"amount": 500000, "can_extract": false},
+        "steel": {"amount": 1000000, "can_extract": false},
+        "oil": {"amount": 2, "can_extract": false},
+        "gas": {"amount": 1000, "can_extract": true},
+        "gold": {"amount": 50, "can_extract": false}
+      },
+      "military": [
+        {"branch": "نیروی زمینی", "category": "سرباز آماده نبرد", "name": "ارتش اسرائیل (IDF)", "unit": "نفر", "count": 170000},
+        {"branch": "نیروی زمینی", "category": "تانک", "name": "Merkava IV", "unit": "دستگاه", "count": 400},
+        {"branch": "نیروی هوایی", "category": "جنگنده", "name": "F-35I Adir", "unit": "فروند", "count": 50},
+        {"branch": "نیروی هوایی", "category": "جنگنده", "name": "F-16I Sufa", "unit": "فروند", "count": 175},
+        {"branch": "سامانه‌های دفاعی", "category": "سامانه ضدموشکی", "name": "Iron Dome", "unit": "سامانه", "count": 15},
+        {"branch": "سامانه‌های دفاعی", "category": "سامانه ضدموشکی", "name": "David's Sling", "unit": "سامانه", "count": 6},
+        {"branch": "سامانه‌های دفاعی", "category": "سامانه ضدموشکی", "name": "Arrow 3", "unit": "سامانه", "count": 4}
+      ]
+    },
+    {
+      "name_en": "Turkey", "name_fa": "ترکیه", "flag": "🇹🇷", "region": "europe", "is_vip": false, "population": 86000000,
+      "economy": {"economic_power": 60, "budget": 250000000000, "growth": "up", "inflation": 40.0, "unemployment": 9.0, "energy_status": "medium", "foreign_trade": "negative", "govt_debt": 250000000000, "public_satisfaction": 54, "stability": 63},
+      "reserves": {
+        "coal": {"amount": 15000000, "can_extract": true},
+        "aluminum": {"amount": 400000, "can_extract": false},
+        "iron": {"amount": 5000000, "can_extract": true},
+        "steel": {"amount": 4000000, "can_extract": false},
+        "oil": {"amount": 5, "can_extract": true},
+        "gas": {"amount": 540, "can_extract": true},
+        "gold": {"amount": 500, "can_extract": true}
+      },
+      "military": [
+        {"branch": "نیروی زمینی", "category": "سرباز آماده نبرد", "name": "ارتش ترکیه", "unit": "نفر", "count": 425000},
+        {"branch": "نیروی زمینی", "category": "تانک", "name": "Altay", "unit": "دستگاه", "count": 250},
+        {"branch": "نیروی هوایی", "category": "جنگنده", "name": "F-16", "unit": "فروند", "count": 245},
+        {"branch": "نیروی هوایی", "category": "پهپاد", "name": "Bayraktar Akıncı", "unit": "فروند", "count": 50},
+        {"branch": "سامانه‌های دفاعی", "category": "سامانه ضدموشکی", "name": "S-400", "unit": "سامانه", "count": 4}
+      ]
+    },
+    {
+      "name_en": "Italy", "name_fa": "ایتالیا", "flag": "🇮🇹", "region": "europe", "is_vip": false, "population": 59000000,
+      "economy": {"economic_power": 74, "budget": 1100000000000, "growth": "flat", "inflation": 2.4, "unemployment": 7.6, "energy_status": "medium", "foreign_trade": "balanced", "govt_debt": 2800000000000, "public_satisfaction": 56, "stability": 70},
+      "reserves": {
+        "coal": {"amount": 500000, "can_extract": false},
+        "aluminum": {"amount": 400000, "can_extract": false},
+        "iron": {"amount": 2000000, "can_extract": false},
+        "steel": {"amount": 5000000, "can_extract": false},
+        "oil": {"amount": 5, "can_extract": true},
+        "gas": {"amount": 60, "can_extract": true},
+        "gold": {"amount": 2450, "can_extract": false}
+      },
+      "military": [
+        {"branch": "نیروی زمینی", "category": "سرباز آماده نبرد", "name": "ارتش ایتالیا", "unit": "نفر", "count": 165000},
+        {"branch": "نیروی زمینی", "category": "تانک", "name": "Ariete", "unit": "دستگاه", "count": 200},
+        {"branch": "نیروی هوایی", "category": "جنگنده", "name": "Eurofighter Typhoon", "unit": "فروند", "count": 94},
+        {"branch": "نیروی هوایی", "category": "جنگنده", "name": "F-35A", "unit": "فروند", "count": 28},
+        {"branch": "نیروی دریایی", "category": "ناو هواپیمابر", "name": "Cavour", "unit": "فروند", "count": 1}
+      ]
+    },
+    {
+      "name_en": "Spain", "name_fa": "اسپانیا", "flag": "🇪🇸", "region": "europe", "is_vip": false, "population": 48000000,
+      "economy": {"economic_power": 70, "budget": 600000000000, "growth": "up", "inflation": 3.1, "unemployment": 11.5, "energy_status": "good", "foreign_trade": "balanced", "govt_debt": 1600000000000, "public_satisfaction": 57, "stability": 71},
+      "reserves": {
+        "coal": {"amount": 2000000, "can_extract": false},
+        "aluminum": {"amount": 300000, "can_extract": false},
+        "iron": {"amount": 2000000, "can_extract": false},
+        "steel": {"amount": 3000000, "can_extract": false},
+        "oil": {"amount": 2, "can_extract": false},
+        "gas": {"amount": 10, "can_extract": false},
+        "gold": {"amount": 280, "can_extract": false}
+      },
+      "military": [
+        {"branch": "نیروی زمینی", "category": "سرباز آماده نبرد", "name": "ارتش اسپانیا", "unit": "نفر", "count": 120000},
+        {"branch": "نیروی زمینی", "category": "تانک", "name": "Leopard 2E", "unit": "دستگاه", "count": 220},
+        {"branch": "نیروی هوایی", "category": "جنگنده", "name": "Eurofighter Typhoon", "unit": "فروند", "count": 70},
+        {"branch": "نیروی دریایی", "category": "ناو هواپیمابر", "name": "Juan Carlos I", "unit": "فروند", "count": 1}
+      ]
+    },
+    {
+      "name_en": "Poland", "name_fa": "لهستان", "flag": "🇵🇱", "region": "europe", "is_vip": false, "population": 38000000,
+      "economy": {"economic_power": 66, "budget": 400000000000, "growth": "up", "inflation": 4.0, "unemployment": 5.0, "energy_status": "medium", "foreign_trade": "balanced", "govt_debt": 400000000000, "public_satisfaction": 60, "stability": 73},
+      "reserves": {
+        "coal": {"amount": 60000000, "can_extract": true},
+        "aluminum": {"amount": 200000, "can_extract": false},
+        "iron": {"amount": 1000000, "can_extract": false},
+        "steel": {"amount": 4000000, "can_extract": false},
+        "oil": {"amount": 2, "can_extract": false},
+        "gas": {"amount": 100, "can_extract": true},
+        "gold": {"amount": 230, "can_extract": false}
+      },
+      "military": [
+        {"branch": "نیروی زمینی", "category": "سرباز آماده نبرد", "name": "ارتش لهستان", "unit": "نفر", "count": 200000},
+        {"branch": "نیروی زمینی", "category": "تانک", "name": "M1A2 Abrams", "unit": "دستگاه", "count": 250},
+        {"branch": "نیروی زمینی", "category": "تانک", "name": "K2 Black Panther", "unit": "دستگاه", "count": 180},
+        {"branch": "نیروی هوایی", "category": "جنگنده", "name": "F-16", "unit": "فروند", "count": 48},
+        {"branch": "نیروی هوایی", "category": "جنگنده", "name": "FA-50", "unit": "فروند", "count": 48}
+      ]
+    },
+    {
+      "name_en": "Ukraine", "name_fa": "اوکراین", "flag": "🇺🇦", "region": "europe", "is_vip": false, "population": 37000000,
+      "economy": {"economic_power": 35, "budget": 90000000000, "growth": "down", "inflation": 15.0, "unemployment": 18.0, "energy_status": "weak", "foreign_trade": "negative", "govt_debt": 150000000000, "public_satisfaction": 50, "stability": 48},
+      "reserves": {
+        "coal": {"amount": 30000000, "can_extract": true},
+        "aluminum": {"amount": 300000, "can_extract": false},
+        "iron": {"amount": 30000000, "can_extract": true},
+        "steel": {"amount": 3000000, "can_extract": false},
+        "oil": {"amount": 5, "can_extract": true},
+        "gas": {"amount": 1000, "can_extract": true},
+        "gold": {"amount": 50, "can_extract": false}
+      },
+      "military": [
+        {"branch": "نیروی زمینی", "category": "سرباز آماده نبرد", "name": "ارتش اوکراین", "unit": "نفر", "count": 800000},
+        {"branch": "نیروی زمینی", "category": "تانک", "name": "T-64BV", "unit": "دستگاه", "count": 700},
+        {"branch": "نیروی زمینی", "category": "تانک", "name": "Leopard 2", "unit": "دستگاه", "count": 80},
+        {"branch": "نیروی هوایی", "category": "جنگنده", "name": "F-16", "unit": "فروند", "count": 30},
+        {"branch": "سامانه‌های دفاعی", "category": "سامانه ضدموشکی", "name": "Patriot PAC-3", "unit": "سامانه", "count": 5}
+      ]
+    },
+    {
+      "name_en": "Sweden", "name_fa": "سوئد", "flag": "🇸🇪", "region": "europe", "is_vip": false, "population": 10600000,
+      "economy": {"economic_power": 73, "budget": 300000000000, "growth": "up", "inflation": 2.2, "unemployment": 7.5, "energy_status": "excellent", "foreign_trade": "positive", "govt_debt": 250000000000, "public_satisfaction": 67, "stability": 82},
+      "reserves": {
+        "coal": {"amount": 0, "can_extract": false},
+        "aluminum": {"amount": 200000, "can_extract": false},
+        "iron": {"amount": 25000000, "can_extract": true},
+        "steel": {"amount": 4000000, "can_extract": false},
+        "oil": {"amount": 0, "can_extract": false},
+        "gas": {"amount": 0, "can_extract": false},
+        "gold": {"amount": 150, "can_extract": true}
+      },
+      "military": [
+        {"branch": "نیروی زمینی", "category": "سرباز آماده نبرد", "name": "ارتش سوئد", "unit": "نفر", "count": 50000},
+        {"branch": "نیروی زمینی", "category": "تانک", "name": "Stridsvagn 122", "unit": "دستگاه", "count": 120},
+        {"branch": "نیروی هوایی", "category": "جنگنده", "name": "JAS 39 Gripen", "unit": "فروند", "count": 90},
+        {"branch": "نیروی دریایی", "category": "زیردریایی", "name": "Gotland-class", "unit": "فروند", "count": 5}
+      ]
+    },
+    {
+      "name_en": "Switzerland", "name_fa": "سوئیس", "flag": "🇨🇭", "region": "europe", "is_vip": false, "population": 8800000,
+      "economy": {"economic_power": 78, "budget": 250000000000, "growth": "flat", "inflation": 1.5, "unemployment": 2.2, "energy_status": "good", "foreign_trade": "positive", "govt_debt": 150000000000, "public_satisfaction": 72, "stability": 88},
+      "reserves": {
+        "coal": {"amount": 0, "can_extract": false},
+        "aluminum": {"amount": 100000, "can_extract": false},
+        "iron": {"amount": 200000, "can_extract": false},
+        "steel": {"amount": 1500000, "can_extract": false},
+        "oil": {"amount": 0, "can_extract": false},
+        "gas": {"amount": 0, "can_extract": false},
+        "gold": {"amount": 1040, "can_extract": false}
+      },
+      "military": [
+        {"branch": "نیروی زمینی", "category": "سرباز آماده نبرد", "name": "ارتش سوئیس", "unit": "نفر", "count": 100000},
+        {"branch": "نیروی زمینی", "category": "تانک", "name": "Leopard 2 (Pz 87)", "unit": "دستگاه", "count": 134},
+        {"branch": "نیروی هوایی", "category": "جنگنده", "name": "F/A-18 Hornet", "unit": "فروند", "count": 30},
+        {"branch": "نیروی هوایی", "category": "جنگنده", "name": "F-35A", "unit": "فروند", "count": 36}
+      ]
+    },
+    {
+      "name_en": "Greece", "name_fa": "یونان", "flag": "🇬🇷", "region": "europe", "is_vip": false, "population": 10300000,
+      "economy": {"economic_power": 55, "budget": 110000000000, "growth": "up", "inflation": 2.8, "unemployment": 11.0, "energy_status": "medium", "foreign_trade": "negative", "govt_debt": 400000000000, "public_satisfaction": 55, "stability": 68},
+      "reserves": {
+        "coal": {"amount": 3000000, "can_extract": true},
+        "aluminum": {"amount": 600000, "can_extract": true},
+        "iron": {"amount": 1000000, "can_extract": false},
+        "steel": {"amount": 1500000, "can_extract": false},
+        "oil": {"amount": 2, "can_extract": false},
+        "gas": {"amount": 5, "can_extract": false},
+        "gold": {"amount": 100, "can_extract": false}
+      },
+      "military": [
+        {"branch": "نیروی زمینی", "category": "سرباز آماده نبرد", "name": "ارتش یونان", "unit": "نفر", "count": 130000},
+        {"branch": "نیروی زمینی", "category": "تانک", "name": "Leopard 2A6", "unit": "دستگاه", "count": 170},
+        {"branch": "نیروی هوایی", "category": "جنگنده", "name": "Rafale", "unit": "فروند", "count": 24},
+        {"branch": "نیروی هوایی", "category": "جنگنده", "name": "F-16 Viper", "unit": "فروند", "count": 84}
+      ]
+    },
+
+    {
+      "name_en": "USA", "name_fa": "ایالات متحده آمریکا", "flag": "🇺🇸", "region": "americas", "is_vip": true, "population": 335000000,
+      "economy": {"economic_power": 98, "budget": 6500000000000, "growth": "up", "inflation": 3.0, "unemployment": 3.9, "energy_status": "excellent", "foreign_trade": "negative", "govt_debt": 34000000000000, "public_satisfaction": 62, "stability": 75},
+      "reserves": {
+        "coal": {"amount": 220000000, "can_extract": true},
+        "aluminum": {"amount": 5000000, "can_extract": true},
+        "iron": {"amount": 50000000, "can_extract": true},
+        "steel": {"amount": 8000000, "can_extract": false},
+        "oil": {"amount": 2200, "can_extract": true},
+        "gas": {"amount": 38000, "can_extract": true},
+        "gold": {"amount": 8130, "can_extract": true}
+      },
+      "military": [
+        {"branch": "نیروی زمینی", "category": "سرباز آماده نبرد", "name": "ارتش ایالات متحده", "unit": "نفر", "count": 1300000},
+        {"branch": "نیروی زمینی", "category": "تانک", "name": "M1A2 Abrams", "unit": "دستگاه", "count": 6500},
+        {"branch": "نیروی زمینی", "category": "نفربر زرهی", "name": "M2 Bradley", "unit": "دستگاه", "count": 6000},
+        {"branch": "نیروی هوایی", "category": "جنگنده", "name": "F-22 Raptor", "unit": "فروند", "count": 180},
+        {"branch": "نیروی هوایی", "category": "جنگنده", "name": "F-35 Lightning II", "unit": "فروند", "count": 550},
+        {"branch": "نیروی هوایی", "category": "بمب‌افکن", "name": "B-2 Spirit", "unit": "فروند", "count": 20},
+        {"branch": "نیروی هوایی", "category": "بمب‌افکن", "name": "B-52 Stratofortress", "unit": "فروند", "count": 70},
+        {"branch": "نیروی هوایی", "category": "پهپاد", "name": "MQ-9 Reaper", "unit": "فروند", "count": 300},
+        {"branch": "نیروی دریایی", "category": "ناو هواپیمابر", "name": "Nimitz-class", "unit": "فروند", "count": 10},
+        {"branch": "نیروی دریایی", "category": "ناو هواپیمابر", "name": "Gerald R. Ford-class", "unit": "فروند", "count": 2},
+        {"branch": "نیروی دریایی", "category": "ناوشکن", "name": "Arleigh Burke-class", "unit": "فروند", "count": 90},
+        {"branch": "نیروی دریایی", "category": "زیردریایی", "name": "Virginia-class", "unit": "فروند", "count": 20},
+        {"branch": "سامانه‌های دفاعی", "category": "سامانه ضدموشکی", "name": "Patriot PAC-3", "unit": "سامانه", "count": 95},
+        {"branch": "سامانه‌های دفاعی", "category": "سامانه ضدموشکی", "name": "THAAD", "unit": "سامانه", "count": 7}
+      ]
+    },
+    {
+      "name_en": "Brazil", "name_fa": "برزیل", "flag": "🇧🇷", "region": "americas", "is_vip": false, "population": 216000000,
+      "economy": {"economic_power": 64, "budget": 500000000000, "growth": "up", "inflation": 4.5, "unemployment": 8.0, "energy_status": "good", "foreign_trade": "positive", "govt_debt": 1500000000000, "public_satisfaction": 56, "stability": 65},
+      "reserves": {
+        "coal": {"amount": 5000000, "can_extract": true},
+        "aluminum": {"amount": 5000000, "can_extract": true},
+        "iron": {"amount": 90000000, "can_extract": true},
+        "steel": {"amount": 5000000, "can_extract": false},
+        "oil": {"amount": 130, "can_extract": true},
+        "gas": {"amount": 400, "can_extract": true},
+        "gold": {"amount": 130, "can_extract": true}
+      },
+      "military": [
+        {"branch": "نیروی زمینی", "category": "سرباز آماده نبرد", "name": "ارتش برزیل", "unit": "نفر", "count": 360000},
+        {"branch": "نیروی زمینی", "category": "تانک", "name": "Leopard 1A5", "unit": "دستگاه", "count": 220},
+        {"branch": "نیروی هوایی", "category": "جنگنده", "name": "JAS 39 Gripen E", "unit": "فروند", "count": 36},
+        {"branch": "نیروی دریایی", "category": "ناو هواپیمابر", "name": "Atlântico", "unit": "فروند", "count": 1},
+        {"branch": "نیروی دریایی", "category": "زیردریایی", "name": "Riachuelo-class", "unit": "فروند", "count": 4}
+      ]
+    },
+    {
+      "name_en": "Mexico", "name_fa": "مکزیک", "flag": "🇲🇽", "region": "americas", "is_vip": false, "population": 129000000,
+      "economy": {"economic_power": 60, "budget": 350000000000, "growth": "up", "inflation": 4.6, "unemployment": 3.0, "energy_status": "medium", "foreign_trade": "balanced", "govt_debt": 800000000000, "public_satisfaction": 54, "stability": 60},
+      "reserves": {
+        "coal": {"amount": 2000000, "can_extract": true},
+        "aluminum": {"amount": 300000, "can_extract": false},
+        "iron": {"amount": 8000000, "can_extract": true},
+        "steel": {"amount": 3000000, "can_extract": false},
+        "oil": {"amount": 110, "can_extract": true},
+        "gas": {"amount": 400, "can_extract": true},
+        "gold": {"amount": 120, "can_extract": true}
+      },
+      "military": [
+        {"branch": "نیروی زمینی", "category": "سرباز آماده نبرد", "name": "ارتش مکزیک", "unit": "نفر", "count": 215000},
+        {"branch": "نیروی هوایی", "category": "جنگنده", "name": "F-5E Tiger II", "unit": "فروند", "count": 8},
+        {"branch": "نیروی دریایی", "category": "ناوچه", "name": "Reformador-class", "unit": "فروند", "count": 2}
+      ]
+    },
+    {
+      "name_en": "Canada", "name_fa": "کانادا", "flag": "🇨🇦", "region": "americas", "is_vip": false, "population": 40000000,
+      "economy": {"economic_power": 76, "budget": 450000000000, "growth": "up", "inflation": 2.8, "unemployment": 5.5, "energy_status": "excellent", "foreign_trade": "positive", "govt_debt": 1200000000000, "public_satisfaction": 64, "stability": 82},
+      "reserves": {
+        "coal": {"amount": 30000000, "can_extract": true},
+        "aluminum": {"amount": 3000000, "can_extract": true},
+        "iron": {"amount": 40000000, "can_extract": true},
+        "steel": {"amount": 3000000, "can_extract": false},
+        "oil": {"amount": 1700, "can_extract": true},
+        "gas": {"amount": 2000, "can_extract": true},
+        "gold": {"amount": 5000, "can_extract": true}
+      },
+      "military": [
+        {"branch": "نیروی زمینی", "category": "سرباز آماده نبرد", "name": "ارتش کانادا", "unit": "نفر", "count": 70000},
+        {"branch": "نیروی زمینی", "category": "تانک", "name": "Leopard 2A4M", "unit": "دستگاه", "count": 82},
+        {"branch": "نیروی هوایی", "category": "جنگنده", "name": "CF-18 Hornet", "unit": "فروند", "count": 76},
+        {"branch": "نیروی هوایی", "category": "جنگنده", "name": "F-35A", "unit": "فروند", "count": 16}
+      ]
+    },
+    {
+      "name_en": "Argentina", "name_fa": "آرژانتین", "flag": "🇦🇷", "region": "americas", "is_vip": false, "population": 46000000,
+      "economy": {"economic_power": 48, "budget": 120000000000, "growth": "flat", "inflation": 100.0, "unemployment": 10.0, "energy_status": "medium", "foreign_trade": "balanced", "govt_debt": 400000000000, "public_satisfaction": 48, "stability": 58},
+      "reserves": {
+        "coal": {"amount": 1000000, "can_extract": false},
+        "aluminum": {"amount": 400000, "can_extract": true},
+        "iron": {"amount": 2000000, "can_extract": false},
+        "steel": {"amount": 2000000, "can_extract": false},
+        "oil": {"amount": 30, "can_extract": true},
+        "gas": {"amount": 380, "can_extract": true},
+        "gold": {"amount": 60, "can_extract": true}
+      },
+      "military": [
+        {"branch": "نیروی زمینی", "category": "سرباز آماده نبرد", "name": "ارتش آرژانتین", "unit": "نفر", "count": 80000},
+        {"branch": "نیروی هوایی", "category": "جنگنده", "name": "F-16", "unit": "فروند", "count": 24},
+        {"branch": "نیروی دریایی", "category": "ناوشکن", "name": "MEKO 360", "unit": "فروند", "count": 4}
+      ]
+    },
+    {
+      "name_en": "Colombia", "name_fa": "کلمبیا", "flag": "🇨🇴", "region": "americas", "is_vip": false, "population": 52000000,
+      "economy": {"economic_power": 50, "budget": 100000000000, "growth": "up", "inflation": 7.0, "unemployment": 10.0, "energy_status": "medium", "foreign_trade": "balanced", "govt_debt": 200000000000, "public_satisfaction": 50, "stability": 58},
+      "reserves": {
+        "coal": {"amount": 25000000, "can_extract": true},
+        "aluminum": {"amount": 100000, "can_extract": false},
+        "iron": {"amount": 1000000, "can_extract": false},
+        "steel": {"amount": 800000, "can_extract": false},
+        "oil": {"amount": 50, "can_extract": true},
+        "gas": {"amount": 150, "can_extract": true},
+        "gold": {"amount": 1200, "can_extract": true}
+      },
+      "military": [
+        {"branch": "نیروی زمینی", "category": "سرباز آماده نبرد", "name": "ارتش کلمبیا", "unit": "نفر", "count": 290000},
+        {"branch": "نیروی هوایی", "category": "جنگنده", "name": "Kfir C10", "unit": "فروند", "count": 20},
+        {"branch": "نیروی دریایی", "category": "ناوچه", "name": "Almirante Padilla-class", "unit": "فروند", "count": 4}
+      ]
+    }
+  ]
+}

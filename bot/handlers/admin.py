@@ -4,7 +4,12 @@ from __future__ import annotations
 
 from aiogram import F, Router
 from aiogram.filters import Command
-from aiogram.types import CallbackQuery, Message
+from aiogram.types import (
+    CallbackQuery,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    Message,
+)
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..config import get_settings
@@ -15,6 +20,7 @@ from ..database.repositories import users as users_repo
 from ..enums import ClaimStatus
 from ..keyboards.menu import main_menu_kb
 from ..loader import bot
+from ..services.season_service import reset_season
 
 router = Router(name="admin")
 settings = get_settings()
@@ -114,3 +120,65 @@ async def cmd_pending(
             f"• #{c.id} — کاربر <code>{c.user_id}</code> برای {cname}"
         )
     await message.answer("\n".join(lines))
+
+
+# ============================================================
+#  پایان فصل: ریست کامل بازی به حالت اولیه (فقط مالک)
+#  با تأیید دومرحله‌ای برای جلوگیری از ریست تصادفی.
+# ============================================================
+@router.message(Command("endseason"))
+async def cmd_endseason(message: Message) -> None:
+    """نمایش هشدار و دکمه‌ی تأیید پایان فصل (فقط برای مالک)."""
+    if not _is_owner(message.from_user.id):
+        return
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="🔴 بله، فصل را ریست کن", callback_data="season_reset_confirm"
+                )
+            ],
+            [InlineKeyboardButton(text="❌ انصراف", callback_data="season_reset_cancel")],
+        ]
+    )
+    await message.answer(
+        "⚠️ <b>پایان فصل و ریست کامل بازی</b>\n\n"
+        "با این کار تمام تغییرات فصل به حالت اولیه برمی‌گردد:\n"
+        "• اقتصاد، ذخایر و رضایت همه‌ی کشورها بازنشانی می‌شود\n"
+        "• تجهیزات نظامی (تلفات‌ها) به تعداد اولیه برمی‌گردد\n"
+        "• تأسیسات، قراردادها، حملات، تماس‌ها و دیدارها پاک می‌شوند\n"
+        "• <b>مالکیت همه‌ی کشورها آزاد می‌شود</b> و بازیکن‌ها باید دوباره کشورگیری کنند\n\n"
+        "❗️ این عملیات <b>غیرقابل‌بازگشت</b> است. مطمئن هستید؟",
+        reply_markup=kb,
+    )
+
+
+@router.callback_query(F.data == "season_reset_cancel")
+async def cb_season_cancel(call: CallbackQuery) -> None:
+    """انصراف از ریست فصل."""
+    if not _is_owner(call.from_user.id):
+        await call.answer("فقط مالک بازی مجاز است.", show_alert=True)
+        return
+    await call.answer("لغو شد")
+    await call.message.edit_text("✅ ریست فصل لغو شد. هیچ تغییری اعمال نشد.")
+
+
+@router.callback_query(F.data == "season_reset_confirm")
+async def cb_season_confirm(
+    call: CallbackQuery, session: AsyncSession
+) -> None:
+    """اجرای ریست کامل فصل پس از تأیید مالک."""
+    if not _is_owner(call.from_user.id):
+        await call.answer("فقط مالک بازی مجاز است.", show_alert=True)
+        return
+    await call.answer("در حال ریست فصل...")
+    await call.message.edit_text("⏳ در حال ریست کامل بازی... لطفاً صبر کنید.")
+
+    result = await reset_season(session)
+
+    await call.message.edit_text(
+        "🎉 <b>فصل با موفقیت به پایان رسید و بازی ریست شد.</b>\n\n"
+        f"✅ {result['countries_reset']} کشور به حالت اولیه بازگشتند.\n"
+        "همه‌ی کشورها اکنون آزاد هستند و بازیکن‌ها می‌توانند برای فصل جدید "
+        "کشورگیری کنند. (/claim)"
+    )

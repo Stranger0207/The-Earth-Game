@@ -67,6 +67,23 @@ async def estimate_shipping_time(
     return await ask_ai_json(prompts.shipping_time_prompt(), user_prompt)
 
 
+async def evaluate_sanction(
+    session: AsyncSession,
+    from_id: int,
+    to_id: int,
+    sanction_type_fa: str,
+) -> dict:
+    """سنجش منطقی‌بودن و شدت یک تحریم (v1.5)."""
+    from_ctx = await build_country_context(session, from_id)
+    to_ctx = await build_country_context(session, to_id)
+    user_prompt = (
+        f"نوع تحریم: {sanction_type_fa}\n\n"
+        f"کشور تحریم‌کننده:\n{json.dumps(from_ctx, ensure_ascii=False)}\n\n"
+        f"کشور هدف:\n{json.dumps(to_ctx, ensure_ascii=False)}"
+    )
+    return await ask_ai_json(prompts.sanction_evaluator_prompt(), user_prompt)
+
+
 async def get_advice(
     session: AsyncSession, country_id: int, domain_fa: str, question: str
 ) -> str:

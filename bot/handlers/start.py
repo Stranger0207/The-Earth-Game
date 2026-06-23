@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from aiogram import F, Router
-from aiogram.filters import CommandStart
+from aiogram.filters import CommandObject, CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.types import (
     InlineKeyboardButton,
@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..database.models import User
 from ..keyboards.menu import main_menu_kb
+from ..states import SpeechForm
 from .deps import get_player_country
 
 router = Router(name="start")
@@ -42,9 +43,29 @@ async def cmd_start(
     state: FSMContext,
     session: AsyncSession,
     db_user: User,
+    command: CommandObject,
 ) -> None:
     """پاسخ به /start: اگر کاربر کشور دارد پنل، در غیر این صورت دعوت به کشورگیری."""
     await state.clear()
+
+    # deep-link نقل قول سخنرانی: /start quote_<speech_id>  (v1.5)
+    if command.args and command.args.startswith("quote_"):
+        try:
+            speech_id = int(command.args.split("_", 1)[1])
+        except (ValueError, IndexError):
+            speech_id = None
+        if speech_id is not None:
+            country = await get_player_country(session, db_user)
+            if country is None:
+                await message.answer(
+                    "برای نقل قول باید رهبر یک کشور باشید. ابتدا کشورگیری کنید. /claim"
+                )
+                return
+            await state.set_state(SpeechForm.quoting)
+            await state.update_data(quote_speech_id=speech_id)
+            await message.answer("💬 متن نقل قول خود را بنویسید:")
+            return
+
     country = await get_player_country(session, db_user)
     if country is not None:
         await message.answer(

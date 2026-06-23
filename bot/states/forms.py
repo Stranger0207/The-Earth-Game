@@ -76,3 +76,23 @@ class AdvisorForm(StatesGroup):
 
     choosing_domain = State()
     asking = State()
+
+
+class TariffForm(StatesGroup):
+    """فرم تعیین تعرفه توسط آمریکا (v1.5)."""
+
+    entering_percent = State()
+
+
+class SanctionForm(StatesGroup):
+    """فرم وضع تحریم (v1.5)."""
+
+    choosing_type = State()
+
+
+class SpeechForm(StatesGroup):
+    """فرم سخنرانی رئیس‌جمهور (v1.5)."""
+
+    entering_text = State()
+    entering_photo = State()
+    quoting = State()

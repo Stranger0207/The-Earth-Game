@@ -28,9 +28,13 @@ async def cb_main(call: CallbackQuery, state: FSMContext) -> None:
 
 
 @router.callback_query(F.data == "menu:economy")
-async def cb_economy(call: CallbackQuery) -> None:
+async def cb_economy(call: CallbackQuery, session: AsyncSession, db_user: User) -> None:
     await call.answer()
-    await call.message.edit_text("📊 <b>بخش اقتصاد</b>", reply_markup=economy_menu_kb())
+    country = await get_player_country(session, db_user)
+    is_usa = country is not None and country.name_en == "USA"
+    await call.message.edit_text(
+        "📊 <b>بخش اقتصاد</b>", reply_markup=economy_menu_kb(is_usa=is_usa)
+    )
 
 
 @router.callback_query(F.data == "menu:diplomacy")

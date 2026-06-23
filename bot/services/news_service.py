@@ -50,12 +50,12 @@ async def publish_news(
         logger.warning("Failed to publish news to %s: %s", channel_id, exc)
 
 
-async def send_log(bot: Bot, text: str) -> None:
-    """ارسال یک پیام به گروه لاگ مدیران (مثلاً لاگ تماس‌های تلفنی)."""
+async def send_log(bot: Bot, text: str, reply_markup=None) -> None:
+    """ارسال یک پیام به گروه لاگ مدیران (مثلاً لاگ تماس یا درخواست خرابکاری)."""
     if settings.log_group_id is None:
         logger.info("Log group not configured. Log: %s", text)
         return
     try:
-        await bot.send_message(settings.log_group_id, text)
+        await bot.send_message(settings.log_group_id, text, reply_markup=reply_markup)
     except Exception as exc:  # noqa: BLE001
         logger.warning("Failed to send log: %s", exc)

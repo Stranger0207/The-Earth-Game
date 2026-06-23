@@ -144,10 +144,19 @@ async def process_shipments(bot: Bot) -> None:
 
 
 async def process_attacks(bot: Bot) -> None:
-    """حملاتی که زمان اعلام نتیجه‌شان رسیده را نهایی و در کانال نظامی اعلام می‌کند."""
+    """
+    حملاتی که زمان اعلام نتیجه‌شان رسیده را نهایی می‌کند و نتیجه‌ی دقیق را به
+    گروه لاگ مدیران می‌فرستد (v1.5: نه کانال نظامی) تا مالک دستی اعلام کند.
+    همچنین به مهاجم و مدافع اطلاع داده می‌شود.
+    """
     from sqlalchemy import select
 
     from ..database.models import Attack
+    from ..database.repositories import countries as countries_repo
+    from ..services.news_service import send_log
+
+    # (متن لاگ، آی‌دی مالک مهاجم، آی‌دی مالک مدافع)
+    to_announce: list[tuple[str, int | None, int | None]] = []
 
     async with async_session_factory() as session:
         result = await session.execute(
@@ -155,18 +164,33 @@ async def process_attacks(bot: Bot) -> None:
         )
         attacks = list(result.scalars().all())
         now = _utcnow()
-        resolved = []
         for atk in attacks:
             eta = _aware(atk.resolve_eta)
             if eta is None or eta > now:
                 continue
             atk.status = AttackStatus.RESOLVED
-            resolved.append(atk)
+            attacker = await countries_repo.get_country(session, atk.attacker_country)
+            defender = await countries_repo.get_country(session, atk.defender_country)
+            to_announce.append((
+                atk.result or "نتیجه‌ی حمله ثبت شد.",
+                attacker.owner_user_id if attacker else None,
+                defender.owner_user_id if defender else None,
+            ))
         await session.commit()
 
-    for atk in resolved:
-        report = atk.result or "نتیجه‌ی حمله ثبت شد."
-        await publish_news(bot, NewsCategory.MILITARY, report)
+    for report, attacker_owner, defender_owner in to_announce:
+        # اعلام دقیق به گروه لاگ مدیران
+        await send_log(bot, report)
+        # اطلاع به طرفین
+        for owner_id in (attacker_owner, defender_owner):
+            if owner_id:
+                try:
+                    await bot.send_message(
+                        owner_id,
+                        "📋 نتیجه‌ی نهایی حمله آماده شد و به مدیریت بازی اعلام گردید.",
+                    )
+                except Exception:  # noqa: BLE001
+                    pass
 
 
 async def process_meetings(bot: Bot) -> None:
@@ -190,6 +214,80 @@ async def process_meetings(bot: Bot) -> None:
             if m.status == DiplomacyStatus.ACTIVE and meeting_ends and meeting_ends <= now:
                 m.status = DiplomacyStatus.COMPLETED
         await session.commit()
+
+
+async def process_group_meetings(bot: Bot) -> None:
+    """
+    نشست‌های چندجانبه را مدیریت می‌کند (v1.5):
+    - وقتی زمان شروع (رسیدن آخرین کشور) فرارسید، نشست را فعال و به همه اعلام می‌کند.
+    - نشست‌هایی که زمانشان تمام شده را می‌بندد.
+    """
+    from sqlalchemy import select
+
+    from ..constants import MEETING_DURATION_MINUTES
+    from ..database.models import GroupMeeting, GroupMeetingParticipant
+    from ..database.repositories import countries as countries_repo
+    from ..services.news_service import publish_news
+
+    started_notices: list[tuple[list[int], str, str]] = []  # (owner_ids, notice, news)
+
+    async with async_session_factory() as session:
+        now = _utcnow()
+        # فعال‌سازی نشست‌هایی که زمان شروعشان رسیده
+        result = await session.execute(
+            select(GroupMeeting).where(GroupMeeting.status == DiplomacyStatus.PENDING)
+        )
+        for meeting in result.scalars().all():
+            start_at = _aware(meeting.start_at)
+            if start_at is None or start_at > now:
+                continue
+            meeting.status = DiplomacyStatus.ACTIVE
+            meeting.meeting_ends_at = now + timedelta(minutes=MEETING_DURATION_MINUTES)
+
+            host = await countries_repo.get_country(session, meeting.host_country)
+            pres = await session.execute(
+                select(GroupMeetingParticipant).where(
+                    GroupMeetingParticipant.meeting_id == meeting.id,
+                    GroupMeetingParticipant.response == DiplomacyStatus.ACTIVE,
+                )
+            )
+            members = [host] if host else []
+            for p in pres.scalars().all():
+                c = await countries_repo.get_country(session, p.country_id)
+                if c:
+                    members.append(c)
+            names = "، ".join(f"{c.flag} {c.name_fa}" for c in members if c)
+            owner_ids = [c.owner_user_id for c in members if c and c.owner_user_id]
+            notice = (
+                f"👥 <b>نشست «{meeting.title}» آغاز شد</b>\n\n"
+                f"همه‌ی کشورها به میزبان رسیدند.\n"
+                f"شرکت‌کنندگان: {names}\n"
+                f"⏱ مدت نشست: {MEETING_DURATION_MINUTES} دقیقه."
+            )
+            news = (
+                f"👥 نشست چندجانبه‌ای با عنوان «{meeting.title}» به میزبانی "
+                f"{host.name_fa if host else '?'} با حضور چند کشور آغاز شد."
+            )
+            started_notices.append((owner_ids, notice, news))
+
+        # بستن نشست‌های پایان‌یافته
+        result = await session.execute(
+            select(GroupMeeting).where(GroupMeeting.status == DiplomacyStatus.ACTIVE)
+        )
+        for meeting in result.scalars().all():
+            ends = _aware(meeting.meeting_ends_at)
+            if ends and ends <= now:
+                meeting.status = DiplomacyStatus.COMPLETED
+        await session.commit()
+
+    # ارسال اعلان‌ها پس از commit
+    for owner_ids, notice, news in started_notices:
+        for oid in owner_ids:
+            try:
+                await bot.send_message(oid, notice)
+            except Exception:  # noqa: BLE001
+                pass
+        await publish_news(bot, NewsCategory.DIPLOMACY, news)
 
 
 async def process_calls() -> None:
@@ -218,6 +316,7 @@ async def _tick(bot: Bot) -> None:
         await process_shipments(bot)
         await process_attacks(bot)
         await process_meetings(bot)
+        await process_group_meetings(bot)
         await process_calls()
     except Exception as exc:  # noqa: BLE001 — خطای یک تیک نباید زمان‌بند را متوقف کند
         logger.exception("Scheduler tick failed: %s", exc)

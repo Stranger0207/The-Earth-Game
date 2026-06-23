@@ -8,15 +8,20 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from ..enums import FACILITY_FA, RESOURCE_EMOJI, RESOURCE_FA, FacilityType, ResourceType
 
 
-def economy_menu_kb() -> InlineKeyboardMarkup:
-    """منوی اصلی اقتصاد."""
+def economy_menu_kb(is_usa: bool = False) -> InlineKeyboardMarkup:
+    """منوی اصلی اقتصاد. برای آمریکا دکمه‌ی تعرفه‌ی بین‌المللی هم اضافه می‌شود (v1.5)."""
     builder = InlineKeyboardBuilder()
     builder.button(text="📊 گزارش اقتصادی", callback_data="econ:report")
     builder.button(text="📦 ذخایر", callback_data="econ:reserves")
     builder.button(text="🏗 احداث تأسیسات", callback_data="econ:build")
     builder.button(text="💱 فروش ذخیره", callback_data="econ:sell")
+    if is_usa:
+        builder.button(text="🇺🇸 تعرفه بین‌المللی", callback_data="econ:tariffs")
     builder.button(text="🔙 بازگشت", callback_data="menu:main")
-    builder.adjust(2, 2, 1)
+    if is_usa:
+        builder.adjust(2, 2, 1, 1)
+    else:
+        builder.adjust(2, 2, 1)
     return builder.as_markup()
 
 

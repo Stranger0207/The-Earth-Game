@@ -61,6 +61,9 @@ class Country(Base):
     public_satisfaction: Mapped[float] = mapped_column(Float, default=60.0)  # رضایت عمومی (۰ تا ۱۰۰)
     stability: Mapped[float] = mapped_column(Float, default=60.0)            # ثبات داخلی (۰ تا ۱۰۰)
 
+    # --- عوارض بین‌المللی (v1.5) — فقط برای آمریکا معنا دارد: مجموع تعرفه‌های جمع‌آوری‌شده ---
+    international_duties: Mapped[float] = mapped_column(Float, default=0.0)
+
     # --- روابط ---
     owner: Mapped["User | None"] = relationship(back_populates="country")
     reserves: Mapped[list["Reserve"]] = relationship(

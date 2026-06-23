@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from sqlalchemy import (
+    BigInteger,
     Boolean,
     DateTime,
     ForeignKey,
@@ -155,7 +156,9 @@ class Sanction(Base):
     to_country: Mapped[int] = mapped_column(
         ForeignKey("countries.id"), nullable=False, index=True
     )
-    # نوع/توضیح تحریم
+    # نوع تحریم (مقدار SanctionType) — v1.5
+    sanction_type: Mapped[str] = mapped_column(String(24), default="", nullable=False)
+    # توضیح تحریم
     description: Mapped[str] = mapped_column(Text, default="", nullable=False)
     active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
@@ -164,6 +167,22 @@ class Sanction(Base):
 
     def __repr__(self) -> str:
         return f"<Sanction {self.from_country}->{self.to_country} active={self.active}>"
+
+
+class Speech(Base):
+    """سخنرانی/بیانیه‌ی رئیس‌جمهور که در کانال دیپلماسی منتشر می‌شود (v1.5)."""
+
+    __tablename__ = "speeches"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    speaker_country: Mapped[int] = mapped_column(
+        ForeignKey("countries.id"), nullable=False, index=True
+    )
+    # آی‌دی پیام منتشرشده در کانال دیپلماسی (برای ریپلای نقل قول)
+    channel_message_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
 
 
 class GroupMeeting(Base):
@@ -182,6 +201,10 @@ class GroupMeeting(Base):
     title: Mapped[str] = mapped_column(String(256), default="نشست چندجانبه")
     status: Mapped[str] = mapped_column(
         String(16), default=DiplomacyStatus.PENDING, nullable=False
+    )
+    # زمان شروع نشست = لحظه‌ی رسیدن آخرین کشور (v1.5)
+    start_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
     )
     meeting_ends_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
@@ -209,6 +232,10 @@ class GroupMeetingParticipant(Base):
     # وضعیت پاسخ این کشور به دعوت (pending/active=پذیرفته/rejected)
     response: Mapped[str] = mapped_column(
         String(16), default=DiplomacyStatus.PENDING, nullable=False
+    )
+    # زمان رسیدن این کشور به میزبان (پس از پذیرش، پرواز شبیه‌سازی می‌شود) — v1.5
+    travel_eta: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
     )
 
     def __repr__(self) -> str:

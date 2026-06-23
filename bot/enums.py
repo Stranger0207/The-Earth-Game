@@ -164,3 +164,31 @@ class AdvisorDomain(str, enum.Enum):
     ECONOMY = "economy"
     DIPLOMACY = "diplomacy"
     MILITARY = "military"
+
+
+class SanctionType(str, enum.Enum):
+    """انواع تحریم (v1.5)."""
+
+    OIL_TRADE = "oil_trade"            # تحریم تجارت نفت
+    GAS_TRADE = "gas_trade"            # تحریم تجارت گاز
+    STEEL_TRADE = "steel_trade"        # تحریم تجارت فولاد
+    MINERAL_TRADE = "mineral_trade"    # تحریم تجارت منابع معدنی
+    FINANCIAL = "financial"            # تحریم مالی و بانکی (انتقال پول در WTO)
+    ARMS = "arms"                      # تحریم تسلیحاتی (خرید/فروش سلاح)
+    TRANSPORT = "transport"            # تحریم حمل‌ونقل (خطوط بین‌المللی WTO)
+    DIPLOMATIC = "diplomatic"          # تحریم دیپلماتیک (قطع/کاهش روابط)
+    INDIVIDUAL = "individual"          # تحریم فردی (ممنوعیت سفر مقامات)
+
+
+# نام فارسی هر نوع تحریم
+SANCTION_FA: dict[SanctionType, str] = {
+    SanctionType.OIL_TRADE: "تحریم تجارت نفت",
+    SanctionType.GAS_TRADE: "تحریم تجارت گاز",
+    SanctionType.STEEL_TRADE: "تحریم تجارت فولاد",
+    SanctionType.MINERAL_TRADE: "تحریم تجارت منابع معدنی",
+    SanctionType.FINANCIAL: "تحریم مالی و بانکی",
+    SanctionType.ARMS: "تحریم تسلیحاتی",
+    SanctionType.TRANSPORT: "تحریم حمل‌ونقل",
+    SanctionType.DIPLOMATIC: "تحریم دیپلماتیک",
+    SanctionType.INDIVIDUAL: "تحریم فردی",
+}

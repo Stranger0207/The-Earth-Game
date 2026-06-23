@@ -10,6 +10,9 @@ from .forms import (
     LetterForm,
     MeetingForm,
     SaleForm,
+    SanctionForm,
+    SpeechForm,
+    TariffForm,
 )
 
 __all__ = [
@@ -22,4 +25,7 @@ __all__ = [
     "LetterForm",
     "MeetingForm",
     "SaleForm",
+    "SanctionForm",
+    "SpeechForm",
+    "TariffForm",
 ]

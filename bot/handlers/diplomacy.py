@@ -13,19 +13,34 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMar
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..config import get_settings
 from ..constants import MEETING_DURATION_MINUTES, PHONE_CALL_DURATION_MINUTES
-from ..database.models import Contract, GroupMeeting, Meeting, PhoneCall, Sanction, User
+from ..database.models import Contract, GroupMeeting, Meeting, PhoneCall, Sanction, Speech, User
 from ..database.repositories import countries as countries_repo
 from ..database.repositories import diplomacy as dip_repo
-from ..enums import DiplomacyStatus, NewsCategory
+from ..enums import SANCTION_FA, DiplomacyStatus, NewsCategory, SanctionType
 from ..keyboards.common import countries_kb
-from ..keyboards.diplomacy import diplomacy_menu_kb, end_call_kb
+from ..keyboards.diplomacy import diplomacy_menu_kb, end_call_kb, sanction_types_kb
 from ..loader import bot
 from ..services.ai import evaluators
 from ..services.news_service import publish_news, send_log
-from ..states import CallForm, ContractForm, LetterForm, MeetingForm
+from ..services.sanction_service import apply_sanction_effects
+from ..states import CallForm, ContractForm, LetterForm, MeetingForm, SanctionForm, SpeechForm
 from ..utils.numbers import fa_number
 from .deps import NO_COUNTRY_TEXT, get_player_country
+
+settings = get_settings()
+# نام کاربری ربات برای ساخت deep-link نقل قول (یک‌بار کش می‌شود)
+_bot_username: str | None = None
+
+
+async def _get_bot_username() -> str:
+    """نام کاربری ربات را یک‌بار می‌گیرد و کش می‌کند."""
+    global _bot_username
+    if _bot_username is None:
+        me = await bot.get_me()
+        _bot_username = me.username
+    return _bot_username
 
 router = Router(name="diplomacy")
 
@@ -368,8 +383,12 @@ async def msg_group_title(message: Message, state: FSMContext, session: AsyncSes
     )
 
 
-async def _maybe_activate_group_meeting(session: AsyncSession, meeting: GroupMeeting) -> None:
-    """اگر همه‌ی شرکت‌کننده‌ها پاسخ داده باشند، نشست را با تأییدکننده‌ها فعال می‌کند."""
+async def _maybe_schedule_group_meeting(session: AsyncSession, meeting: GroupMeeting) -> None:
+    """
+    وقتی همه‌ی دعوت‌شده‌ها پاسخ دادند، زمان برگزاری نشست را تعیین می‌کند (v1.5):
+    نشست زمانی شروع می‌شود که آخرین کشورِ پذیرنده به میزبان برسد (بیشترین travel_eta).
+    این زمان همان لحظه به همه اعلام می‌شود. فعال‌سازی نهایی توسط زمان‌بند انجام می‌شود.
+    """
     participants = await dip_repo.list_group_participants(session, meeting.id)
     if any(p.response == DiplomacyStatus.PENDING for p in participants):
         return  # هنوز همه پاسخ نداده‌اند
@@ -377,7 +396,6 @@ async def _maybe_activate_group_meeting(session: AsyncSession, meeting: GroupMee
     host = await countries_repo.get_country(session, meeting.host_country)
 
     if not accepted:
-        # هیچ‌کس قبول نکرد
         meeting.status = DiplomacyStatus.CANCELLED
         if host and host.owner_user_id:
             try:
@@ -389,21 +407,23 @@ async def _maybe_activate_group_meeting(session: AsyncSession, meeting: GroupMee
                 pass
         return
 
-    meeting.status = DiplomacyStatus.ACTIVE
-    meeting.meeting_ends_at = _utcnow() + timedelta(minutes=MEETING_DURATION_MINUTES)
+    # زمان شروع = دیرترین زمان رسیدن میان پذیرندگان
+    etas = [_aware(p.travel_eta) for p in accepted if p.travel_eta is not None]
+    start_at = max(etas) if etas else _utcnow()
+    meeting.start_at = start_at
 
-    # فهرست شرکت‌کننده‌های نهایی (میزبان + تأییدکننده‌ها)
+    # اعلام زمان برگزاری به میزبان و همه‌ی پذیرندگان
     members = [host] if host else []
     for p in accepted:
         c = await countries_repo.get_country(session, p.country_id)
         if c:
             members.append(c)
     names = "، ".join(f"{c.flag} {c.name_fa}" for c in members if c)
-
+    remaining_min = max(0, int((start_at - _utcnow()).total_seconds() // 60))
     notice = (
-        f"👥 <b>نشست «{meeting.title}» آغاز شد</b>\n\n"
+        f"🛬 <b>نشست «{meeting.title}» برنامه‌ریزی شد</b>\n\n"
         f"شرکت‌کنندگان: {names}\n"
-        f"⏱ مدت نشست: {MEETING_DURATION_MINUTES} دقیقه."
+        f"⏱ نشست پس از رسیدن همه‌ی کشورها (حدود {fa_number(remaining_min)} دقیقه‌ی دیگر) آغاز می‌شود."
     )
     for c in members:
         if c and c.owner_user_id:
@@ -412,17 +432,10 @@ async def _maybe_activate_group_meeting(session: AsyncSession, meeting: GroupMee
             except Exception:  # noqa: BLE001
                 pass
 
-    await publish_news(
-        bot,
-        NewsCategory.DIPLOMACY,
-        f"👥 نشست چندجانبه‌ای با عنوان «{meeting.title}» به میزبانی "
-        f"{host.name_fa if host else '?'} با حضور چند کشور برگزار شد.",
-    )
-
 
 @router.callback_query(F.data.startswith("gmeet_accept:"))
 async def cb_gmeet_accept(call: CallbackQuery, session: AsyncSession, db_user: User) -> None:
-    """پذیرش دعوت نشست چندجانبه."""
+    """پذیرش دعوت نشست چندجانبه: کشور با پرواز به میزبان می‌رود (v1.5)."""
     meeting_id = int(call.data.split(":")[1])
     meeting = await dip_repo.get_group_meeting(session, meeting_id)
     if meeting is None or meeting.status != DiplomacyStatus.PENDING:
@@ -436,10 +449,23 @@ async def cb_gmeet_accept(call: CallbackQuery, session: AsyncSession, db_user: U
     if participant is None:
         await call.answer("شما در این نشست دعوت نشده‌اید.", show_alert=True)
         return
-    participant.response = DiplomacyStatus.ACTIVE
+
     await call.answer("پذیرفته شد ✅")
-    await call.message.edit_text(call.message.html_text + "\n\n✅ <b>پذیرفتید</b>")
-    await _maybe_activate_group_meeting(session, meeting)
+    # تخمین زمان پرواز به کشور میزبان توسط AI
+    host = await countries_repo.get_country(session, meeting.host_country)
+    eta_data = await evaluators.estimate_travel_time(
+        country.name_fa, host.name_fa if host else "?"
+    )
+    minutes = int(eta_data.get("travel_minutes", 20) or 20)
+    minutes = max(5, min(minutes, 90))
+    participant.response = DiplomacyStatus.ACTIVE
+    participant.travel_eta = _utcnow() + timedelta(minutes=minutes)
+
+    await call.message.edit_text(
+        call.message.html_text
+        + f"\n\n✈️ <b>پذیرفتید</b> — پرواز به میزبان آغاز شد (زمان رسیدن حدود {fa_number(minutes)} دقیقه)"
+    )
+    await _maybe_schedule_group_meeting(session, meeting)
 
 
 @router.callback_query(F.data.startswith("gmeet_reject:"))
@@ -461,7 +487,7 @@ async def cb_gmeet_reject(call: CallbackQuery, session: AsyncSession, db_user: U
     participant.response = DiplomacyStatus.REJECTED
     await call.answer("رد شد")
     await call.message.edit_text(call.message.html_text + "\n\n❌ <b>رد کردید</b>")
-    await _maybe_activate_group_meeting(session, meeting)
+    await _maybe_schedule_group_meeting(session, meeting)
 
 
 @router.callback_query(MeetingForm.choosing_target, F.data.startswith("meet_to:"))
@@ -704,30 +730,196 @@ async def cb_sanction(call: CallbackQuery, state: FSMContext, session: AsyncSess
 
 
 @router.callback_query(F.data.startswith("sanction_to:"))
-async def cb_sanction_to(call: CallbackQuery, session: AsyncSession, db_user: User) -> None:
+async def cb_sanction_to(call: CallbackQuery, state: FSMContext, session: AsyncSession, db_user: User) -> None:
+    """انتخاب نوع تحریم (v1.5)."""
     await call.answer()
+    target_id = int(call.data.split(":")[1])
+    await state.update_data(sanction_target=target_id)
+    await state.set_state(SanctionForm.choosing_type)
+    target = await countries_repo.get_country(session, target_id)
+    await call.message.edit_text(
+        f"نوع تحریم علیه {target.flag} {target.name_fa} را انتخاب کنید:",
+        reply_markup=sanction_types_kb(),
+    )
+
+
+@router.callback_query(SanctionForm.choosing_type, F.data.startswith("sanc_type:"))
+async def cb_sanction_type(call: CallbackQuery, state: FSMContext, session: AsyncSession, db_user: User) -> None:
+    """سنجش منطقی‌بودن تحریم و اعمال اثرات در صورت قابل‌اجرا بودن (v1.5)."""
+    await call.answer()
+    stype = SanctionType(call.data.split(":")[1])
+    data = await state.get_data()
     country = await get_player_country(session, db_user)
-    target = await countries_repo.get_country(session, int(call.data.split(":")[1]))
+    target = await countries_repo.get_country(session, data["sanction_target"])
+    await state.clear()
     if country is None or target is None:
         await call.message.edit_text("خطا.")
         return
+
+    await call.message.edit_text("⏳ در حال بررسی امکان‌پذیری تحریم...")
+    verdict = await evaluators.evaluate_sanction(
+        session, country.id, target.id, SANCTION_FA[stype]
+    )
+
+    # تحریم غیرمنطقی/غیرقابل‌اجرا (مثل تحریم آمریکا توسط ایران)
+    if verdict.get("feasible") is False:
+        reason = verdict.get("reason") or "این تحریم اهرم واقعی بر کشور هدف ندارد."
+        await call.message.edit_text(
+            f"⛔️ <b>تحریم غیرمنطقی و غیرقابل‌اجراست</b>\n\n"
+            f"دلیل: {reason}",
+            reply_markup=diplomacy_menu_kb(),
+        )
+        return
+
+    severity = verdict.get("severity", "medium")
     sanction = Sanction(
         from_country=country.id,
         to_country=target.id,
-        description=f"تحریم {target.name_fa} توسط {country.name_fa}",
+        sanction_type=stype.value,
+        description=f"{SANCTION_FA[stype]} از سوی {country.name_fa} علیه {target.name_fa}",
         active=True,
     )
     await dip_repo.add_sanction(session, sanction)
+    # اعمال اثرات واقعی روی کشور هدف
+    await apply_sanction_effects(session, target, stype, severity)
+
+    sev_fa = {"low": "خفیف", "medium": "متوسط", "high": "شدید"}.get(severity, "متوسط")
     await call.message.edit_text(
-        f"🚫 {target.flag} {target.name_fa} تحریم شد.", reply_markup=diplomacy_menu_kb()
+        f"🚫 <b>{SANCTION_FA[stype]}</b> علیه {target.flag} {target.name_fa} اعمال شد.\n"
+        f"شدت تأثیر: {sev_fa}\n"
+        "اثرات این تحریم روی اقتصاد، رضایت و ثبات کشور هدف اعمال شد.",
+        reply_markup=diplomacy_menu_kb(),
     )
+
+    # اطلاع به کشور هدف
+    if target.owner_user_id:
+        try:
+            await bot.send_message(
+                target.owner_user_id,
+                f"🚨 کشور شما توسط {country.flag} {country.name_fa} تحریم شد: "
+                f"<b>{SANCTION_FA[stype]}</b> (شدت {sev_fa}).",
+            )
+        except Exception:  # noqa: BLE001
+            pass
+
     president = db_user.president_name or country.name_fa
     await publish_news(
         bot,
         NewsCategory.DIPLOMACY,
         f"🚫 {country.flag} {country.name_fa} به ریاست‌جمهوری {president} "
-        f"کشور {target.flag} {target.name_fa} را تحریم کرد.",
+        f"کشور {target.flag} {target.name_fa} را تحت «{SANCTION_FA[stype]}» قرار داد.",
     )
+
+
+# ============================================================
+#  🎤 سیستم سخنرانی و نقل قول (v1.5)
+# ============================================================
+@router.callback_query(F.data == "dip:speech")
+async def cb_speech(call: CallbackQuery, state: FSMContext, session: AsyncSession, db_user: User) -> None:
+    """شروع سخنرانی: درخواست متن."""
+    await call.answer()
+    country = await get_player_country(session, db_user)
+    if country is None:
+        await call.message.edit_text(NO_COUNTRY_TEXT)
+        return
+    await state.set_state(SpeechForm.entering_text)
+    await call.message.edit_text("🎤 متن سخنرانی/بیانیه‌ی خود را وارد کنید:")
+
+
+@router.message(SpeechForm.entering_text, F.text)
+async def msg_speech_text(message: Message, state: FSMContext) -> None:
+    """ثبت متن سخنرانی و درخواست عکس."""
+    await state.update_data(speech_text=message.text)
+    await state.set_state(SpeechForm.entering_photo)
+    await message.answer("📸 حالا عکس رئیس‌جمهور را ارسال کنید:")
+
+
+@router.message(SpeechForm.entering_photo, F.photo)
+async def msg_speech_photo(message: Message, state: FSMContext, session: AsyncSession, db_user: User) -> None:
+    """انتشار سخنرانی (عکس + متن) در کانال دیپلماسی به‌همراه دکمه‌ی نقل قول."""
+    data = await state.get_data()
+    speech_text = data.get("speech_text", "")
+    country = await get_player_country(session, db_user)
+    await state.clear()
+    if country is None:
+        await message.answer(NO_COUNTRY_TEXT)
+        return
+
+    if settings.news_diplomacy_channel_id is None:
+        await message.answer("کانال دیپلماسی تنظیم نشده است.")
+        return
+
+    president = db_user.president_name or country.name_fa
+    photo_id = message.photo[-1].file_id  # بزرگ‌ترین نسخه‌ی عکس
+
+    # ابتدا رکورد سخنرانی ساخته می‌شود تا آی‌دی برای دکمه‌ی نقل قول داشته باشیم
+    speech = Speech(speaker_country=country.id)
+    session.add(speech)
+    await session.flush()
+
+    username = await _get_bot_username()
+    caption = (
+        f"📢 یک بیانیه از طرف رئیس‌جمهور <b>{president}</b> —- منتشر شد!\n\n"
+        f"متن سخنرانی:\n{speech_text}"
+    )
+    quote_kb = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(
+            text="💬 نقل قول",
+            url=f"https://t.me/{username}?start=quote_{speech.id}",
+        )
+    ]])
+    sent = await bot.send_photo(
+        settings.news_diplomacy_channel_id,
+        photo=photo_id,
+        caption=caption,
+        reply_markup=quote_kb,
+    )
+    # ذخیره‌ی آی‌دی پیام کانال برای ریپلای نقل قول‌ها
+    speech.channel_message_id = sent.message_id
+
+    await message.answer("✅ سخنرانی شما در کانال دیپلماسی منتشر شد.", reply_markup=diplomacy_menu_kb())
+
+
+@router.message(SpeechForm.quoting, F.text)
+async def msg_speech_quote(message: Message, state: FSMContext, session: AsyncSession, db_user: User) -> None:
+    """انتشار نقل قول در کانال دیپلماسی به‌صورت ریپلای به سخنرانی اصلی."""
+    data = await state.get_data()
+    speech_id = data.get("quote_speech_id")
+    country = await get_player_country(session, db_user)
+    await state.clear()
+    if country is None or speech_id is None:
+        await message.answer("خطا در ثبت نقل قول.")
+        return
+
+    speech = await session.get(Speech, speech_id)
+    if speech is None or settings.news_diplomacy_channel_id is None:
+        await message.answer("سخنرانی موردنظر یافت نشد.")
+        return
+
+    # نام رئیس‌جمهور گوینده‌ی اصلی
+    speaker_country = await countries_repo.get_country(session, speech.speaker_country)
+    speaker_name = "—"
+    if speaker_country and speaker_country.owner_user_id:
+        from ..database.repositories import users as users_repo
+        speaker_user = await users_repo.get_user(session, speaker_country.owner_user_id)
+        speaker_name = (speaker_user.president_name if speaker_user else None) or (
+            speaker_country.name_fa if speaker_country else "—"
+        )
+
+    quoter_name = db_user.president_name or country.name_fa
+    text = (
+        f"🗣 بیانیه‌ی رئیس‌جمهور <b>{quoter_name}</b> —- به نقل از رئیس‌جمهور <b>{speaker_name}</b>:\n\n"
+        f"{message.text}"
+    )
+    try:
+        await bot.send_message(
+            settings.news_diplomacy_channel_id,
+            text,
+            reply_to_message_id=speech.channel_message_id,
+        )
+        await message.answer("✅ نقل قول شما منتشر شد.", reply_markup=diplomacy_menu_kb())
+    except Exception:  # noqa: BLE001
+        await message.answer("⚠️ خطا در انتشار نقل قول.")
 
 
 # ============================================================

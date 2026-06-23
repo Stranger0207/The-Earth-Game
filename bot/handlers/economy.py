@@ -17,6 +17,7 @@ from ..database.models import User
 from ..database.repositories import cooldowns as cd_repo
 from ..database.repositories import countries as countries_repo
 from ..database.repositories import reserves as reserves_repo
+from ..database.repositories import tariff as tariff_repo
 from ..database.repositories import trade as trade_repo
 from ..database.models import ResourceSale
 from ..enums import (
@@ -39,12 +40,17 @@ from ..loader import bot
 from ..services.ai import evaluators
 from ..services.economy_service import EconomyError, build_facility, transfer_sale
 from ..services.news_service import publish_news
-from ..states import FacilityForm, SaleForm
+from ..states import FacilityForm, SaleForm, TariffForm
 from ..utils.formatting import render_economy_panel, render_reserves_panel
 from ..utils.numbers import fa_money, fa_number, parse_amount
 from .deps import NO_COUNTRY_TEXT, get_player_country
 
 router = Router(name="economy")
+
+
+def _is_usa(country) -> bool:
+    """آیا این کشور آمریکاست؟ (قابلیت تعرفه انحصاری)."""
+    return country is not None and country.name_en == "USA"
 
 
 def _utcnow() -> datetime:
@@ -351,7 +357,7 @@ async def cb_sale_accept(
         return
 
     try:
-        await transfer_sale(
+        sale_info = await transfer_sale(
             session, sale.seller_country, sale.buyer_country,
             sale.resource, sale.amount, sale.price,
         )
@@ -379,13 +385,20 @@ async def cb_sale_accept(
         + f"\n\n✅ <b>تأیید شد</b> — زمان رسیدن: حدود {fa_number(minutes)} دقیقه"
     )
 
-    # اطلاع به فروشنده
+    # اطلاع به فروشنده (در صورت کسر تعرفه‌ی آمریکا، مبلغ آن اعلام می‌شود)
     if seller and seller.owner_user_id:
+        duty = sale_info.get("duty", 0) if sale_info else 0
+        tariff_note = ""
+        if duty and duty > 0:
+            tariff_note = (
+                f"\n⚠️ تعرفه‌ی {fa_number(sale_info.get('tariff_percent', 0))}٪ آمریکا "
+                f"({fa_money(duty)}) کسر شد. خالص دریافتی: {fa_money(sale_info.get('net_to_seller', 0))}."
+            )
         try:
             await bot.send_message(
                 seller.owner_user_id,
                 f"✅ {buyer.flag} {buyer.name_fa} پیشنهاد فروش شما را پذیرفت. "
-                f"محموله در راه است.",
+                f"محموله در راه است.{tariff_note}",
             )
         except Exception:  # noqa: BLE001
             pass
@@ -426,3 +439,105 @@ async def cb_sale_reject(
             )
         except Exception:  # noqa: BLE001
             pass
+
+
+# ============================================================
+#  🇺🇸 سیستم تعرفه‌ی بین‌المللی آمریکا (v1.5) — قابلیت انحصاری
+# ============================================================
+def _tariff_menu_kb() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="➕ تعیین/تغییر تعرفه", callback_data="tariff:add")],
+        [InlineKeyboardButton(text="🔙 بازگشت", callback_data="menu:economy")],
+    ])
+
+
+@router.callback_query(F.data == "econ:tariffs")
+async def cb_tariffs(call: CallbackQuery, session: AsyncSession, db_user: User) -> None:
+    """نمایش پنل تعرفه‌ها (فقط برای آمریکا)."""
+    await call.answer()
+    country = await get_player_country(session, db_user)
+    if not _is_usa(country):
+        await call.message.edit_text(
+            "⛔️ وضع تعرفه یک قابلیت انحصاری است و فقط آمریکا می‌تواند از آن استفاده کند.",
+            reply_markup=economy_menu_kb(),
+        )
+        return
+
+    tariffs = await tariff_repo.list_tariffs(session)
+    lines = [
+        "🇺🇸 <b>تعرفه‌های بین‌المللی آمریکا</b>",
+        f"🏦 عوارض جمع‌آوری‌شده: {fa_money(country.international_duties)}",
+        "",
+    ]
+    if tariffs:
+        lines.append("<b>تعرفه‌های فعال:</b>")
+        for t in tariffs:
+            tc = await countries_repo.get_country(session, t.target_country)
+            if tc:
+                lines.append(f"• {tc.flag} {tc.name_fa}: {fa_number(t.percent)}٪")
+    else:
+        lines.append("هیچ تعرفه‌ی فعالی وجود ندارد.")
+    await call.message.edit_text("\n".join(lines), reply_markup=_tariff_menu_kb())
+
+
+@router.callback_query(F.data == "tariff:add")
+async def cb_tariff_add(call: CallbackQuery, session: AsyncSession, db_user: User) -> None:
+    """انتخاب کشور برای تعیین تعرفه."""
+    await call.answer()
+    country = await get_player_country(session, db_user)
+    if not _is_usa(country):
+        await call.answer("فقط آمریکا مجاز است.", show_alert=True)
+        return
+    countries = await countries_repo.list_countries(session)
+    others = [c for c in countries if c.id != country.id]
+    await call.message.edit_text(
+        "کدام کشور را تعرفه‌گذاری می‌کنید؟",
+        reply_markup=countries_kb(others, prefix="tariff_pick", columns=2, back_data="econ:tariffs"),
+    )
+
+
+@router.callback_query(F.data.startswith("tariff_pick:"))
+async def cb_tariff_pick(call: CallbackQuery, state: FSMContext, session: AsyncSession, db_user: User) -> None:
+    """درخواست درصد تعرفه برای کشور انتخاب‌شده."""
+    await call.answer()
+    country = await get_player_country(session, db_user)
+    if not _is_usa(country):
+        await call.answer("فقط آمریکا مجاز است.", show_alert=True)
+        return
+    target_id = int(call.data.split(":")[1])
+    target = await countries_repo.get_country(session, target_id)
+    await state.update_data(target_id=target_id)
+    await state.set_state(TariffForm.entering_percent)
+    await call.message.edit_text(
+        f"درصد تعرفه برای {target.flag} {target.name_fa} را وارد کنید (۰ تا ۱۰۰).\n"
+        "عدد ۰ یعنی حذف تعرفه."
+    )
+
+
+@router.message(TariffForm.entering_percent, F.text)
+async def msg_tariff_percent(message: Message, state: FSMContext, session: AsyncSession, db_user: User) -> None:
+    """ثبت درصد تعرفه."""
+    country = await get_player_country(session, db_user)
+    if not _is_usa(country):
+        await state.clear()
+        return
+    percent = parse_amount(message.text)
+    if percent is None or percent < 0 or percent > 100:
+        await message.answer("لطفاً عددی بین ۰ تا ۱۰۰ وارد کنید.")
+        return
+    data = await state.get_data()
+    target = await countries_repo.get_country(session, data["target_id"])
+    await state.clear()
+    await tariff_repo.set_tariff(session, data["target_id"], percent)
+
+    if percent <= 0:
+        await message.answer(
+            f"✅ تعرفه‌ی {target.flag} {target.name_fa} حذف شد.",
+            reply_markup=economy_menu_kb(is_usa=True),
+        )
+    else:
+        await message.answer(
+            f"✅ تعرفه‌ی {fa_number(percent)}٪ برای {target.flag} {target.name_fa} ثبت شد.\n"
+            "این درصد از هر فروش آن کشور کسر و به خزانه‌ی آمریکا واریز می‌شود.",
+            reply_markup=economy_menu_kb(is_usa=True),
+        )

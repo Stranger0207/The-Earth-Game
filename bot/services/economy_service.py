@@ -11,12 +11,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..constants import (
     FACILITY_COST_USD,
     FACILITY_ECON_POWER_GAIN,
+    FACILITY_INFLATION_DROP,
     FACILITY_SATISFACTION_GAIN,
     FACILITY_UNEMPLOYMENT_DROP,
     GAS_PLATFORM_OUTPUT_PER_24H,
     GOLD_MINE_YIELD_KG_PER_24H,
     MINE_YIELD_PER_24H,
     OIL_PLATFORM_OUTPUT_PER_24H,
+    SALE_BUYER_INFLATION_DELTA,
+    SALE_SELLER_ECON_POWER_GAIN,
+    SALE_SELLER_INFLATION_DELTA,
     STEEL_FACTORY_IRON_INTAKE_PER_24H,
     STEEL_FACTORY_OUTPUT_PER_24H,
 )
@@ -120,6 +124,9 @@ async def build_facility(
     country.economic_power = min(
         100.0, country.economic_power + FACILITY_ECON_POWER_GAIN
     )
+    # افزایش تولید داخلی → کاهش تورم و رشد مثبت (v1.5)
+    country.inflation = max(0.0, country.inflation - FACILITY_INFLATION_DROP)
+    country.growth = "up"
 
     await session.flush()
     return facility
@@ -132,11 +139,15 @@ async def transfer_sale(
     resource: str,
     amount: float,
     price: float,
-) -> None:
+) -> dict:
     """
     اجرای مالی فروش: کسر منبع از فروشنده، کسر پول از خریدار، افزودن پول به فروشنده.
+    در صورت وجود تعرفه‌ی آمریکا روی فروشنده، درصدی از مبلغ کسر و به خزانه‌ی آمریکا واریز می‌شود.
+    دیکشنری حاوی اطلاعات تعرفه (مبلغ عوارض و خالص دریافتی فروشنده) برمی‌گرداند.
     (افزودن منبع به خریدار پس از رسیدن محموله توسط زمان‌بند انجام می‌شود.)
     """
+    from ..database.repositories import tariff as tariff_repo  # جلوگیری از import حلقوی
+
     seller = await countries_repo.get_country(session, seller_id)
     buyer = await countries_repo.get_country(session, buyer_id)
     if seller is None or buyer is None:
@@ -149,4 +160,25 @@ async def transfer_sale(
 
     await reserves_repo.add_amount(session, seller_id, resource, -amount)
     buyer.budget -= price
-    seller.budget += price
+
+    # --- اعمال تعرفه‌ی آمریکا روی فروشنده (v1.5) ---
+    duty = 0.0
+    tariff = await tariff_repo.get_tariff(session, seller_id)
+    if tariff is not None and tariff.percent > 0 and seller.name_en != "USA":
+        usa = await countries_repo.get_country_by_name(session, "USA")
+        if usa is not None and usa.id != seller_id:
+            duty = price * (tariff.percent / 100.0)
+            usa.budget += duty
+            usa.international_duties += duty
+
+    # فروشنده فقط مبلغ باقی‌مانده پس از کسر تعرفه را دریافت می‌کند
+    seller.budget += price - duty
+
+    # --- اثر اقتصادی تجارت بر تورم دو طرف (v1.5) ---
+    # فروشنده: عرضه‌ی داخلی کم، تقاضا بالا → تورم بالا؛ ولی درآمد ارزی اقتصاد را کمی تقویت می‌کند
+    seller.inflation = max(0.0, seller.inflation + SALE_SELLER_INFLATION_DELTA)
+    seller.economic_power = min(100.0, seller.economic_power + SALE_SELLER_ECON_POWER_GAIN)
+    # خریدار: عرضه‌ی داخلی بالا → تورم پایین
+    buyer.inflation = max(0.0, buyer.inflation + SALE_BUYER_INFLATION_DELTA)
+
+    return {"duty": duty, "net_to_seller": price - duty, "tariff_percent": tariff.percent if tariff else 0}

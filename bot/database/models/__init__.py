@@ -15,10 +15,12 @@ from .diplomacy import (
     PhoneCall,
     PhoneCallMessage,
     Sanction,
+    Speech,
 )
 from .facility import Facility
 from .military import MilitaryAsset
 from .reserves import Reserve
+from .tariff import TariffRate
 from .trade import ResourceSale
 from .user import User
 
@@ -38,5 +40,7 @@ __all__ = [
     "Reserve",
     "ResourceSale",
     "Sanction",
+    "Speech",
+    "TariffRate",
     "User",
 ]

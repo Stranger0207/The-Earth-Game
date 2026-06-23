@@ -12,6 +12,7 @@ from . import (
     facilities,
     military,
     reserves,
+    tariff,
     trade,
     users,
 )
@@ -24,6 +25,7 @@ __all__ = [
     "facilities",
     "military",
     "reserves",
+    "tariff",
     "trade",
     "users",
 ]

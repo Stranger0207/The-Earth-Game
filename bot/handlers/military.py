@@ -102,6 +102,17 @@ async def msg_attack_describe(message: Message, state: FSMContext, session: Asyn
         session, country.id, target.id, ATTACK_FA[atype], message.text
     )
 
+    # بررسی امکان‌پذیری/منطقی‌بودن حمله توسط AI (مثلاً حمله هوایی سوریه به آمریکا)
+    if result.get("feasible") is False:
+        reason = result.get("reject_reason") or "این حمله از نظر نظامی غیرقابل‌انجام است."
+        await state.clear()
+        await message.answer(
+            f"⛔️ <b>حمله انجام نخواهد شد</b>\n\n"
+            f"دلیل: {reason}",
+            reply_markup=military_menu_kb(),
+        )
+        return
+
     fuel = float(result.get("fuel_cost_million_barrels", 0) or 0)
     await state.update_data(
         payload=message.text,

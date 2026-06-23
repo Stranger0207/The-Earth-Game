@@ -7,7 +7,15 @@ from .attack import Attack
 from .claim import ClaimRequest
 from .cooldown import Cooldown
 from .country import Country
-from .diplomacy import Contract, Meeting, PhoneCall, PhoneCallMessage, Sanction
+from .diplomacy import (
+    Contract,
+    GroupMeeting,
+    GroupMeetingParticipant,
+    Meeting,
+    PhoneCall,
+    PhoneCallMessage,
+    Sanction,
+)
 from .facility import Facility
 from .military import MilitaryAsset
 from .reserves import Reserve
@@ -21,6 +29,8 @@ __all__ = [
     "Cooldown",
     "Country",
     "Facility",
+    "GroupMeeting",
+    "GroupMeetingParticipant",
     "Meeting",
     "MilitaryAsset",
     "PhoneCall",

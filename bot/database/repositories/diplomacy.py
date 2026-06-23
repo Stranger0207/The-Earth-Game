@@ -6,7 +6,15 @@ from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ...enums import DiplomacyStatus
-from ..models import Contract, Meeting, PhoneCall, PhoneCallMessage, Sanction
+from ..models import (
+    Contract,
+    GroupMeeting,
+    GroupMeetingParticipant,
+    Meeting,
+    PhoneCall,
+    PhoneCallMessage,
+    Sanction,
+)
 
 # ------------------------- قراردادها -------------------------
 
@@ -122,3 +130,54 @@ async def list_sanctions_against(
         )
     )
     return list(result.scalars().all())
+
+
+# ------------------------- دیدار چندجانبه -------------------------
+
+
+async def add_group_meeting(
+    session: AsyncSession, meeting: GroupMeeting
+) -> GroupMeeting:
+    session.add(meeting)
+    await session.flush()
+    return meeting
+
+
+async def get_group_meeting(
+    session: AsyncSession, meeting_id: int
+) -> GroupMeeting | None:
+    return await session.get(GroupMeeting, meeting_id)
+
+
+async def add_group_participant(
+    session: AsyncSession, meeting_id: int, country_id: int
+) -> GroupMeetingParticipant:
+    participant = GroupMeetingParticipant(
+        meeting_id=meeting_id, country_id=country_id
+    )
+    session.add(participant)
+    await session.flush()
+    return participant
+
+
+async def list_group_participants(
+    session: AsyncSession, meeting_id: int
+) -> list[GroupMeetingParticipant]:
+    result = await session.execute(
+        select(GroupMeetingParticipant).where(
+            GroupMeetingParticipant.meeting_id == meeting_id
+        )
+    )
+    return list(result.scalars().all())
+
+
+async def get_group_participant(
+    session: AsyncSession, meeting_id: int, country_id: int
+) -> GroupMeetingParticipant | None:
+    result = await session.execute(
+        select(GroupMeetingParticipant).where(
+            GroupMeetingParticipant.meeting_id == meeting_id,
+            GroupMeetingParticipant.country_id == country_id,
+        )
+    )
+    return result.scalar_one_or_none()

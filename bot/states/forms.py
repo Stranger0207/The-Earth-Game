@@ -49,7 +49,9 @@ class CallForm(StatesGroup):
 class MeetingForm(StatesGroup):
     """فرم درخواست دیدار حضوری."""
 
-    choosing_target = State()
+    choosing_target = State()        # دیدار دوجانبه: انتخاب کشور مقصد
+    selecting_members = State()       # دیدار چندجانبه: انتخاب چند کشور
+    entering_group_title = State()    # دیدار چندجانبه: عنوان نشست
 
 
 class ContractForm(StatesGroup):

@@ -88,10 +88,17 @@ async def process_facility_yields() -> None:
 
 async def process_shipments(bot: Bot) -> None:
     """محموله‌های WTO که زمان رسیدنشان فرارسیده را تحویل می‌دهد."""
+    from ..database.repositories import countries as countries_repo
+    from ..enums import RESOURCE_FA, RESOURCE_UNIT_FA
+    from ..utils.numbers import fa_number
+
+    # خبرهای تحویل را همراه جزئیات جمع می‌کنیم تا پس از بستن session منتشر شوند
+    delivery_news: list[str] = []
+    buyer_notices: list[tuple[int, str]] = []  # (owner_user_id, متن)
+
     async with async_session_factory() as session:
         sales = await trade_repo.list_in_transit(session)
         now = _utcnow()
-        delivered = []
         for sale in sales:
             eta = _aware(sale.ship_eta)
             if eta is None or eta > now:
@@ -102,16 +109,38 @@ async def process_shipments(bot: Bot) -> None:
                 session, sale.buyer_country, sale.resource, sale.amount
             )
             sale.status = TradeStatus.DELIVERED
-            delivered.append(sale)
+
+            # آماده‌سازی متن خبر با جزئیات (کشورها + منبع + مقدار)
+            seller = await countries_repo.get_country(session, sale.seller_country)
+            buyer = await countries_repo.get_country(session, sale.buyer_country)
+            try:
+                rtype = ResourceType(sale.resource)
+                rname = RESOURCE_FA[rtype]
+                unit = RESOURCE_UNIT_FA[rtype]
+            except (ValueError, KeyError):
+                rname, unit = sale.resource, ""
+            seller_name = f"{seller.flag} {seller.name_fa}" if seller else "?"
+            buyer_name = f"{buyer.flag} {buyer.name_fa}" if buyer else "?"
+            delivery_news.append(
+                f"✅ محموله‌ی تجاری شامل <b>{fa_number(sale.amount)} {unit} {rname}</b> "
+                f"از {seller_name} با موفقیت به مقصد {buyer_name} رسید و تحویل داده شد."
+            )
+            if buyer and buyer.owner_user_id:
+                buyer_notices.append((
+                    buyer.owner_user_id,
+                    f"📦 محموله‌ی شما رسید: {fa_number(sale.amount)} {unit} {rname} "
+                    f"به ذخایر کشورتان اضافه شد.",
+                ))
         await session.commit()
 
-    # اعلام در کانال WTO پس از commit
-    for sale in delivered:
-        await publish_news(
-            bot,
-            NewsCategory.WTO,
-            f"✅ یک محموله‌ی تجاری با موفقیت به مقصد رسید و تحویل داده شد.",
-        )
+    # اعلام در کانال WTO و اطلاع به خریدار پس از commit
+    for text in delivery_news:
+        await publish_news(bot, NewsCategory.WTO, text)
+    for owner_id, text in buyer_notices:
+        try:
+            await bot.send_message(owner_id, text)
+        except Exception:  # noqa: BLE001 — خطای ارسال نباید scheduler را متوقف کند
+            pass
 
 
 async def process_attacks(bot: Bot) -> None:

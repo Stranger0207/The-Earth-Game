@@ -10,10 +10,11 @@ from aiogram import F, Router
 from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
+from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..constants import MEETING_DURATION_MINUTES, PHONE_CALL_DURATION_MINUTES
-from ..database.models import Contract, Meeting, PhoneCall, Sanction, User
+from ..database.models import Contract, GroupMeeting, Meeting, PhoneCall, Sanction, User
 from ..database.repositories import countries as countries_repo
 from ..database.repositories import diplomacy as dip_repo
 from ..enums import DiplomacyStatus, NewsCategory
@@ -218,6 +219,25 @@ async def cb_call_end(call: CallbackQuery, session: AsyncSession, db_user: User)
 # ============================================================
 @router.callback_query(F.data == "dip:meeting")
 async def cb_meeting(call: CallbackQuery, state: FSMContext, session: AsyncSession, db_user: User) -> None:
+    """انتخاب نوع دیدار: دوجانبه یا چندجانبه."""
+    await call.answer()
+    country = await get_player_country(session, db_user)
+    if country is None:
+        await call.message.edit_text(NO_COUNTRY_TEXT)
+        return
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🤝 دیدار دوجانبه", callback_data="meet_kind:bi")],
+        [InlineKeyboardButton(text="👥 دیدار چندجانبه", callback_data="meet_kind:multi")],
+        [InlineKeyboardButton(text="🔙 بازگشت", callback_data="menu:diplomacy")],
+    ])
+    await call.message.edit_text(
+        "🤝 <b>دیدار حضوری</b>\n\nنوع دیدار را انتخاب کنید:", reply_markup=kb
+    )
+
+
+@router.callback_query(F.data == "meet_kind:bi")
+async def cb_meeting_bi(call: CallbackQuery, state: FSMContext, session: AsyncSession, db_user: User) -> None:
+    """دیدار دوجانبه: انتخاب کشور مقصد (جریان قبلی)."""
     await call.answer()
     country = await get_player_country(session, db_user)
     if country is None:
@@ -229,6 +249,219 @@ async def cb_meeting(call: CallbackQuery, state: FSMContext, session: AsyncSessi
         "🤝 به کدام کشور سفر می‌کنید؟",
         reply_markup=countries_kb(others, prefix="meet_to", columns=2, back_data="menu:diplomacy"),
     )
+
+
+def _group_select_kb(others, selected: set[int]):
+    """کیبورد انتخاب چندتایی کشورها برای نشست چندجانبه (با تیک)."""
+    builder = InlineKeyboardBuilder()
+    for c in others:
+        mark = "✅ " if c.id in selected else ""
+        builder.button(text=f"{mark}{c.flag} {c.name_fa}", callback_data=f"meet_toggle:{c.id}")
+    builder.adjust(2)
+    builder.row(
+        InlineKeyboardButton(text="✔️ ادامه", callback_data="meet_multi_next"),
+        InlineKeyboardButton(text="🔙 بازگشت", callback_data="menu:diplomacy"),
+    )
+    return builder.as_markup()
+
+
+@router.callback_query(F.data == "meet_kind:multi")
+async def cb_meeting_multi(call: CallbackQuery, state: FSMContext, session: AsyncSession, db_user: User) -> None:
+    """دیدار چندجانبه: شروع انتخاب چند کشور."""
+    await call.answer()
+    country = await get_player_country(session, db_user)
+    if country is None:
+        await call.message.edit_text(NO_COUNTRY_TEXT)
+        return
+    await state.set_state(MeetingForm.selecting_members)
+    await state.update_data(selected=[])
+    others = await _other_countries(session, country.id)
+    await call.message.edit_text(
+        "👥 کشورهای شرکت‌کننده در نشست را انتخاب کنید (می‌توانید چند کشور را تیک بزنید):",
+        reply_markup=_group_select_kb(others, set()),
+    )
+
+
+@router.callback_query(MeetingForm.selecting_members, F.data.startswith("meet_toggle:"))
+async def cb_meeting_toggle(call: CallbackQuery, state: FSMContext, session: AsyncSession, db_user: User) -> None:
+    """افزودن/حذف یک کشور از فهرست انتخاب نشست چندجانبه."""
+    await call.answer()
+    country = await get_player_country(session, db_user)
+    if country is None:
+        await call.message.edit_text(NO_COUNTRY_TEXT)
+        return
+    cid = int(call.data.split(":")[1])
+    data = await state.get_data()
+    selected = set(data.get("selected", []))
+    if cid in selected:
+        selected.discard(cid)
+    else:
+        selected.add(cid)
+    await state.update_data(selected=list(selected))
+    others = await _other_countries(session, country.id)
+    await call.message.edit_reply_markup(reply_markup=_group_select_kb(others, selected))
+
+
+@router.callback_query(MeetingForm.selecting_members, F.data == "meet_multi_next")
+async def cb_meeting_multi_next(call: CallbackQuery, state: FSMContext) -> None:
+    """پس از انتخاب کشورها، عنوان نشست را می‌پرسد."""
+    await call.answer()
+    data = await state.get_data()
+    selected = data.get("selected", [])
+    if not selected:
+        await call.answer("حداقل یک کشور انتخاب کنید.", show_alert=True)
+        return
+    await state.set_state(MeetingForm.entering_group_title)
+    await call.message.edit_text(
+        f"👥 {fa_number(len(selected))} کشور انتخاب شد.\n\n"
+        "عنوان نشست چندجانبه را وارد کنید (مثلاً «نشست امنیت منطقه‌ای»):"
+    )
+
+
+@router.message(MeetingForm.entering_group_title, F.text)
+async def msg_group_title(message: Message, state: FSMContext, session: AsyncSession, db_user: User) -> None:
+    """ساخت نشست چندجانبه و ارسال دعوت به همه‌ی کشورهای انتخاب‌شده."""
+    data = await state.get_data()
+    selected = data.get("selected", [])
+    country = await get_player_country(session, db_user)
+    await state.clear()
+    if country is None or not selected:
+        await message.answer("خطا در ساخت نشست.")
+        return
+
+    meeting = GroupMeeting(
+        host_country=country.id,
+        title=message.text.strip(),
+        status=DiplomacyStatus.PENDING,
+    )
+    await dip_repo.add_group_meeting(session, meeting)
+    await session.flush()
+
+    invited_names = []
+    for cid in selected:
+        await dip_repo.add_group_participant(session, meeting.id, cid)
+        target = await countries_repo.get_country(session, cid)
+        if target is None:
+            continue
+        invited_names.append(f"{target.flag} {target.name_fa}")
+        if target.owner_user_id:
+            kb = InlineKeyboardMarkup(inline_keyboard=[[
+                InlineKeyboardButton(text="✅ شرکت می‌کنم", callback_data=f"gmeet_accept:{meeting.id}"),
+                InlineKeyboardButton(text="❌ رد", callback_data=f"gmeet_reject:{meeting.id}"),
+            ]])
+            try:
+                await bot.send_message(
+                    target.owner_user_id,
+                    f"👥 <b>دعوت به نشست چندجانبه</b>\n\n"
+                    f"عنوان: {meeting.title}\n"
+                    f"میزبان: {country.flag} {country.name_fa}",
+                    reply_markup=kb,
+                )
+            except Exception:  # noqa: BLE001
+                pass
+
+    await message.answer(
+        f"👥 نشست «{meeting.title}» ساخته شد و دعوت برای کشورهای زیر ارسال گردید:\n"
+        + "، ".join(invited_names)
+        + "\n\nپس از پاسخ کشورها، نشست فعال می‌شود.",
+        reply_markup=diplomacy_menu_kb(),
+    )
+
+
+async def _maybe_activate_group_meeting(session: AsyncSession, meeting: GroupMeeting) -> None:
+    """اگر همه‌ی شرکت‌کننده‌ها پاسخ داده باشند، نشست را با تأییدکننده‌ها فعال می‌کند."""
+    participants = await dip_repo.list_group_participants(session, meeting.id)
+    if any(p.response == DiplomacyStatus.PENDING for p in participants):
+        return  # هنوز همه پاسخ نداده‌اند
+    accepted = [p for p in participants if p.response == DiplomacyStatus.ACTIVE]
+    host = await countries_repo.get_country(session, meeting.host_country)
+
+    if not accepted:
+        # هیچ‌کس قبول نکرد
+        meeting.status = DiplomacyStatus.CANCELLED
+        if host and host.owner_user_id:
+            try:
+                await bot.send_message(
+                    host.owner_user_id,
+                    f"❌ نشست «{meeting.title}» لغو شد؛ هیچ کشوری دعوت را نپذیرفت.",
+                )
+            except Exception:  # noqa: BLE001
+                pass
+        return
+
+    meeting.status = DiplomacyStatus.ACTIVE
+    meeting.meeting_ends_at = _utcnow() + timedelta(minutes=MEETING_DURATION_MINUTES)
+
+    # فهرست شرکت‌کننده‌های نهایی (میزبان + تأییدکننده‌ها)
+    members = [host] if host else []
+    for p in accepted:
+        c = await countries_repo.get_country(session, p.country_id)
+        if c:
+            members.append(c)
+    names = "، ".join(f"{c.flag} {c.name_fa}" for c in members if c)
+
+    notice = (
+        f"👥 <b>نشست «{meeting.title}» آغاز شد</b>\n\n"
+        f"شرکت‌کنندگان: {names}\n"
+        f"⏱ مدت نشست: {MEETING_DURATION_MINUTES} دقیقه."
+    )
+    for c in members:
+        if c and c.owner_user_id:
+            try:
+                await bot.send_message(c.owner_user_id, notice)
+            except Exception:  # noqa: BLE001
+                pass
+
+    await publish_news(
+        bot,
+        NewsCategory.DIPLOMACY,
+        f"👥 نشست چندجانبه‌ای با عنوان «{meeting.title}» به میزبانی "
+        f"{host.name_fa if host else '?'} با حضور چند کشور برگزار شد.",
+    )
+
+
+@router.callback_query(F.data.startswith("gmeet_accept:"))
+async def cb_gmeet_accept(call: CallbackQuery, session: AsyncSession, db_user: User) -> None:
+    """پذیرش دعوت نشست چندجانبه."""
+    meeting_id = int(call.data.split(":")[1])
+    meeting = await dip_repo.get_group_meeting(session, meeting_id)
+    if meeting is None or meeting.status != DiplomacyStatus.PENDING:
+        await call.answer("این نشست دیگر معتبر نیست.", show_alert=True)
+        return
+    country = await get_player_country(session, db_user)
+    if country is None:
+        await call.answer()
+        return
+    participant = await dip_repo.get_group_participant(session, meeting_id, country.id)
+    if participant is None:
+        await call.answer("شما در این نشست دعوت نشده‌اید.", show_alert=True)
+        return
+    participant.response = DiplomacyStatus.ACTIVE
+    await call.answer("پذیرفته شد ✅")
+    await call.message.edit_text(call.message.html_text + "\n\n✅ <b>پذیرفتید</b>")
+    await _maybe_activate_group_meeting(session, meeting)
+
+
+@router.callback_query(F.data.startswith("gmeet_reject:"))
+async def cb_gmeet_reject(call: CallbackQuery, session: AsyncSession, db_user: User) -> None:
+    """رد دعوت نشست چندجانبه."""
+    meeting_id = int(call.data.split(":")[1])
+    meeting = await dip_repo.get_group_meeting(session, meeting_id)
+    if meeting is None or meeting.status != DiplomacyStatus.PENDING:
+        await call.answer("این نشست دیگر معتبر نیست.", show_alert=True)
+        return
+    country = await get_player_country(session, db_user)
+    if country is None:
+        await call.answer()
+        return
+    participant = await dip_repo.get_group_participant(session, meeting_id, country.id)
+    if participant is None:
+        await call.answer()
+        return
+    participant.response = DiplomacyStatus.REJECTED
+    await call.answer("رد شد")
+    await call.message.edit_text(call.message.html_text + "\n\n❌ <b>رد کردید</b>")
+    await _maybe_activate_group_meeting(session, meeting)
 
 
 @router.callback_query(MeetingForm.choosing_target, F.data.startswith("meet_to:"))

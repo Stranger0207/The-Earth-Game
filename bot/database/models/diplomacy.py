@@ -164,3 +164,52 @@ class Sanction(Base):
 
     def __repr__(self) -> str:
         return f"<Sanction {self.from_country}->{self.to_country} active={self.active}>"
+
+
+class GroupMeeting(Base):
+    """
+    دیدار حضوری چندجانبه (چند کشوره).
+    یک کشور میزبان است و چند کشور را دعوت می‌کند؛ هر دعوت‌شده باید جداگانه تأیید کند.
+    وقتی همه پاسخ دادند، جلسه با کشورهای تأییدکننده فعال می‌شود.
+    """
+
+    __tablename__ = "group_meetings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    host_country: Mapped[int] = mapped_column(
+        ForeignKey("countries.id"), nullable=False, index=True
+    )
+    title: Mapped[str] = mapped_column(String(256), default="نشست چندجانبه")
+    status: Mapped[str] = mapped_column(
+        String(16), default=DiplomacyStatus.PENDING, nullable=False
+    )
+    meeting_ends_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+
+    def __repr__(self) -> str:
+        return f"<GroupMeeting host={self.host_country} {self.status}>"
+
+
+class GroupMeetingParticipant(Base):
+    """یک شرکت‌کننده در دیدار چندجانبه و وضعیت پاسخ او به دعوت."""
+
+    __tablename__ = "group_meeting_participants"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    meeting_id: Mapped[int] = mapped_column(
+        ForeignKey("group_meetings.id"), nullable=False, index=True
+    )
+    country_id: Mapped[int] = mapped_column(
+        ForeignKey("countries.id"), nullable=False, index=True
+    )
+    # وضعیت پاسخ این کشور به دعوت (pending/active=پذیرفته/rejected)
+    response: Mapped[str] = mapped_column(
+        String(16), default=DiplomacyStatus.PENDING, nullable=False
+    )
+
+    def __repr__(self) -> str:
+        return f"<GroupParticipant meeting={self.meeting_id} country={self.country_id} {self.response}>"

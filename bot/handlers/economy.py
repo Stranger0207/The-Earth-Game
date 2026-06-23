@@ -390,12 +390,17 @@ async def cb_sale_accept(
         except Exception:  # noqa: BLE001
             pass
 
-    # خبر WTO
+    # خبر فوری ارسال محموله در کانال WTO (با مقدار و زمان رسیدن)
+    unit = RESOURCE_UNIT_FA[ResourceType(sale.resource)]
+    route = eta_data.get("route", "")
+    route_txt = f" (مسیر {route})" if route else ""
     await publish_news(
         bot,
         NewsCategory.WTO,
-        f"🚢 یک محموله‌ی تجاری شامل {rname} از {seller.name_fa if seller else '?'} "
-        f"به مقصد {buyer.name_fa} حرکت کرد. زمان تقریبی رسیدن: {fa_number(minutes)} دقیقه.",
+        f"🚢 یک محموله‌ی تجاری شامل <b>{fa_number(sale.amount)} {unit} {rname}</b> "
+        f"از {seller.flag if seller else ''} {seller.name_fa if seller else '?'} "
+        f"به مقصد {buyer.flag} {buyer.name_fa} حرکت کرد{route_txt}.\n"
+        f"⏱ زمان تقریبی رسیدن: {fa_number(minutes)} دقیقه.",
     )
 
 

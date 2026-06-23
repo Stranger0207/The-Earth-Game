@@ -123,7 +123,51 @@ async def seed_countries() -> None:
         print(f"✅ {created} کشور جدید ساخته شد (از مجموع {len(data['countries'])}).")
 
 
+async def resync_military() -> None:
+    """
+    تجهیزات نظامی کشورهای موجود را از روی countries.json تازه می‌کند.
+    (برای اعمال آپدیت تجهیزات روی دیتابیسی که از قبل seed شده.)
+    فقط جدول تجهیزات بازنویسی می‌شود؛ اقتصاد/ذخایر/جمعیت دست‌نخورده می‌ماند.
+    """
+    from sqlalchemy import delete
+
+    data = _load_json("countries.json")
+    async with async_session_factory() as session:
+        updated = 0
+        for entry in data["countries"]:
+            country = await countries_repo.get_country_by_name(session, entry["name_en"])
+            if country is None:
+                continue
+            # حذف تجهیزات قبلی این کشور
+            await session.execute(
+                delete(MilitaryAsset).where(MilitaryAsset.country_id == country.id)
+            )
+            # درج تجهیزات جدید
+            for asset in entry.get("military", []):
+                session.add(
+                    MilitaryAsset(
+                        country_id=country.id,
+                        branch=asset.get("branch", ""),
+                        category=asset.get("category", ""),
+                        name=asset["name"],
+                        unit=asset.get("unit", "عدد"),
+                        count=asset.get("count", 0),
+                    )
+                )
+            updated += 1
+        await session.commit()
+        print(f"✅ تجهیزات نظامی {updated} کشور تازه‌سازی شد.")
+
+
 async def main() -> None:
+    # حالت تازه‌سازی تجهیزات: python -m scripts.seed --refresh-military
+    if "--refresh-military" in sys.argv:
+        print("⏳ در حال تازه‌سازی تجهیزات نظامی کشورهای موجود...")
+        await init_db()
+        await resync_military()
+        print("🎉 تازه‌سازی تجهیزات کامل شد.")
+        return
+
     print("⏳ در حال ساخت جدول‌ها...")
     await init_db()
     print("✅ جدول‌ها ساخته شدند.")

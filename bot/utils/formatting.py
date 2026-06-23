@@ -78,7 +78,21 @@ def render_military_panel(country: Country, assets: list[MilitaryAsset]) -> str:
             a.category, []
         ).append(a)
 
-    for branch, categories in branches.items():
+    # ترتیب نمایش زیربخش‌ها مطابق فرمت پلی‌بوک (نه الفبایی)
+    branch_order = [
+        "نیروی زمینی",
+        "سامانه‌های دفاعی",
+        "خودروهای زمینی",
+        "نیروی هوایی",
+        "نیروی دریایی",
+        "سامانه‌های حمله هوایی",
+    ]
+    ordered = sorted(
+        branches.items(),
+        key=lambda kv: branch_order.index(kv[0]) if kv[0] in branch_order else len(branch_order),
+    )
+
+    for branch, categories in ordered:
         lines.append(f"⚔️ <b>«{branch}»</b> ⚔️")
         for category, items in categories.items():
             lines.append(f"• <u>{category}</u>:")

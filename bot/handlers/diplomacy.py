@@ -551,8 +551,9 @@ async def cb_meet_accept(call: CallbackQuery, session: AsyncSession) -> None:
     msg = (
         f"✈️ سفر آغاز شد. زمان تقریبی رسیدن: {fa_number(minutes)} دقیقه.\n"
         f"{note}\n\n"
-        f"پس از رسیدن، دیدار به مدت {MEETING_DURATION_MINUTES} دقیقه فعال می‌شود و "
-        "می‌توانید با دستور /contract قرارداد ببندید."
+        f"پس از رسیدن، دیدار به مدت {MEETING_DURATION_MINUTES} دقیقه فعال می‌شود.\n"
+        "💬 در طول دیدار، هر پیامی که بنویسید مستقیماً برای طرف مقابل ارسال می‌شود.\n"
+        "📜 برای عقد قرارداد از دستور /contract استفاده کنید."
     )
     for c in (traveler, host):
         if c and c.owner_user_id:
@@ -584,21 +585,58 @@ async def cb_meet_reject(call: CallbackQuery, session: AsyncSession) -> None:
 # ============================================================
 @router.message(Command("contract"))
 async def cmd_contract(message: Message, state: FSMContext, session: AsyncSession, db_user: User) -> None:
+    """بستن قرارداد در دیدار دوجانبه یا چندجانبه‌ی فعال."""
     country = await get_player_country(session, db_user)
     if country is None:
         await message.answer(NO_COUNTRY_TEXT)
         return
+
+    # ۱) دیدار دوجانبه‌ی فعال
     meeting = await dip_repo.get_active_meeting_for_country(session, country.id)
-    if meeting is None:
-        await message.answer("برای بستن قرارداد باید در یک دیدار حضوری فعال باشید.")
+    if meeting is not None:
+        # بررسی رسیدن مسافر
+        if _aware(meeting.travel_eta) and _aware(meeting.travel_eta) > _utcnow():
+            await message.answer("هنوز سفر به پایان نرسیده است. لطفاً تا رسیدن صبر کنید.")
+            return
+        other_id = (
+            meeting.host_country if meeting.traveler_country == country.id else meeting.traveler_country
+        )
+        await state.update_data(other_id=other_id)
+        await state.set_state(ContractForm.entering_title)
+        await message.answer("📜 عنوان قرارداد را وارد کنید:")
         return
-    # بررسی رسیدن مسافر
-    if _aware(meeting.travel_eta) and _aware(meeting.travel_eta) > _utcnow():
-        await message.answer("هنوز سفر به پایان نرسیده است. لطفاً تا رسیدن صبر کنید.")
+
+    # ۲) نشست چندجانبه‌ی فعال → انتخاب طرف قرارداد از میان حاضران
+    group = await dip_repo.get_active_group_meeting_for_country(session, country.id)
+    if group is not None:
+        member_ids = await dip_repo.group_member_country_ids(session, group)
+        others = []
+        for cid in member_ids:
+            if cid == country.id:
+                continue
+            c = await countries_repo.get_country(session, cid)
+            if c:
+                others.append(c)
+        if not others:
+            await message.answer("کشور دیگری در نشست حاضر نیست.")
+            return
+        await message.answer(
+            "📜 با کدام کشورِ حاضر در نشست قرارداد می‌بندید؟",
+            reply_markup=countries_kb(others, prefix="contract_with", columns=2),
+        )
         return
-    await state.update_data(meeting_id=meeting.id)
+
+    await message.answer("برای بستن قرارداد باید در یک دیدار حضوری فعال (دوجانبه یا چندجانبه) باشید.")
+
+
+@router.callback_query(F.data.startswith("contract_with:"))
+async def cb_contract_with(call: CallbackQuery, state: FSMContext) -> None:
+    """انتخاب طرف قرارداد در نشست چندجانبه."""
+    await call.answer()
+    other_id = int(call.data.split(":")[1])
+    await state.update_data(other_id=other_id)
     await state.set_state(ContractForm.entering_title)
-    await message.answer("📜 عنوان قرارداد را وارد کنید:")
+    await call.message.edit_text("📜 عنوان قرارداد را وارد کنید:")
 
 
 @router.message(ContractForm.entering_title, F.text)
@@ -614,16 +652,12 @@ async def msg_contract_title(message: Message, state: FSMContext) -> None:
 async def msg_contract_body(message: Message, state: FSMContext, session: AsyncSession, db_user: User) -> None:
     data = await state.get_data()
     country = await get_player_country(session, db_user)
-    meeting = await dip_repo.get_meeting(session, data["meeting_id"])
+    other_id = data.get("other_id")
     await state.clear()
-    if country is None or meeting is None:
+    if country is None or other_id is None:
         await message.answer("خطا در ثبت قرارداد.")
         return
 
-    # طرف دوم قرارداد، طرف مقابلِ این کشور در دیدار است
-    other_id = (
-        meeting.host_country if meeting.traveler_country == country.id else meeting.traveler_country
-    )
     contract = Contract(
         country_a=country.id,
         country_b=other_id,
@@ -923,39 +957,77 @@ async def msg_speech_quote(message: Message, state: FSMContext, session: AsyncSe
 
 
 # ============================================================
-#  رله‌ی پیام‌های تماس تلفنی (در حالت پیش‌فرض، اگر تماس فعال باشد)
+#  رله‌ی پیام‌ها (در حالت پیش‌فرض): تماس تلفنی، چت دیدار دوجانبه و چندجانبه
 # ============================================================
 @router.message(StateFilter(None), F.text & ~F.text.startswith("/"))
-async def relay_call_message(message: Message, session: AsyncSession, db_user: User) -> None:
+async def relay_chat_message(message: Message, session: AsyncSession, db_user: User) -> None:
     """
-    اگر کاربر در یک تماس تلفنی فعال باشد، پیام متنی او به طرف مقابل رله و در گروه لاگ ثبت می‌شود.
-    در غیر این صورت این هندلر کاری نمی‌کند (پیام نادیده گرفته می‌شود).
+    اگر کاربر در یک تماس تلفنی، دیدار دوجانبه یا نشست چندجانبه‌ی فعال باشد،
+    پیام متنی او به طرف(های) مقابل رله می‌شود. در غیر این صورت پیام نادیده گرفته می‌شود.
     """
     country = await get_player_country(session, db_user)
     if country is None:
         return
+
+    # ۱) تماس تلفنی فعال
     active = await dip_repo.get_active_call_for_country(session, country.id)
-    if active is None:
-        return
-    # بررسی پایان زمان تماس
-    if _aware(active.ends_at) and _aware(active.ends_at) <= _utcnow():
-        active.status = DiplomacyStatus.COMPLETED
-        await message.answer("📵 زمان تماس به پایان رسید.")
+    if active is not None:
+        if _aware(active.ends_at) and _aware(active.ends_at) <= _utcnow():
+            active.status = DiplomacyStatus.COMPLETED
+            await message.answer("📵 زمان تماس به پایان رسید.")
+            return
+        partner_id = (
+            active.callee_country if active.caller_country == country.id else active.caller_country
+        )
+        partner = await countries_repo.get_country(session, partner_id)
+        await dip_repo.add_call_message(session, active.id, country.id, message.text)
+        if partner and partner.owner_user_id:
+            try:
+                await bot.send_message(
+                    partner.owner_user_id,
+                    f"📞 {country.flag} {country.name_fa}: {message.text}",
+                )
+            except Exception:  # noqa: BLE001
+                pass
+        await send_log(bot, f"📞 [{country.name_fa} → {partner.name_fa if partner else '?'}]: {message.text}")
         return
 
-    partner_id = (
-        active.callee_country if active.caller_country == country.id else active.caller_country
-    )
-    partner = await countries_repo.get_country(session, partner_id)
-    await dip_repo.add_call_message(session, active.id, country.id, message.text)
-
-    if partner and partner.owner_user_id:
-        try:
-            await bot.send_message(
-                partner.owner_user_id,
-                f"📞 {country.flag} {country.name_fa}: {message.text}",
+    # ۲) دیدار دوجانبه‌ی فعال (پس از رسیدن مسافر، تا پایان جلسه) → چت با طرف مقابل
+    meeting = await dip_repo.get_active_meeting_for_country(session, country.id)
+    if meeting is not None:
+        arrived = not (_aware(meeting.travel_eta) and _aware(meeting.travel_eta) > _utcnow())
+        ended = _aware(meeting.meeting_ends_at) and _aware(meeting.meeting_ends_at) <= _utcnow()
+        if arrived and not ended:
+            partner_id = (
+                meeting.host_country if meeting.traveler_country == country.id else meeting.traveler_country
             )
-        except Exception:  # noqa: BLE001
-            pass
-    # لاگ برای مدیران
-    await send_log(bot, f"📞 [{country.name_fa} → {partner.name_fa if partner else '?'}]: {message.text}")
+            partner = await countries_repo.get_country(session, partner_id)
+            if partner and partner.owner_user_id:
+                try:
+                    await bot.send_message(
+                        partner.owner_user_id,
+                        f"🤝 {country.flag} {country.name_fa}: {message.text}",
+                    )
+                except Exception:  # noqa: BLE001
+                    pass
+            return
+
+    # ۳) نشست چندجانبه‌ی فعال → چت با همه‌ی کشورهای حاضر
+    group = await dip_repo.get_active_group_meeting_for_country(session, country.id)
+    if group is not None:
+        ended = _aware(group.meeting_ends_at) and _aware(group.meeting_ends_at) <= _utcnow()
+        if not ended:
+            member_ids = await dip_repo.group_member_country_ids(session, group)
+            for cid in member_ids:
+                if cid == country.id:
+                    continue
+                member = await countries_repo.get_country(session, cid)
+                if member and member.owner_user_id:
+                    try:
+                        await bot.send_message(
+                            member.owner_user_id,
+                            f"👥 {country.flag} {country.name_fa}: {message.text}",
+                        )
+                    except Exception:  # noqa: BLE001
+                        pass
+            return

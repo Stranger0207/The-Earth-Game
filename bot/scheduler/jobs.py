@@ -262,7 +262,9 @@ async def process_group_meetings(bot: Bot) -> None:
                 f"👥 <b>نشست «{meeting.title}» آغاز شد</b>\n\n"
                 f"همه‌ی کشورها به میزبان رسیدند.\n"
                 f"شرکت‌کنندگان: {names}\n"
-                f"⏱ مدت نشست: {MEETING_DURATION_MINUTES} دقیقه."
+                f"⏱ مدت نشست: {MEETING_DURATION_MINUTES} دقیقه.\n\n"
+                "💬 هر پیامی بنویسید برای همه‌ی کشورهای حاضر در نشست ارسال می‌شود.\n"
+                "📜 برای عقد قرارداد با یکی از حاضران از دستور /contract استفاده کنید."
             )
             news = (
                 f"👥 نشست چندجانبه‌ای با عنوان «{meeting.title}» به میزبانی "

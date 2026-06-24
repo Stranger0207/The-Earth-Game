@@ -181,3 +181,40 @@ async def get_group_participant(
         )
     )
     return result.scalar_one_or_none()
+
+
+async def get_active_group_meeting_for_country(
+    session: AsyncSession, country_id: int
+) -> GroupMeeting | None:
+    """نشست چندجانبه‌ی فعالی که این کشور (میزبان یا شرکت‌کننده‌ی پذیرفته) در آن حضور دارد."""
+    # به‌عنوان میزبان
+    result = await session.execute(
+        select(GroupMeeting).where(
+            GroupMeeting.status == DiplomacyStatus.ACTIVE,
+            GroupMeeting.host_country == country_id,
+        )
+    )
+    gm = result.scalar_one_or_none()
+    if gm is not None:
+        return gm
+    # به‌عنوان شرکت‌کننده‌ی پذیرفته
+    result = await session.execute(
+        select(GroupMeeting)
+        .join(GroupMeetingParticipant, GroupMeetingParticipant.meeting_id == GroupMeeting.id)
+        .where(
+            GroupMeeting.status == DiplomacyStatus.ACTIVE,
+            GroupMeetingParticipant.country_id == country_id,
+            GroupMeetingParticipant.response == DiplomacyStatus.ACTIVE,
+        )
+    )
+    return result.scalar_one_or_none()
+
+
+async def group_member_country_ids(
+    session: AsyncSession, meeting: GroupMeeting
+) -> list[int]:
+    """فهرست آی‌دی کشورهای حاضر در نشست (میزبان + شرکت‌کننده‌های پذیرفته)."""
+    ids = [meeting.host_country]
+    participants = await list_group_participants(session, meeting.id)
+    ids += [p.country_id for p in participants if p.response == DiplomacyStatus.ACTIVE]
+    return ids

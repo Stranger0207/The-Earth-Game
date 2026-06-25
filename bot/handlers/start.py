@@ -32,7 +32,7 @@ def _claim_kb() -> InlineKeyboardMarkup:
     """کیبورد دعوت به کشورگیری."""
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="🌍 کشورگیری", callback_data="claim:start")]
+            [InlineKeyboardButton(text="🌍 کشورگیری", callback_data="claim:start", style="primary")]
         ]
     )
 

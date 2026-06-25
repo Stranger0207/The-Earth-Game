@@ -6,6 +6,7 @@ from aiogram.types import InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from ..enums import FACILITY_FA, RESOURCE_EMOJI, RESOURCE_FA, FacilityType, ResourceType
+from ..utils.ui import STYLE_MAIN, STYLE_NO, STYLE_OK
 
 
 def economy_menu_kb(is_usa: bool = False) -> InlineKeyboardMarkup:
@@ -13,10 +14,10 @@ def economy_menu_kb(is_usa: bool = False) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.button(text="📊 گزارش اقتصادی", callback_data="econ:report")
     builder.button(text="📦 ذخایر", callback_data="econ:reserves")
-    builder.button(text="🏗 احداث تأسیسات", callback_data="econ:build")
-    builder.button(text="💱 فروش ذخیره", callback_data="econ:sell")
+    builder.button(text="🏗 احداث تأسیسات", callback_data="econ:build", style=STYLE_MAIN)
+    builder.button(text="💱 فروش ذخیره", callback_data="econ:sell", style=STYLE_OK)
     if is_usa:
-        builder.button(text="🇺🇸 تعرفه بین‌المللی", callback_data="econ:tariffs")
+        builder.button(text="🇺🇸 تعرفه بین‌المللی", callback_data="econ:tariffs", style=STYLE_NO)
     builder.button(text="🔙 بازگشت", callback_data="menu:main")
     if is_usa:
         builder.adjust(2, 2, 1, 1)
@@ -32,7 +33,7 @@ def facility_types_kb() -> InlineKeyboardMarkup:
         builder.button(
             text=FACILITY_FA[ftype], callback_data=f"build_type:{ftype.value}"
         )
-    builder.button(text="🏭 تأسیسات من", callback_data="econ:facilities")
+    builder.button(text="🏭 تأسیسات من", callback_data="econ:facilities", style=STYLE_MAIN)
     builder.button(text="🔙 بازگشت", callback_data="menu:economy")
     builder.adjust(2, 2, 1, 1)
     return builder.as_markup()

@@ -55,6 +55,7 @@ from ..services.news_service import send_log
 from ..states import AttackForm, MilitaryFactoryForm, MilitarySaleForm
 from ..utils.formatting import render_military_panel
 from ..utils.numbers import fa_money, fa_number, parse_amount
+from ..utils.ui import STYLE_NO, STYLE_OK, header
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from .deps import NO_COUNTRY_TEXT, get_player_country
 
@@ -167,8 +168,8 @@ async def msg_attack_describe(message: Message, state: FSMContext, session: Asyn
         )
         # ارسال درخواست به گروه لاگ با دکمه‌ی تأیید/رد
         kb = InlineKeyboardMarkup(inline_keyboard=[[
-            InlineKeyboardButton(text="✅ تأیید", callback_data=f"sabotage_ok:{attack.id}"),
-            InlineKeyboardButton(text="❌ رد", callback_data=f"sabotage_no:{attack.id}"),
+            InlineKeyboardButton(text="✅ تأیید", callback_data=f"sabotage_ok:{attack.id}", style=STYLE_OK),
+            InlineKeyboardButton(text="❌ رد", callback_data=f"sabotage_no:{attack.id}", style=STYLE_NO),
         ]])
         await send_log(
             bot,
@@ -371,7 +372,7 @@ async def cb_factory_menu(call: CallbackQuery, state: FSMContext) -> None:
     await call.answer()
     await state.clear()
     await call.message.edit_text(
-        "🏭 <b>کارخانه نظامی</b>\n\nبا احداث کارخانه می‌توانید تجهیزات موجود کشورتان را بازتولید کنید.",
+        header("کارخانه نظامی", "🏭") + "\n\nبا احداث کارخانه می‌توانید تجهیزات موجود کشورتان را بازتولید کنید.",
         reply_markup=military_factory_menu_kb(),
     )
 
@@ -732,8 +733,8 @@ async def cb_sell_buyer(call: CallbackQuery, state: FSMContext, session: AsyncSe
     )
     if buyer.owner_user_id:
         kb = InlineKeyboardMarkup(inline_keyboard=[[
-            InlineKeyboardButton(text="✅ خرید", callback_data=f"milsale_ok:{sale.id}"),
-            InlineKeyboardButton(text="❌ رد", callback_data=f"milsale_no:{sale.id}"),
+            InlineKeyboardButton(text="✅ خرید", callback_data=f"milsale_ok:{sale.id}", style=STYLE_OK),
+            InlineKeyboardButton(text="❌ رد", callback_data=f"milsale_no:{sale.id}", style=STYLE_NO),
         ]])
         try:
             await bot.send_message(

@@ -46,6 +46,7 @@ from ..services.news_service import publish_news, send_log
 from ..states import FacilityForm, SaleForm, TariffForm
 from ..utils.formatting import render_economy_panel, render_reserves_panel
 from ..utils.numbers import fa_money, fa_number, parse_amount
+from ..utils.ui import STYLE_MAIN, STYLE_NO, STYLE_OK
 from .deps import NO_COUNTRY_TEXT, get_player_country
 
 router = Router(name="economy")
@@ -356,10 +357,10 @@ async def msg_sell_price(
             inline_keyboard=[
                 [
                     InlineKeyboardButton(
-                        text="✅ خرید", callback_data=f"sale_accept:{sale.id}"
+                        text="✅ خرید", callback_data=f"sale_accept:{sale.id}", style=STYLE_OK
                     ),
                     InlineKeyboardButton(
-                        text="❌ رد", callback_data=f"sale_reject:{sale.id}"
+                        text="❌ رد", callback_data=f"sale_reject:{sale.id}", style=STYLE_NO
                     ),
                 ]
             ]
@@ -507,7 +508,7 @@ async def cb_sale_reject(
 # ============================================================
 def _tariff_menu_kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="➕ تعیین/تغییر تعرفه", callback_data="tariff:add")],
+        [InlineKeyboardButton(text="➕ تعیین/تغییر تعرفه", callback_data="tariff:add", style=STYLE_MAIN)],
         [InlineKeyboardButton(text="🔙 بازگشت", callback_data="menu:economy")],
     ])
 

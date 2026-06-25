@@ -34,6 +34,7 @@ from ..services.sanction_service import apply_sanction_effects
 from ..database.repositories import users as users_repo
 from ..states import CallForm, ContractForm, LetterForm, MeetingForm, SanctionForm, SpeechForm
 from ..utils.numbers import fa_number
+from ..utils.ui import STYLE_MAIN, STYLE_NO, STYLE_OK, header
 from .deps import NO_COUNTRY_TEXT, get_player_country
 
 settings = get_settings()
@@ -163,8 +164,8 @@ async def cb_call_to(call: CallbackQuery, state: FSMContext, session: AsyncSessi
     await session.flush()
 
     kb = InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(text="✅ پاسخ", callback_data=f"call_accept:{phone_call.id}"),
-        InlineKeyboardButton(text="❌ رد", callback_data=f"call_reject:{phone_call.id}"),
+        InlineKeyboardButton(text="✅ پاسخ", callback_data=f"call_accept:{phone_call.id}", style=STYLE_OK),
+        InlineKeyboardButton(text="❌ رد", callback_data=f"call_reject:{phone_call.id}", style=STYLE_NO),
     ]])
     try:
         await bot.send_message(
@@ -259,8 +260,8 @@ async def cb_meeting(call: CallbackQuery, state: FSMContext, session: AsyncSessi
         await call.message.edit_text(NO_COUNTRY_TEXT)
         return
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🤝 دیدار دوجانبه", callback_data="meet_kind:bi")],
-        [InlineKeyboardButton(text="👥 دیدار چندجانبه", callback_data="meet_kind:multi")],
+        [InlineKeyboardButton(text="🤝 دیدار دوجانبه", callback_data="meet_kind:bi", style=STYLE_MAIN)],
+        [InlineKeyboardButton(text="👥 دیدار چندجانبه", callback_data="meet_kind:multi", style=STYLE_MAIN)],
         [InlineKeyboardButton(text="🔙 بازگشت", callback_data="menu:diplomacy")],
     ])
     await call.message.edit_text(
@@ -285,14 +286,25 @@ async def cb_meeting_bi(call: CallbackQuery, state: FSMContext, session: AsyncSe
 
 
 def _group_select_kb(others, selected: set[int]):
-    """کیبورد انتخاب چندتایی کشورها برای نشست چندجانبه (با تیک)."""
+    """کیبورد انتخاب چندتایی کشورها برای نشست چندجانبه (انتخاب‌شده سبز)."""
+    from ..utils.ui import PICK_OFF, PICK_ON, STYLE_OK
+
     builder = InlineKeyboardBuilder()
     for c in others:
-        mark = "✅ " if c.id in selected else ""
-        builder.button(text=f"{mark}{c.flag} {c.name_fa}", callback_data=f"meet_toggle:{c.id}")
+        chosen = c.id in selected
+        mark = PICK_ON if chosen else PICK_OFF
+        builder.button(
+            text=f"{mark} {c.flag} {c.name_fa}",
+            callback_data=f"meet_toggle:{c.id}",
+            style=STYLE_OK if chosen else None,
+        )
     builder.adjust(2)
+    cont_text = f"✅ ادامه ({fa_number(len(selected))})" if selected else "✔️ ادامه"
     builder.row(
-        InlineKeyboardButton(text="✔️ ادامه", callback_data="meet_multi_next"),
+        InlineKeyboardButton(
+            text=cont_text, callback_data="meet_multi_next",
+            style=STYLE_OK if selected else None,
+        ),
         InlineKeyboardButton(text="🔙 بازگشت", callback_data="menu:diplomacy"),
     )
     return builder.as_markup()
@@ -379,8 +391,8 @@ async def msg_group_title(message: Message, state: FSMContext, session: AsyncSes
         invited_names.append(f"{target.flag} {target.name_fa}")
         if target.owner_user_id:
             kb = InlineKeyboardMarkup(inline_keyboard=[[
-                InlineKeyboardButton(text="✅ شرکت می‌کنم", callback_data=f"gmeet_accept:{meeting.id}"),
-                InlineKeyboardButton(text="❌ رد", callback_data=f"gmeet_reject:{meeting.id}"),
+                InlineKeyboardButton(text="✅ شرکت می‌کنم", callback_data=f"gmeet_accept:{meeting.id}", style=STYLE_OK),
+                InlineKeyboardButton(text="❌ رد", callback_data=f"gmeet_reject:{meeting.id}", style=STYLE_NO),
             ]])
             try:
                 await bot.send_message(
@@ -543,8 +555,8 @@ async def cb_meet_to(call: CallbackQuery, state: FSMContext, session: AsyncSessi
     await session.flush()
 
     kb = InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(text="✅ پذیرش سفر", callback_data=f"meet_accept:{meeting.id}"),
-        InlineKeyboardButton(text="❌ رد", callback_data=f"meet_reject:{meeting.id}"),
+        InlineKeyboardButton(text="✅ پذیرش سفر", callback_data=f"meet_accept:{meeting.id}", style=STYLE_OK),
+        InlineKeyboardButton(text="❌ رد", callback_data=f"meet_reject:{meeting.id}", style=STYLE_NO),
     ]])
     try:
         await bot.send_message(
@@ -724,8 +736,8 @@ async def msg_contract_body(message: Message, state: FSMContext, session: AsyncS
 
     if other and other.owner_user_id:
         kb = InlineKeyboardMarkup(inline_keyboard=[[
-            InlineKeyboardButton(text="✍️ امضا", callback_data=f"sign_contract:{contract.id}"),
-            InlineKeyboardButton(text="❌ رد", callback_data=f"reject_contract:{contract.id}"),
+            InlineKeyboardButton(text="✍️ امضا", callback_data=f"sign_contract:{contract.id}", style=STYLE_OK),
+            InlineKeyboardButton(text="❌ رد", callback_data=f"reject_contract:{contract.id}", style=STYLE_NO),
         ]])
         try:
             await bot.send_message(
@@ -816,7 +828,9 @@ async def cb_sanction(call: CallbackQuery, state: FSMContext) -> None:
     """منوی تحریم (v1.7)."""
     await call.answer()
     await state.clear()
-    await call.message.edit_text("🚫 <b>تحریم</b>\n\nیک گزینه را انتخاب کنید:", reply_markup=sanction_menu_kb())
+    await call.message.edit_text(
+        header("تحریم", "🚫") + "\n\nیک گزینه را انتخاب کنید:", reply_markup=sanction_menu_kb()
+    )
 
 
 @router.callback_query(F.data == "sanc:impose")

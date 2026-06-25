@@ -6,13 +6,14 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from ..database.models import Country
+from ..utils.ui import STYLE_NO, STYLE_OK
 
 
 def confirm_cancel_kb(confirm_data: str, cancel_data: str = "cancel") -> InlineKeyboardMarkup:
-    """کیبورد ساده‌ی «تأیید / لغو»."""
+    """کیبورد ساده‌ی «تأیید / لغو» (سبز/قرمز)."""
     builder = InlineKeyboardBuilder()
-    builder.button(text="✅ تأیید", callback_data=confirm_data)
-    builder.button(text="❌ لغو", callback_data=cancel_data)
+    builder.button(text="✅ تأیید", callback_data=confirm_data, style=STYLE_OK)
+    builder.button(text="❌ لغو", callback_data=cancel_data, style=STYLE_NO)
     builder.adjust(2)
     return builder.as_markup()
 

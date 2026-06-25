@@ -146,10 +146,10 @@ async def msg_note(
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text="✅ تأیید", callback_data=f"claim_approve:{claim.id}"
+                    text="✅ تأیید", callback_data=f"claim_approve:{claim.id}", style="success"
                 ),
                 InlineKeyboardButton(
-                    text="❌ رد", callback_data=f"claim_reject:{claim.id}"
+                    text="❌ رد", callback_data=f"claim_reject:{claim.id}", style="danger"
                 ),
             ]
         ]

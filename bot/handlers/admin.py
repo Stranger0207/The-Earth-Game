@@ -161,10 +161,11 @@ async def cmd_endseason(message: Message) -> None:
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text="🔴 بله، فصل را ریست کن", callback_data="season_reset_confirm"
+                    text="🔴 بله، فصل را ریست کن", callback_data="season_reset_confirm",
+                    style="danger",
                 )
             ],
-            [InlineKeyboardButton(text="❌ انصراف", callback_data="season_reset_cancel")],
+            [InlineKeyboardButton(text="❌ انصراف", callback_data="season_reset_cancel", style="primary")],
         ]
     )
     await message.answer(

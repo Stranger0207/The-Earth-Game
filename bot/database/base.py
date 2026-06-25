@@ -50,6 +50,8 @@ _COLUMN_MIGRATIONS = [
     ("sanctions", "sanction_type", "VARCHAR(24) NOT NULL DEFAULT ''"),
     ("group_meetings", "start_at", "TIMESTAMP WITH TIME ZONE"),
     ("group_meeting_participants", "travel_eta", "TIMESTAMP WITH TIME ZONE"),
+    # v1.6
+    ("meetings", "start_announced", "BOOLEAN NOT NULL DEFAULT FALSE"),
 ]
 
 

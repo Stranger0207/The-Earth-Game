@@ -136,6 +136,8 @@ class Meeting(Base):
     )
     # توضیح AI درباره‌ی زمان سفر
     travel_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # آیا خبر شروع نشست (پس از رسیدن مسافر) در کانال اعلام شده؟ (v1.6)
+    start_announced: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False
     )

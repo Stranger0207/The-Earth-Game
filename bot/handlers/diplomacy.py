@@ -23,8 +23,10 @@ from ..keyboards.common import countries_kb
 from ..keyboards.diplomacy import diplomacy_menu_kb, end_call_kb, sanction_types_kb
 from ..loader import bot
 from ..services.ai import evaluators
+from ..services.media import send_photo_news
 from ..services.news_service import publish_news, send_log
 from ..services.sanction_service import apply_sanction_effects
+from ..database.repositories import users as users_repo
 from ..states import CallForm, ContractForm, LetterForm, MeetingForm, SanctionForm, SpeechForm
 from ..utils.numbers import fa_number
 from .deps import NO_COUNTRY_TEXT, get_player_country
@@ -41,6 +43,17 @@ async def _get_bot_username() -> str:
         me = await bot.get_me()
         _bot_username = me.username
     return _bot_username
+
+async def _president_name(session: AsyncSession, country) -> str:
+    """نام رئیس‌جمهور یک کشور (در صورت نبود، نام کشور)."""
+    if country is None:
+        return "—"
+    if country.owner_user_id:
+        u = await users_repo.get_user(session, country.owner_user_id)
+        if u and u.president_name:
+            return u.president_name
+    return country.name_fa
+
 
 router = Router(name="diplomacy")
 
@@ -465,6 +478,22 @@ async def cb_gmeet_accept(call: CallbackQuery, session: AsyncSession, db_user: U
         call.message.html_text
         + f"\n\n✈️ <b>پذیرفتید</b> — پرواز به میزبان آغاز شد (زمان رسیدن حدود {fa_number(minutes)} دقیقه)"
     )
+
+    # خبر سفر دیپلماتیک (نشست چندجانبه) در کانال دیپلماسی: عکس + فرمت سفر (v1.6)
+    if settings.news_diplomacy_channel_id is not None:
+        traveler_pres = await _president_name(session, country)
+        x = f"{country.flag} {country.name_fa}"
+        b = f"{host.flag} {host.name_fa}" if host else "?"
+        caption = (
+            "⚪ | اطلاع رسانی سفر مقامات دیپلمات\n\n"
+            f"✈ | ریاست جمهور محترم کشور {x} ، جناب آقای {traveler_pres} کشور خود را "
+            f"به مقصد کشور {b} برای شرکت در نشست «{meeting.title}» ترک کرد.\n"
+            f"⏳ | مدت زمان پرواز: {fa_number(minutes)} دقیقه"
+        )
+        await send_photo_news(
+            bot, settings.news_diplomacy_channel_id, "diplomacy_travel", caption
+        )
+
     await _maybe_schedule_group_meeting(session, meeting)
 
 
@@ -561,6 +590,21 @@ async def cb_meet_accept(call: CallbackQuery, session: AsyncSession) -> None:
                 await bot.send_message(c.owner_user_id, msg)
             except Exception:  # noqa: BLE001
                 pass
+
+    # خبر سفر دیپلماتیک در کانال دیپلماسی: عکس + فرمت جدید (v1.6)
+    if settings.news_diplomacy_channel_id is not None:
+        traveler_pres = await _president_name(session, traveler)
+        x = f"{traveler.flag} {traveler.name_fa}" if traveler else "?"
+        b = f"{host.flag} {host.name_fa}" if host else "?"
+        caption = (
+            "⚪ | اطلاع رسانی سفر مقامات دیپلمات\n\n"
+            f"✈ | ریاست جمهور محترم کشور {x} ، جناب آقای {traveler_pres} کشور خود را "
+            f"به مقصد کشور {b} برای برگزاری دیدار حضوری ترک کرد.\n"
+            f"⏳ | مدت زمان پرواز: {fa_number(minutes)} دقیقه"
+        )
+        await send_photo_news(
+            bot, settings.news_diplomacy_channel_id, "diplomacy_travel", caption
+        )
 
 
 @router.callback_query(F.data.startswith("meet_reject:"))
@@ -1010,6 +1054,11 @@ async def relay_chat_message(message: Message, session: AsyncSession, db_user: U
                     )
                 except Exception:  # noqa: BLE001
                     pass
+            # لاگ صحبت‌های دیدار دوجانبه به گروه لاگ (v1.6)
+            await send_log(
+                bot,
+                f"🤝 [{country.name_fa} → {partner.name_fa if partner else '?'}]: {message.text}",
+            )
             return
 
     # ۳) نشست چندجانبه‌ی فعال → چت با همه‌ی کشورهای حاضر
@@ -1030,4 +1079,9 @@ async def relay_chat_message(message: Message, session: AsyncSession, db_user: U
                         )
                     except Exception:  # noqa: BLE001
                         pass
+            # لاگ صحبت‌های نشست چندجانبه به گروه لاگ (v1.6)
+            await send_log(
+                bot,
+                f"👥 [{group.title}] {country.name_fa}: {message.text}",
+            )
             return

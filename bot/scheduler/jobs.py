@@ -33,7 +33,8 @@ from ..enums import (
     ResourceType,
     TradeStatus,
 )
-from ..services.news_service import publish_news
+from ..services.news_service import publish_news  # noqa: F401 (سازگاری)
+from ..utils.numbers import fa_number
 
 logger = logging.getLogger(__name__)
 
@@ -92,8 +93,10 @@ async def process_shipments(bot: Bot) -> None:
     from ..enums import RESOURCE_FA, RESOURCE_UNIT_FA
     from ..utils.numbers import fa_number
 
-    # خبرهای تحویل را همراه جزئیات جمع می‌کنیم تا پس از بستن session منتشر شوند
-    delivery_news: list[str] = []
+    # v1.6: هنگام رسیدن محموله دیگر در کانال WTO خبری نمی‌رود؛ فقط پیوی خریدار و گروه لاگ
+    from ..services.news_service import send_log
+
+    log_notices: list[str] = []
     buyer_notices: list[tuple[int, str]] = []  # (owner_user_id, متن)
 
     async with async_session_factory() as session:
@@ -121,9 +124,11 @@ async def process_shipments(bot: Bot) -> None:
                 rname, unit = sale.resource, ""
             seller_name = f"{seller.flag} {seller.name_fa}" if seller else "?"
             buyer_name = f"{buyer.flag} {buyer.name_fa}" if buyer else "?"
-            delivery_news.append(
-                f"✅ محموله‌ی تجاری شامل <b>{fa_number(sale.amount)} {unit} {rname}</b> "
-                f"از {seller_name} با موفقیت به مقصد {buyer_name} رسید و تحویل داده شد."
+            log_notices.append(
+                "📦 <b>محموله تحویل شد</b>\n"
+                f"فروشنده: {seller_name}\n"
+                f"خریدار: {buyer_name}\n"
+                f"منبع: {fa_number(sale.amount)} {unit} {rname}"
             )
             if buyer and buyer.owner_user_id:
                 buyer_notices.append((
@@ -133,14 +138,14 @@ async def process_shipments(bot: Bot) -> None:
                 ))
         await session.commit()
 
-    # اعلام در کانال WTO و اطلاع به خریدار پس از commit
-    for text in delivery_news:
-        await publish_news(bot, NewsCategory.WTO, text)
+    # اطلاع به خریدار (پیوی) و گروه لاگ پس از commit (نه کانال WTO)
     for owner_id, text in buyer_notices:
         try:
             await bot.send_message(owner_id, text)
         except Exception:  # noqa: BLE001 — خطای ارسال نباید scheduler را متوقف کند
             pass
+    for text in log_notices:
+        await send_log(bot, text)
 
 
 async def process_attacks(bot: Bot) -> None:
@@ -194,10 +199,26 @@ async def process_attacks(bot: Bot) -> None:
 
 
 async def process_meetings(bot: Bot) -> None:
-    """رسیدن مسافر و پایان دیدارهای حضوری را مدیریت می‌کند."""
+    """رسیدن مسافر (اعلام شروع نشست) و پایان دیدارهای دوجانبه را مدیریت می‌کند."""
     from sqlalchemy import select
 
+    from ..config import get_settings
+    from ..constants import MEETING_DURATION_MINUTES
     from ..database.models import Meeting
+    from ..database.repositories import countries as countries_repo
+    from ..database.repositories import users as users_repo
+    from ..services.media import send_photo_news
+
+    settings = get_settings()
+    # خبرهای شروع نشست (کپشن) برای ارسال پس از commit
+    start_captions: list[str] = []
+
+    async def _pres(session, country) -> str:
+        if country and country.owner_user_id:
+            u = await users_repo.get_user(session, country.owner_user_id)
+            if u and u.president_name:
+                return u.president_name
+        return country.name_fa if country else "—"
 
     async with async_session_factory() as session:
         result = await session.execute(
@@ -210,10 +231,35 @@ async def process_meetings(bot: Bot) -> None:
         for m in meetings:
             travel_eta = _aware(m.travel_eta)
             meeting_ends = _aware(m.meeting_ends_at)
+            # رسیدن مسافر → اعلام شروع نشست (یک‌بار)
+            if (
+                m.status == DiplomacyStatus.ACTIVE
+                and not m.start_announced
+                and travel_eta
+                and travel_eta <= now
+            ):
+                m.start_announced = True
+                traveler = await countries_repo.get_country(session, m.traveler_country)
+                host = await countries_repo.get_country(session, m.host_country)
+                k = await _pres(session, traveler)
+                o = await _pres(session, host)
+                x = f"{traveler.flag} {traveler.name_fa}" if traveler else "?"
+                b = f"{host.flag} {host.name_fa}" if host else "?"
+                start_captions.append(
+                    f"🤝 | نشست دیپلماتیک بین جناب {k} و جناب {o} رئسای جمهور کشور "
+                    f"{x} و {b} دقایقی پیش شروع شد. پیش بینی میشود این دو کشور در رابطه با "
+                    "مسائل دیپلماتیک با یکدیگر بحث و گفتگو داشته باشند.\n\n"
+                    f"⏳ | مدت زمان گفتگو {fa_number(MEETING_DURATION_MINUTES)} دقیقه پیش بینی شده. "
+                    "اطلاعات بیشتر در رابطه با این نشست بزودی اعلام خواهد شد."
+                )
             # پایان جلسه
             if m.status == DiplomacyStatus.ACTIVE and meeting_ends and meeting_ends <= now:
                 m.status = DiplomacyStatus.COMPLETED
         await session.commit()
+
+    if settings.news_diplomacy_channel_id is not None:
+        for caption in start_captions:
+            await send_photo_news(bot, settings.news_diplomacy_channel_id, "meeting", caption)
 
 
 async def process_group_meetings(bot: Bot) -> None:
@@ -224,11 +270,13 @@ async def process_group_meetings(bot: Bot) -> None:
     """
     from sqlalchemy import select
 
+    from ..config import get_settings
     from ..constants import MEETING_DURATION_MINUTES
     from ..database.models import GroupMeeting, GroupMeetingParticipant
     from ..database.repositories import countries as countries_repo
-    from ..services.news_service import publish_news
+    from ..services.media import send_photo_news
 
+    settings = get_settings()
     started_notices: list[tuple[list[int], str, str]] = []  # (owner_ids, notice, news)
 
     async with async_session_factory() as session:
@@ -267,8 +315,12 @@ async def process_group_meetings(bot: Bot) -> None:
                 "📜 برای عقد قرارداد با یکی از حاضران از دستور /contract استفاده کنید."
             )
             news = (
-                f"👥 نشست چندجانبه‌ای با عنوان «{meeting.title}» به میزبانی "
-                f"{host.name_fa if host else '?'} با حضور چند کشور آغاز شد."
+                f"🤝 | نشست دیپلماتیک چندجانبه «{meeting.title}» به میزبانی "
+                f"{host.flag + ' ' + host.name_fa if host else '?'} با حضور کشورهای "
+                f"{names} دقایقی پیش آغاز شد. پیش بینی میشود این کشورها در رابطه با "
+                "مسائل دیپلماتیک با یکدیگر بحث و گفتگو داشته باشند.\n\n"
+                f"⏳ | مدت زمان گفتگو {fa_number(MEETING_DURATION_MINUTES)} دقیقه پیش بینی شده. "
+                "اطلاعات بیشتر در رابطه با این نشست بزودی اعلام خواهد شد."
             )
             started_notices.append((owner_ids, notice, news))
 
@@ -289,7 +341,8 @@ async def process_group_meetings(bot: Bot) -> None:
                 await bot.send_message(oid, notice)
             except Exception:  # noqa: BLE001
                 pass
-        await publish_news(bot, NewsCategory.DIPLOMACY, news)
+        if settings.news_diplomacy_channel_id is not None:
+            await send_photo_news(bot, settings.news_diplomacy_channel_id, "meeting", news)
 
 
 async def process_calls() -> None:

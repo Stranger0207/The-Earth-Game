@@ -21,6 +21,7 @@ from ..enums import ClaimStatus
 from ..keyboards.menu import main_menu_kb
 from ..loader import bot
 from ..services.season_service import reset_season
+from ..utils.numbers import fa_number
 
 router = Router(name="admin")
 settings = get_settings()
@@ -126,6 +127,31 @@ async def cmd_pending(
 #  پایان فصل: ریست کامل بازی به حالت اولیه (فقط مالک)
 #  با تأیید دومرحله‌ای برای جلوگیری از ریست تصادفی.
 # ============================================================
+@router.message(Command("announce"))
+async def cmd_announce(message: Message, session: AsyncSession) -> None:
+    """اعلان عمومی به همه‌ی کشورهای دارای مالک (فقط مالک/مدیر) — v1.6."""
+    if not settings.is_admin(message.from_user.id):
+        return
+    text = message.text.partition(" ")[2].strip()
+    if not text:
+        await message.answer("📛 استفاده: <code>/announce متن پیام</code>")
+        return
+
+    body = f"📛اعلانات عمومی کره زمین📛\n\n🔴 | {text}"
+    countries = await countries_repo.list_countries(session)
+    sent = 0
+    seen: set[int] = set()
+    for c in countries:
+        if c.owner_user_id and c.owner_user_id not in seen:
+            seen.add(c.owner_user_id)
+            try:
+                await bot.send_message(c.owner_user_id, body)
+                sent += 1
+            except Exception:  # noqa: BLE001 — خطای ارسال نباید بقیه را متوقف کند
+                pass
+    await message.answer(f"✅ اعلان عمومی به {fa_number(sent)} کشور ارسال شد.")
+
+
 @router.message(Command("endseason"))
 async def cmd_endseason(message: Message) -> None:
     """نمایش هشدار و دکمه‌ی تأیید پایان فصل (فقط برای مالک)."""

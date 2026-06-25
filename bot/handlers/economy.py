@@ -36,16 +36,19 @@ from ..keyboards.economy import (
     mine_resources_kb,
     sell_resources_kb,
 )
+from ..config import get_settings
 from ..loader import bot
 from ..services.ai import evaluators
 from ..services.economy_service import EconomyError, build_facility, transfer_sale
-from ..services.news_service import publish_news
+from ..services.media import send_photo_news
+from ..services.news_service import publish_news, send_log
 from ..states import FacilityForm, SaleForm, TariffForm
 from ..utils.formatting import render_economy_panel, render_reserves_panel
 from ..utils.numbers import fa_money, fa_number, parse_amount
 from .deps import NO_COUNTRY_TEXT, get_player_country
 
 router = Router(name="economy")
+settings = get_settings()
 
 
 def _is_usa(country) -> bool:
@@ -403,17 +406,41 @@ async def cb_sale_accept(
         except Exception:  # noqa: BLE001
             pass
 
-    # خبر فوری ارسال محموله در کانال WTO (با مقدار و زمان رسیدن)
+    # لاگ تعرفه‌ی اجراشده: به آمریکا (پیوی) و گروه لاگ (v1.6)
+    duty = sale_info.get("duty", 0) if sale_info else 0
+    if duty and duty > 0 and seller is not None:
+        usa = await countries_repo.get_country_by_name(session, "USA")
+        y = f"{seller.flag} {seller.name_fa}"
+        if usa and usa.owner_user_id:
+            try:
+                await bot.send_message(
+                    usa.owner_user_id,
+                    f"💵 شما {fa_money(duty)} از بابت تعرفۀ کشور {y} بدست آوردید.",
+                )
+            except Exception:  # noqa: BLE001
+                pass
+        await send_log(bot, f"🇺🇸 آمریکا {fa_money(duty)} بابت تعرفه اجرایی روی کشور {y} بدست آورد.")
+
+    # خبر فوری ارسال محموله در کانال WTO: عکس تصادفی + فرمت جدید اطلاع‌رسانی
     unit = RESOURCE_UNIT_FA[ResourceType(sale.resource)]
-    route = eta_data.get("route", "")
-    route_txt = f" (مسیر {route})" if route else ""
-    await publish_news(
+    seller_name = f"{seller.flag} {seller.name_fa}" if seller else "?"
+    buyer_name = f"{buyer.flag} {buyer.name_fa}"
+    if settings.wto_channel_id is not None:
+        caption = (
+            "🔵 | اطلاع رسانی سازمان نقل و انتقالات جهانی\n\n"
+            f"✈ | یک محموله تجاری کشور {seller_name} را به مقصد کشور {buyer_name} ترک کرد.\n"
+            f"⏳ | مدت زمان پرواز: {fa_number(minutes)} دقیقه"
+        )
+        await send_photo_news(bot, settings.wto_channel_id, "wto", caption)
+
+    # لاگ تجارت به گروه لاگ مدیران: فروشنده، خریدار، منبع و مقدار، قیمت
+    await send_log(
         bot,
-        NewsCategory.WTO,
-        f"🚢 یک محموله‌ی تجاری شامل <b>{fa_number(sale.amount)} {unit} {rname}</b> "
-        f"از {seller.flag if seller else ''} {seller.name_fa if seller else '?'} "
-        f"به مقصد {buyer.flag} {buyer.name_fa} حرکت کرد{route_txt}.\n"
-        f"⏱ زمان تقریبی رسیدن: {fa_number(minutes)} دقیقه.",
+        "🧾 <b>گزارش تجارت</b>\n"
+        f"فروشنده: {seller_name}\n"
+        f"خریدار: {buyer_name}\n"
+        f"منبع: {fa_number(sale.amount)} {unit} {rname}\n"
+        f"قیمت: {fa_money(sale.price)}",
     )
 
 
@@ -541,3 +568,19 @@ async def msg_tariff_percent(message: Message, state: FSMContext, session: Async
             "این درصد از هر فروش آن کشور کسر و به خزانه‌ی آمریکا واریز می‌شود.",
             reply_markup=economy_menu_kb(is_usa=True),
         )
+        # لاگ وضع تعرفه به گروه لاگ (v1.6)
+        await send_log(
+            bot,
+            f"🇺🇸 <b>تعرفه جدید</b>\n"
+            f"کشور: {target.flag} {target.name_fa}\n"
+            f"درصد تعرفه اجرایی: {fa_number(percent)}٪",
+        )
+        # خبر تعرفه در کانال اقتصاد: عکس ترامپ + متن (v1.6)
+        if settings.news_economy_channel_id is not None:
+            caption = (
+                "❌تعرفه❌\n\n"
+                f" 🇺🇸 | رئیس جمهوری ایالات متحدۀ امریکا، دونالد ترامپ یک تعرفۀ "
+                f"{fa_number(percent)} درصدی بر واردات کشور {target.flag} {target.name_fa} وضع کرد!!!\n"
+                "⚪ | اطلاعات بیشتر مربوط به این تعرفۀ وضع شده بزودی منتشر میگردد..."
+            )
+            await send_photo_news(bot, settings.news_economy_channel_id, "trump", caption)

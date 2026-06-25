@@ -6,7 +6,7 @@
 
 from __future__ import annotations
 
-from .enums import FacilityType, ResourceType
+from .enums import FacilityType, MilitaryFactoryType, ResourceType
 
 # ============================================================
 #  بازدهی پیش‌فرض ذخایر طبیعی (پلی‌بوک: بازدهی ۷۲ ساعته‌ی اولیه)
@@ -88,3 +88,73 @@ RESOURCE_SHORTAGE_THRESHOLD = 0.0
 
 # جریمه‌ی نقض قرارداد (پلی‌بوک ماده ۶): ۱ میلیارد دلار
 CONTRACT_BREACH_PENALTY_USD = 1_000_000_000
+
+# ============================================================
+#  🏭 کارخانه‌های نظامی (v1.7) — بازتولید تجهیزات
+#  واحد منابع در دیتابیس: ذغال/آلومینیوم/آهن/فولاد = تن، نفت = میلیون بشکه،
+#  گاز = میلیون متر مکعب، طلا = کیلوگرم. (طلا در متن آپدیت گاهی «تن» بود که اینجا به کیلوگرم تبدیل شده.)
+# ============================================================
+
+# هزینه‌ی ساخت هر کارخانه (دلار)
+MIL_FACTORY_COST_USD: dict[MilitaryFactoryType, int] = {
+    MilitaryFactoryType.ANTI_MISSILE: 5_000_000_000,
+    MilitaryFactoryType.ARTILLERY: 1_000_000_000,
+    MilitaryFactoryType.TANK: 2_500_000_000,
+    MilitaryFactoryType.APC: 1_200_000_000,
+    MilitaryFactoryType.FIGHTER: 20_000_000_000,
+    MilitaryFactoryType.TRANSPORT_AIRCRAFT: 10_000_000_000,
+    MilitaryFactoryType.DRONE: 500_000_000,
+    MilitaryFactoryType.HELICOPTER: 4_000_000_000,
+    MilitaryFactoryType.CORVETTE: 2_000_000_000,
+    MilitaryFactoryType.DESTROYER: 5_000_000_000,
+    MilitaryFactoryType.BALLISTIC_MISSILE: 6_000_000_000,
+    MilitaryFactoryType.CRUISE_MISSILE: 3_000_000_000,
+}
+
+# منابع لازم برای ساخت کارخانه (یک‌بار، هنگام احداث) — کلیدها مقدار ResourceType
+MIL_FACTORY_BUILD_RESOURCES: dict[MilitaryFactoryType, dict[str, float]] = {
+    MilitaryFactoryType.ANTI_MISSILE: {"coal": 400_000, "aluminum": 250_000, "iron": 600_000, "steel": 900_000, "oil": 0.3, "gas": 0.5, "gold": 2_000},
+    MilitaryFactoryType.ARTILLERY: {"coal": 300_000, "aluminum": 120_000, "iron": 500_000, "steel": 700_000, "oil": 0.2, "gas": 0.3, "gold": 800},
+    MilitaryFactoryType.TANK: {"coal": 600_000, "aluminum": 150_000, "iron": 900_000, "steel": 1_200_000, "oil": 0.4, "gas": 0.35, "gold": 1_000},
+    MilitaryFactoryType.APC: {"coal": 400_000, "aluminum": 180_000, "iron": 600_000, "steel": 800_000, "oil": 0.25, "gas": 0.3, "gold": 700},
+    MilitaryFactoryType.FIGHTER: {"coal": 800_000, "aluminum": 1_200_000, "iron": 700_000, "steel": 1_000_000, "oil": 0.6, "gas": 0.8, "gold": 5_000},
+    MilitaryFactoryType.TRANSPORT_AIRCRAFT: {"coal": 700_000, "aluminum": 900_000, "iron": 600_000, "steel": 900_000, "oil": 0.5, "gas": 0.7, "gold": 3_000},
+    MilitaryFactoryType.DRONE: {"coal": 150_000, "aluminum": 300_000, "iron": 200_000, "steel": 250_000, "oil": 0.15, "gas": 0.2, "gold": 500},
+    MilitaryFactoryType.HELICOPTER: {"coal": 500_000, "aluminum": 600_000, "iron": 500_000, "steel": 700_000, "oil": 0.4, "gas": 0.5, "gold": 2_000},
+    MilitaryFactoryType.CORVETTE: {"coal": 900_000, "aluminum": 300_000, "iron": 1_200_000, "steel": 1_500_000, "oil": 0.6, "gas": 0.7, "gold": 3_000},
+    MilitaryFactoryType.DESTROYER: {"coal": 1_200_000, "aluminum": 400_000, "iron": 1_600_000, "steel": 2_000_000, "oil": 0.8, "gas": 0.9, "gold": 6_000},
+    MilitaryFactoryType.BALLISTIC_MISSILE: {"coal": 600_000, "aluminum": 500_000, "iron": 700_000, "steel": 900_000, "oil": 0.7, "gas": 0.8, "gold": 2_500},
+    MilitaryFactoryType.CRUISE_MISSILE: {"coal": 500_000, "aluminum": 450_000, "iron": 600_000, "steel": 800_000, "oil": 0.6, "gas": 0.7, "gold": 2_000},
+}
+
+# مصرف منابع در هر چرخه‌ی بازدهی (متن آپدیت: «مصرف روزانه»)
+MIL_FACTORY_INTAKE: dict[MilitaryFactoryType, dict[str, float]] = {
+    MilitaryFactoryType.ANTI_MISSILE: {"steel": 120_000, "aluminum": 60_000, "oil": 0.04, "gas": 0.09, "gold": 200},
+    MilitaryFactoryType.ARTILLERY: {"steel": 100_000, "iron": 80_000, "oil": 0.03, "gas": 0.07, "gold": 80},
+    MilitaryFactoryType.TANK: {"steel": 180_000, "iron": 120_000, "oil": 0.08, "gas": 0.06, "gold": 100},
+    MilitaryFactoryType.APC: {"steel": 130_000, "aluminum": 70_000, "oil": 0.05, "gas": 0.06, "gold": 70},
+    MilitaryFactoryType.FIGHTER: {"aluminum": 200_000, "steel": 150_000, "oil": 0.1, "gas": 0.15, "gold": 400},
+    MilitaryFactoryType.TRANSPORT_AIRCRAFT: {"aluminum": 150_000, "steel": 120_000, "oil": 0.08, "gas": 0.12, "gold": 250},
+    MilitaryFactoryType.DRONE: {"aluminum": 80_000, "steel": 60_000, "oil": 0.03, "gas": 0.05, "gold": 50},
+    MilitaryFactoryType.HELICOPTER: {"aluminum": 120_000, "steel": 100_000, "oil": 0.07, "gas": 0.09, "gold": 150},
+    MilitaryFactoryType.CORVETTE: {"steel": 250_000, "iron": 180_000, "oil": 0.12, "gas": 0.11, "gold": 200},
+    MilitaryFactoryType.DESTROYER: {"steel": 300_000, "iron": 220_000, "oil": 0.15, "gas": 0.14, "gold": 300},
+    MilitaryFactoryType.BALLISTIC_MISSILE: {"oil": 0.1, "gas": 0.1, "steel": 120_000, "aluminum": 90_000, "gold": 200},
+    MilitaryFactoryType.CRUISE_MISSILE: {"oil": 0.09, "gas": 0.09, "steel": 110_000, "aluminum": 100_000, "gold": 150},
+}
+
+# تعداد تولید در هر چرخه و طول چرخه (ساعت). ناوچه/ناوشکن هر ۶ روز (۱۴۴ ساعت).
+MIL_FACTORY_YIELD: dict[MilitaryFactoryType, tuple[int, int]] = {
+    MilitaryFactoryType.ANTI_MISSILE: (5, 24),
+    MilitaryFactoryType.ARTILLERY: (10, 24),
+    MilitaryFactoryType.TANK: (20, 24),
+    MilitaryFactoryType.APC: (20, 24),
+    MilitaryFactoryType.FIGHTER: (5, 24),
+    MilitaryFactoryType.TRANSPORT_AIRCRAFT: (1, 24),
+    MilitaryFactoryType.DRONE: (20, 24),
+    MilitaryFactoryType.HELICOPTER: (8, 24),
+    MilitaryFactoryType.CORVETTE: (5, 144),
+    MilitaryFactoryType.DESTROYER: (2, 144),
+    MilitaryFactoryType.BALLISTIC_MISSILE: (3, 24),
+    MilitaryFactoryType.CRUISE_MISSILE: (5, 24),
+}

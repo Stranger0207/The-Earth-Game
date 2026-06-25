@@ -16,6 +16,7 @@ from ..constants import (
 from ..database.models import User
 from ..database.repositories import cooldowns as cd_repo
 from ..database.repositories import countries as countries_repo
+from ..database.repositories import facilities as fac_repo
 from ..database.repositories import reserves as reserves_repo
 from ..database.repositories import tariff as tariff_repo
 from ..database.repositories import trade as trade_repo
@@ -101,6 +102,39 @@ async def cb_build(call: CallbackQuery, state: FSMContext) -> None:
     )
 
 
+@router.callback_query(F.data == "econ:facilities")
+async def cb_my_facilities(call: CallbackQuery, session: AsyncSession, db_user: User) -> None:
+    """فهرست تأسیسات احداث‌شده‌ی کشور (v1.7)."""
+    await call.answer()
+    country = await get_player_country(session, db_user)
+    if country is None:
+        await call.message.edit_text(NO_COUNTRY_TEXT)
+        return
+    facilities = await fac_repo.list_facilities(session, country.id)
+    if not facilities:
+        await call.message.edit_text(
+            "🏭 هنوز تأسیساتی احداث نکرده‌اید.", reply_markup=facility_types_kb()
+        )
+        return
+    lines = ["🏭 <b>تأسیسات شما</b>", ""]
+    for f in facilities:
+        try:
+            fa = FACILITY_FA[FacilityType(f.type)]
+        except (ValueError, KeyError):
+            fa = f.type
+        unit = ""
+        if f.resource:
+            try:
+                unit = RESOURCE_UNIT_FA[ResourceType(f.resource)]
+            except (ValueError, KeyError):
+                unit = ""
+        lines.append(
+            f"• {fa} — 📍 {f.location or '—'}\n"
+            f"   🏗 بازدهی: {fa_number(f.yield_amount)} {unit}/۲۴ساعت | 💰 {fa_money(f.budget)}"
+        )
+    await call.message.edit_text("\n".join(lines), reply_markup=facility_types_kb())
+
+
 @router.callback_query(FacilityForm.choosing_type, F.data.startswith("build_type:"))
 async def cb_build_type(call: CallbackQuery, state: FSMContext) -> None:
     await call.answer()
@@ -175,13 +209,13 @@ async def msg_location(
         reply_markup=economy_menu_kb(),
     )
 
-    # خبر اقتصادی
-    president = db_user.president_name or country.name_fa
-    await publish_news(
+    # v1.7: خبر احداث تأسیسات در کانال عمومی منتشر نمی‌شود؛ فقط لاگ مدیران
+    await send_log(
         bot,
-        NewsCategory.ECONOMY,
-        f"کشور {country.flag} {country.name_fa} به ریاست‌جمهوری {president} "
-        f"یک {FACILITY_FA[ftype]} جدید احداث کرد.",
+        "🏗 <b>احداث تأسیسات</b>\n"
+        f"کشور: {country.flag} {country.name_fa}\n"
+        f"تأسیسات: {FACILITY_FA[ftype]}\n"
+        f"محل: {location}",
     )
 
 

@@ -88,6 +88,57 @@ ATTACK_FA: dict[AttackType, str] = {
 }
 
 
+class MilitaryFactoryType(str, enum.Enum):
+    """انواع کارخانه‌های نظامی برای بازتولید تجهیزات (v1.7)."""
+
+    ANTI_MISSILE = "anti_missile"          # سامانه ضد موشکی
+    ARTILLERY = "artillery"                # توپخانه زمین به زمین
+    TANK = "tank"                          # تانک
+    APC = "apc"                            # نفربر زرهی
+    FIGHTER = "fighter"                    # جنگنده
+    TRANSPORT_AIRCRAFT = "transport_aircraft"  # هواپیمای ترابری
+    DRONE = "drone"                        # پهپاد
+    HELICOPTER = "helicopter"              # بالگرد
+    CORVETTE = "corvette"                  # ناوچه
+    DESTROYER = "destroyer"                # ناوشکن
+    BALLISTIC_MISSILE = "ballistic_missile"  # موشک بالستیک
+    CRUISE_MISSILE = "cruise_missile"      # موشک کروز
+
+
+# نام فارسی کارخانه‌ها (برای دکمه‌ها و پیام‌ها)
+MIL_FACTORY_FA: dict[MilitaryFactoryType, str] = {
+    MilitaryFactoryType.ANTI_MISSILE: "کارخانه سامانه ضد موشکی",
+    MilitaryFactoryType.ARTILLERY: "کارخانه توپخانه زمین به زمین",
+    MilitaryFactoryType.TANK: "کارخانه تانک",
+    MilitaryFactoryType.APC: "کارخانه نفربر زرهی",
+    MilitaryFactoryType.FIGHTER: "کارخانه جنگنده",
+    MilitaryFactoryType.TRANSPORT_AIRCRAFT: "کارخانه هواپیمای ترابری",
+    MilitaryFactoryType.DRONE: "کارخانه پهپاد",
+    MilitaryFactoryType.HELICOPTER: "کارخانه بالگرد",
+    MilitaryFactoryType.CORVETTE: "کارخانه ناوچه",
+    MilitaryFactoryType.DESTROYER: "کارخانه ناوشکن",
+    MilitaryFactoryType.BALLISTIC_MISSILE: "کارخانه موشک بالستیک",
+    MilitaryFactoryType.CRUISE_MISSILE: "کارخانه موشک کروز",
+}
+
+# نگاشت نوع کارخانه به «دسته‌ی تجهیزات» (category) دقیقاً مطابق داده‌ی countries.json
+# تا تجهیزات قابل‌بازتولید کشور از روی همین دسته فیلتر شوند.
+MIL_FACTORY_CATEGORY: dict[MilitaryFactoryType, str] = {
+    MilitaryFactoryType.ANTI_MISSILE: "سامانه ضدموشکی",
+    MilitaryFactoryType.ARTILLERY: "توپخانه زمین به زمین",
+    MilitaryFactoryType.TANK: "تانک",
+    MilitaryFactoryType.APC: "نفربر زرهی",
+    MilitaryFactoryType.FIGHTER: "جنگنده",
+    MilitaryFactoryType.TRANSPORT_AIRCRAFT: "هواپیماهای ترابری",
+    MilitaryFactoryType.DRONE: "پهپادها",
+    MilitaryFactoryType.HELICOPTER: "بالگرد",
+    MilitaryFactoryType.CORVETTE: "ناوچه",
+    MilitaryFactoryType.DESTROYER: "ناوشکن",
+    MilitaryFactoryType.BALLISTIC_MISSILE: "موشک بالستیک",
+    MilitaryFactoryType.CRUISE_MISSILE: "موشک کروز",
+}
+
+
 class Region(str, enum.Enum):
     """مناطق جغرافیایی بازی."""
 

@@ -32,8 +32,9 @@ def facility_types_kb() -> InlineKeyboardMarkup:
         builder.button(
             text=FACILITY_FA[ftype], callback_data=f"build_type:{ftype.value}"
         )
+    builder.button(text="🏭 تأسیسات من", callback_data="econ:facilities")
     builder.button(text="🔙 بازگشت", callback_data="menu:economy")
-    builder.adjust(2, 2, 1)
+    builder.adjust(2, 2, 1, 1)
     return builder.as_markup()
 
 

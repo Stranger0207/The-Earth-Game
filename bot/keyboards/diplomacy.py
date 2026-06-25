@@ -27,13 +27,27 @@ def end_call_kb() -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
+def sanction_menu_kb() -> InlineKeyboardMarkup:
+    """منوی تحریم (v1.7): وضع/وضع‌شده/تحریم‌های من/لغو."""
+    builder = InlineKeyboardBuilder()
+    builder.button(text="🚫 وضع تحریم", callback_data="sanc:impose")
+    builder.button(text="📋 تحریم‌های وضع‌شده", callback_data="sanc:imposed")
+    builder.button(text="🎯 تحریم‌های من", callback_data="sanc:mine")
+    builder.button(text="♻️ لغو تحریم", callback_data="sanc:cancel")
+    builder.button(text="🔙 بازگشت", callback_data="menu:diplomacy")
+    builder.adjust(2, 2, 1)
+    return builder.as_markup()
+
+
 def sanction_types_kb() -> InlineKeyboardMarkup:
-    """کیبورد انتخاب نوع تحریم (v1.5)."""
+    """کیبورد انتخاب نوع تحریم (v1.7: بدون تحریم فردی)."""
     from ..enums import SANCTION_FA, SanctionType
 
     builder = InlineKeyboardBuilder()
     for stype in SanctionType:
+        if stype == SanctionType.INDIVIDUAL:
+            continue  # تحریم فردی از فهرست حذف شد (v1.7)
         builder.button(text=SANCTION_FA[stype], callback_data=f"sanc_type:{stype.value}")
-    builder.button(text="🔙 بازگشت", callback_data="menu:diplomacy")
-    builder.adjust(2, 2, 2, 2, 1, 1)
+    builder.button(text="🔙 بازگشت", callback_data="dip:sanction")
+    builder.adjust(2, 2, 2, 2, 1)
     return builder.as_markup()

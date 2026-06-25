@@ -30,6 +30,7 @@ MEDIA_DIRS: dict[str, str] = {
     "trump": r"D:\PictureDB\Trump",
     "diplomacy_travel": r"D:\PictureDB\Diplomaci",
     "meeting": r"D:\PictureDB\Didar",
+    "embargo": r"D:\PictureDB\Embargo",
 }
 
 _IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp"}
@@ -63,6 +64,66 @@ def _append_cache(category: str, file_id: str) -> None:
         )
     with MEDIA_FILE.open("a", encoding="utf-8") as f:
         f.write(f"- {category} | {file_id}\n")
+
+
+def _find_local_file(category: str, stem: str) -> Path | None:
+    """یافتن یک فایل عکس مشخص (با نام پایه مثل "1") در فولدر یک دسته."""
+    folder = MEDIA_DIRS.get(category)
+    if not folder or not os.path.isdir(folder):
+        return None
+    for name in os.listdir(folder):
+        p = Path(name)
+        if p.stem == stem and p.suffix.lower() in _IMAGE_EXTS:
+            return Path(folder) / name
+    return None
+
+
+async def send_specific_photo(
+    bot: Bot,
+    chat_id: int,
+    cache_key: str,
+    category: str,
+    stem: str,
+    caption: str,
+    reply_markup=None,
+) -> bool:
+    """
+    یک عکس «مشخص» (نه تصادفی) را می‌فرستد — مثلاً عکس مخصوص یک نوع تحریم.
+    file_id تحت کلید cache_key در File.md کش می‌شود تا دفعات بعد بدون فایل محلی ارسال شود.
+    """
+    cache = _load_cache()
+    cached = cache.get(cache_key, [])
+    photo = None
+    upload = False
+    if cached:
+        photo = cached[0]
+    else:
+        local = _find_local_file(category, stem)
+        if local is not None:
+            photo = FSInputFile(str(local))
+            upload = True
+
+    if photo is None:
+        try:
+            await bot.send_message(chat_id, caption, reply_markup=reply_markup)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("send_specific_photo text fallback failed: %s", exc)
+        return False
+
+    try:
+        sent = await bot.send_photo(
+            chat_id, photo=photo, caption=caption, reply_markup=reply_markup
+        )
+        if upload and sent.photo:
+            _append_cache(cache_key, sent.photo[-1].file_id)
+        return True
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Failed to send specific photo (%s): %s", cache_key, exc)
+        try:
+            await bot.send_message(chat_id, caption, reply_markup=reply_markup)
+        except Exception:  # noqa: BLE001
+            pass
+        return False
 
 
 def _local_images(category: str) -> list[Path]:

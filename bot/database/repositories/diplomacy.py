@@ -123,13 +123,37 @@ async def add_sanction(session: AsyncSession, sanction: Sanction) -> Sanction:
 async def list_sanctions_against(
     session: AsyncSession, country_id: int
 ) -> list[Sanction]:
-    """تحریم‌های فعال علیه یک کشور."""
+    """تحریم‌های فعال علیه یک کشور (دیگران مرا تحریم کرده‌اند)."""
     result = await session.execute(
         select(Sanction).where(
             Sanction.to_country == country_id, Sanction.active.is_(True)
         )
     )
     return list(result.scalars().all())
+
+
+async def list_sanctions_by(
+    session: AsyncSession, country_id: int
+) -> list[Sanction]:
+    """تحریم‌های فعالی که این کشور وضع کرده است (v1.7)."""
+    result = await session.execute(
+        select(Sanction).where(
+            Sanction.from_country == country_id, Sanction.active.is_(True)
+        )
+    )
+    return list(result.scalars().all())
+
+
+async def get_sanction(session: AsyncSession, sanction_id: int) -> Sanction | None:
+    return await session.get(Sanction, sanction_id)
+
+
+async def deactivate_sanction(session: AsyncSession, sanction_id: int) -> Sanction | None:
+    """لغو (غیرفعال‌سازی) یک تحریم (v1.7)."""
+    sanction = await session.get(Sanction, sanction_id)
+    if sanction is not None:
+        sanction.active = False
+    return sanction
 
 
 # ------------------------- دیدار چندجانبه -------------------------

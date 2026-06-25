@@ -20,10 +20,15 @@ from ..database.repositories import countries as countries_repo
 from ..database.repositories import diplomacy as dip_repo
 from ..enums import SANCTION_FA, DiplomacyStatus, NewsCategory, SanctionType
 from ..keyboards.common import countries_kb
-from ..keyboards.diplomacy import diplomacy_menu_kb, end_call_kb, sanction_types_kb
+from ..keyboards.diplomacy import (
+    diplomacy_menu_kb,
+    end_call_kb,
+    sanction_menu_kb,
+    sanction_types_kb,
+)
 from ..loader import bot
 from ..services.ai import evaluators
-from ..services.media import send_photo_news
+from ..services.media import send_photo_news, send_specific_photo
 from ..services.news_service import publish_news, send_log
 from ..services.sanction_service import apply_sanction_effects
 from ..database.repositories import users as users_repo
@@ -793,8 +798,30 @@ async def cb_contracts(call: CallbackQuery, session: AsyncSession, db_user: User
 # ============================================================
 #  🚫 تحریم
 # ============================================================
+# نگاشت نوع تحریم به شماره‌ی عکس در فولدر D:\PictureDB\Embargo (v1.7)
+SANCTION_IMAGE_STEM: dict[SanctionType, str] = {
+    SanctionType.OIL_TRADE: "1",
+    SanctionType.GAS_TRADE: "2",
+    SanctionType.STEEL_TRADE: "3",
+    SanctionType.MINERAL_TRADE: "4",
+    SanctionType.FINANCIAL: "5",
+    SanctionType.ARMS: "6",
+    SanctionType.TRANSPORT: "7",
+    SanctionType.DIPLOMATIC: "8",
+}
+
+
 @router.callback_query(F.data == "dip:sanction")
-async def cb_sanction(call: CallbackQuery, state: FSMContext, session: AsyncSession, db_user: User) -> None:
+async def cb_sanction(call: CallbackQuery, state: FSMContext) -> None:
+    """منوی تحریم (v1.7)."""
+    await call.answer()
+    await state.clear()
+    await call.message.edit_text("🚫 <b>تحریم</b>\n\nیک گزینه را انتخاب کنید:", reply_markup=sanction_menu_kb())
+
+
+@router.callback_query(F.data == "sanc:impose")
+async def cb_sanction_impose(call: CallbackQuery, session: AsyncSession, db_user: User) -> None:
+    """وضع تحریم: انتخاب کشور هدف (جریان قبلی)."""
     await call.answer()
     country = await get_player_country(session, db_user)
     if country is None:
@@ -803,7 +830,98 @@ async def cb_sanction(call: CallbackQuery, state: FSMContext, session: AsyncSess
     others = await _other_countries(session, country.id)
     await call.message.edit_text(
         "🚫 کدام کشور را تحریم می‌کنید؟",
-        reply_markup=countries_kb(others, prefix="sanction_to", columns=2, back_data="menu:diplomacy"),
+        reply_markup=countries_kb(others, prefix="sanction_to", columns=2, back_data="dip:sanction"),
+    )
+
+
+@router.callback_query(F.data == "sanc:imposed")
+async def cb_sanction_imposed(call: CallbackQuery, session: AsyncSession, db_user: User) -> None:
+    """فهرست تحریم‌هایی که این کشور وضع کرده است."""
+    await call.answer()
+    country = await get_player_country(session, db_user)
+    if country is None:
+        await call.message.edit_text(NO_COUNTRY_TEXT)
+        return
+    sanctions = await dip_repo.list_sanctions_by(session, country.id)
+    if not sanctions:
+        await call.message.edit_text("📋 شما هیچ تحریمی وضع نکرده‌اید.", reply_markup=sanction_menu_kb())
+        return
+    lines = ["📋 <b>تحریم‌های وضع‌شده توسط شما</b>", ""]
+    for s in sanctions:
+        target = await countries_repo.get_country(session, s.to_country)
+        try:
+            stype_fa = SANCTION_FA[SanctionType(s.sanction_type)]
+        except (ValueError, KeyError):
+            stype_fa = s.sanction_type
+        lines.append(f"• {target.flag if target else ''} {target.name_fa if target else '?'} — {stype_fa}")
+    await call.message.edit_text("\n".join(lines), reply_markup=sanction_menu_kb())
+
+
+@router.callback_query(F.data == "sanc:mine")
+async def cb_sanction_mine(call: CallbackQuery, session: AsyncSession, db_user: User) -> None:
+    """فهرست تحریم‌هایی که دیگران علیه این کشور وضع کرده‌اند."""
+    await call.answer()
+    country = await get_player_country(session, db_user)
+    if country is None:
+        await call.message.edit_text(NO_COUNTRY_TEXT)
+        return
+    sanctions = await dip_repo.list_sanctions_against(session, country.id)
+    if not sanctions:
+        await call.message.edit_text("🎯 هیچ کشوری شما را تحریم نکرده است.", reply_markup=sanction_menu_kb())
+        return
+    lines = ["🎯 <b>تحریم‌های علیه کشور شما</b>", ""]
+    for s in sanctions:
+        src = await countries_repo.get_country(session, s.from_country)
+        try:
+            stype_fa = SANCTION_FA[SanctionType(s.sanction_type)]
+        except (ValueError, KeyError):
+            stype_fa = s.sanction_type
+        lines.append(f"• {src.flag if src else ''} {src.name_fa if src else '?'} — {stype_fa}")
+    await call.message.edit_text("\n".join(lines), reply_markup=sanction_menu_kb())
+
+
+@router.callback_query(F.data == "sanc:cancel")
+async def cb_sanction_cancel_list(call: CallbackQuery, session: AsyncSession, db_user: User) -> None:
+    """فهرست تحریم‌های وضع‌شده برای لغو."""
+    await call.answer()
+    country = await get_player_country(session, db_user)
+    if country is None:
+        await call.message.edit_text(NO_COUNTRY_TEXT)
+        return
+    sanctions = await dip_repo.list_sanctions_by(session, country.id)
+    if not sanctions:
+        await call.message.edit_text("♻️ تحریمی برای لغو ندارید.", reply_markup=sanction_menu_kb())
+        return
+    builder = InlineKeyboardBuilder()
+    for s in sanctions:
+        target = await countries_repo.get_country(session, s.to_country)
+        try:
+            stype_fa = SANCTION_FA[SanctionType(s.sanction_type)]
+        except (ValueError, KeyError):
+            stype_fa = s.sanction_type
+        builder.button(
+            text=f"❌ {target.name_fa if target else '?'} — {stype_fa}",
+            callback_data=f"sanc_cancel:{s.id}",
+        )
+    builder.button(text="🔙 بازگشت", callback_data="dip:sanction")
+    builder.adjust(1)
+    await call.message.edit_text("♻️ کدام تحریم را لغو می‌کنید؟", reply_markup=builder.as_markup())
+
+
+@router.callback_query(F.data.startswith("sanc_cancel:"))
+async def cb_sanction_do_cancel(call: CallbackQuery, session: AsyncSession, db_user: User) -> None:
+    """لغو یک تحریم وضع‌شده توسط همین کشور."""
+    await call.answer()
+    country = await get_player_country(session, db_user)
+    sanction = await dip_repo.get_sanction(session, int(call.data.split(":")[1]))
+    if country is None or sanction is None or sanction.from_country != country.id or not sanction.active:
+        await call.answer("این تحریم دیگر معتبر نیست.", show_alert=True)
+        return
+    await dip_repo.deactivate_sanction(session, sanction.id)
+    target = await countries_repo.get_country(session, sanction.to_country)
+    await call.message.edit_text(
+        f"✅ تحریم علیه {target.flag if target else ''} {target.name_fa if target else '?'} لغو شد.",
+        reply_markup=sanction_menu_kb(),
     )
 
 
@@ -866,7 +984,29 @@ async def cb_sanction_type(call: CallbackQuery, state: FSMContext, session: Asyn
         f"🚫 <b>{SANCTION_FA[stype]}</b> علیه {target.flag} {target.name_fa} اعمال شد.\n"
         f"شدت تأثیر: {sev_fa}\n"
         "اثرات این تحریم روی اقتصاد، رضایت و ثبات کشور هدف اعمال شد.",
-        reply_markup=diplomacy_menu_kb(),
+        reply_markup=sanction_menu_kb(),
+    )
+
+    # خبر تحریم با عکس مخصوص همان نوع تحریم در کانال دیپلماسی (v1.7)
+    x = f"{country.flag} {country.name_fa}"
+    y = f"{target.flag} {target.name_fa}"
+    caption = (
+        "🔴 | فووووووووووری\n\n"
+        f"📛 | دولت {x} امروز اعلام کرد که مجموعه‌ای از {SANCTION_FA[stype]} جدید را "
+        f"علیه کشور {y} اعمال کرده است.\n\n"
+        "❌ | این تصمیم در پی اختلافات اخیر میان این دو کشور اتخاذ شده است. خبر های بیشتر در "
+        "رابطه با این موضوع در دست بررسی ست و به محض منتشر شدن، به استحضارتان خواهیم رساند."
+    )
+    if settings.news_diplomacy_channel_id is not None:
+        stem = SANCTION_IMAGE_STEM.get(stype, "1")
+        await send_specific_photo(
+            bot, settings.news_diplomacy_channel_id,
+            f"embargo:{stype.value}", "embargo", stem, caption,
+        )
+    # لاگ تحریم به گروه لاگ
+    await send_log(
+        bot,
+        f"🚫 <b>تحریم وضع شد</b>\nتحریم‌کننده: {x}\nهدف: {y}\nنوع: {SANCTION_FA[stype]}\nشدت: {sev_fa}",
     )
 
     # اطلاع به کشور هدف

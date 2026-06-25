@@ -364,11 +364,125 @@ async def process_calls() -> None:
         await session.commit()
 
 
+async def process_military_factories() -> None:
+    """
+    کارخانه‌های نظامی سررسیدشده را پردازش می‌کند (v1.7):
+    اگر منابع مصرفی هر چرخه کافی باشد، آن‌ها را کسر و تعداد بازدهی را به
+    قلم تجهیزات مربوطه اضافه می‌کند.
+    """
+    from ..constants import MIL_FACTORY_INTAKE
+    from ..database.models import MilitaryAsset
+    from ..database.repositories import military as mil_repo
+    from ..database.repositories import military_factory as milfac_repo
+    from ..enums import MilitaryFactoryType
+
+    async with async_session_factory() as session:
+        factories = await milfac_repo.all_active_factories(session)
+        now = _utcnow()
+        for f in factories:
+            if not milfac_repo.is_due(f, now):
+                continue
+            try:
+                intake = MIL_FACTORY_INTAKE[MilitaryFactoryType(f.factory_type)]
+            except (ValueError, KeyError):
+                intake = {}
+            # بررسی کافی‌بودن همه‌ی منابع مصرفی این چرخه
+            enough = True
+            for key, amount in intake.items():
+                if not await reserves_repo.has_enough(session, f.country_id, key, amount):
+                    enough = False
+                    break
+            if not enough:
+                # منابع کافی نیست؛ این چرخه تولیدی ندارد (زمان بازدهی هم جلو نمی‌رود)
+                continue
+            for key, amount in intake.items():
+                await reserves_repo.add_amount(session, f.country_id, key, -amount)
+
+            asset = await mil_repo.get_asset_by_name(session, f.country_id, f.asset_name)
+            if asset is not None:
+                asset.count += f.yield_amount
+            else:
+                session.add(MilitaryAsset(
+                    country_id=f.country_id,
+                    category=f.category,
+                    branch="",
+                    name=f.asset_name,
+                    unit=f.unit,
+                    count=f.yield_amount,
+                ))
+            f.last_yield_at = now
+        await session.commit()
+
+
+async def process_military_shipments(bot: Bot) -> None:
+    """محموله‌های نظامی WTO که زمان رسیدنشان فرارسیده را تحویل می‌دهد (v1.7)."""
+    from ..config import get_settings
+    from ..database.models import MilitaryAsset
+    from ..database.repositories import countries as countries_repo
+    from ..database.repositories import military as mil_repo
+    from ..database.repositories import military_sale as milsale_repo
+    from ..services.news_service import send_log
+
+    settings = get_settings()
+    buyer_notices: list[tuple[int, str]] = []
+    log_notices: list[str] = []
+
+    async with async_session_factory() as session:
+        sales = await milsale_repo.list_in_transit(session)
+        now = _utcnow()
+        for sale in sales:
+            eta = _aware(sale.ship_eta)
+            if eta is None or eta > now:
+                continue
+            # افزودن تجهیزات به موجودی خریدار (در صورت نبود، ساخت قلم جدید)
+            asset = await mil_repo.get_asset_by_name(session, sale.buyer_country, sale.name)
+            if asset is not None:
+                asset.count += sale.count
+            else:
+                session.add(MilitaryAsset(
+                    country_id=sale.buyer_country,
+                    category=sale.category,
+                    branch=sale.branch,
+                    name=sale.name,
+                    unit=sale.unit,
+                    count=sale.count,
+                ))
+            sale.status = TradeStatus.DELIVERED
+
+            seller = await countries_repo.get_country(session, sale.seller_country)
+            buyer = await countries_repo.get_country(session, sale.buyer_country)
+            seller_name = f"{seller.flag} {seller.name_fa}" if seller else "?"
+            buyer_name = f"{buyer.flag} {buyer.name_fa}" if buyer else "?"
+            log_notices.append(
+                "🪖 <b>محموله نظامی تحویل شد</b>\n"
+                f"فروشنده: {seller_name}\n"
+                f"خریدار: {buyer_name}\n"
+                f"تجهیزات: {fa_number(sale.count)} {sale.unit} {sale.name}"
+            )
+            if buyer and buyer.owner_user_id:
+                buyer_notices.append((
+                    buyer.owner_user_id,
+                    f"🪖 محموله‌ی نظامی شما رسید: {fa_number(sale.count)} {sale.unit} {sale.name} "
+                    "به تجهیزات کشورتان اضافه شد.",
+                ))
+        await session.commit()
+
+    for owner_id, text in buyer_notices:
+        try:
+            await bot.send_message(owner_id, text)
+        except Exception:  # noqa: BLE001
+            pass
+    for text in log_notices:
+        await send_log(bot, text)
+
+
 async def _tick(bot: Bot) -> None:
     """جاب اصلی که هر دقیقه همه‌ی پردازش‌های زمان‌دار را اجرا می‌کند."""
     try:
         await process_facility_yields()
         await process_shipments(bot)
+        await process_military_factories()
+        await process_military_shipments(bot)
         await process_attacks(bot)
         await process_meetings(bot)
         await process_group_meetings(bot)

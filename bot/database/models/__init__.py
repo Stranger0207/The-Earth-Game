@@ -19,6 +19,8 @@ from .diplomacy import (
 )
 from .facility import Facility
 from .military import MilitaryAsset
+from .military_factory import MilitaryFactory
+from .military_sale import MilitarySale
 from .reserves import Reserve
 from .tariff import TariffRate
 from .trade import ResourceSale
@@ -35,6 +37,8 @@ __all__ = [
     "GroupMeetingParticipant",
     "Meeting",
     "MilitaryAsset",
+    "MilitaryFactory",
+    "MilitarySale",
     "PhoneCall",
     "PhoneCallMessage",
     "Reserve",

@@ -71,6 +71,25 @@ class AttackForm(StatesGroup):
     confirming_fuel = State()     # تأیید مصرف سوخت
 
 
+class MilitaryFactoryForm(StatesGroup):
+    """فرم احداث کارخانه‌ی نظامی (v1.7)."""
+
+    choosing_type = State()      # نوع کارخانه (جنگنده/تانک/...)
+    choosing_asset = State()     # قلم تجهیزات قابل‌بازتولید
+    entering_location = State()  # محل احداث
+    confirming = State()         # تأیید نهایی هزینه‌ها
+
+
+class MilitarySaleForm(StatesGroup):
+    """فرم فروش تجهیزات نظامی به کشور دیگر (v1.7)."""
+
+    choosing_category = State()  # دسته‌ی تجهیزات
+    choosing_asset = State()     # قلم تجهیزات
+    entering_count = State()     # تعداد
+    entering_price = State()     # قیمت
+    choosing_buyer = State()     # کشور خریدار
+
+
 class AdvisorForm(StatesGroup):
     """فرم پرسش از مشاور AI."""
 

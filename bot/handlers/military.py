@@ -416,8 +416,8 @@ async def cb_factory_type(call: CallbackQuery, state: FSMContext, session: Async
     await state.set_state(MilitaryFactoryForm.choosing_asset)
     builder = InlineKeyboardBuilder()
     for idx, a in enumerate(matching):
-        builder.button(text=a.name, callback_data=f"milfac_asset:{idx}")
-    builder.button(text="🔙 بازگشت", callback_data="milfac:build")
+        builder.button(text=a.name, callback_data=f"milfac_asset:{idx}", style=STYLE_OK)
+    builder.button(text="🔙 بازگشت", callback_data="milfac:build", style="primary")
     builder.adjust(1)
     await call.message.edit_text(
         f"کدام قلم از «{category}» را بازتولید می‌کنید؟",
@@ -601,8 +601,8 @@ async def cb_sell(call: CallbackQuery, state: FSMContext, session: AsyncSession,
     await state.set_state(MilitarySaleForm.choosing_category)
     builder = InlineKeyboardBuilder()
     for idx, cat in enumerate(categories):
-        builder.button(text=cat, callback_data=f"milsell_cat:{idx}")
-    builder.button(text="🔙 بازگشت", callback_data="menu:military")
+        builder.button(text=cat, callback_data=f"milsell_cat:{idx}", style="primary")
+    builder.button(text="🔙 بازگشت", callback_data="menu:military", style="primary")
     builder.adjust(2)
     await state.update_data(sell_categories=categories)
     await call.message.edit_text("💰 قصد فروش کدام دسته از تجهیزات را دارید؟", reply_markup=builder.as_markup())
@@ -624,8 +624,8 @@ async def cb_sell_category(call: CallbackQuery, state: FSMContext) -> None:
     await state.set_state(MilitarySaleForm.choosing_asset)
     builder = InlineKeyboardBuilder()
     for i, a in enumerate(assets):
-        builder.button(text=f"{a['name']} ({fa_number(a['count'])})", callback_data=f"milsell_asset:{i}")
-    builder.button(text="🔙 بازگشت", callback_data="mil:sell")
+        builder.button(text=f"{a['name']} ({fa_number(a['count'])})", callback_data=f"milsell_asset:{i}", style=STYLE_OK)
+    builder.button(text="🔙 بازگشت", callback_data="mil:sell", style="primary")
     builder.adjust(1)
     await call.message.edit_text(f"کدام قلم از «{category}» را می‌فروشید؟", reply_markup=builder.as_markup())
 

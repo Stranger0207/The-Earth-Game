@@ -262,7 +262,7 @@ async def cb_meeting(call: CallbackQuery, state: FSMContext, session: AsyncSessi
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🤝 دیدار دوجانبه", callback_data="meet_kind:bi", style=STYLE_MAIN)],
         [InlineKeyboardButton(text="👥 دیدار چندجانبه", callback_data="meet_kind:multi", style=STYLE_MAIN)],
-        [InlineKeyboardButton(text="🔙 بازگشت", callback_data="menu:diplomacy")],
+        [InlineKeyboardButton(text="🔙 بازگشت", callback_data="menu:diplomacy", style=STYLE_MAIN)],
     ])
     await call.message.edit_text(
         "🤝 <b>دیدار حضوری</b>\n\nنوع دیدار را انتخاب کنید:", reply_markup=kb
@@ -287,7 +287,7 @@ async def cb_meeting_bi(call: CallbackQuery, state: FSMContext, session: AsyncSe
 
 def _group_select_kb(others, selected: set[int]):
     """کیبورد انتخاب چندتایی کشورها برای نشست چندجانبه (انتخاب‌شده سبز)."""
-    from ..utils.ui import PICK_OFF, PICK_ON, STYLE_OK
+    from ..utils.ui import PICK_OFF, PICK_ON, STYLE_MAIN, STYLE_OK
 
     builder = InlineKeyboardBuilder()
     for c in others:
@@ -296,16 +296,16 @@ def _group_select_kb(others, selected: set[int]):
         builder.button(
             text=f"{mark} {c.flag} {c.name_fa}",
             callback_data=f"meet_toggle:{c.id}",
-            style=STYLE_OK if chosen else None,
+            style=STYLE_OK if chosen else STYLE_MAIN,
         )
     builder.adjust(2)
     cont_text = f"✅ ادامه ({fa_number(len(selected))})" if selected else "✔️ ادامه"
     builder.row(
         InlineKeyboardButton(
             text=cont_text, callback_data="meet_multi_next",
-            style=STYLE_OK if selected else None,
+            style=STYLE_OK if selected else STYLE_MAIN,
         ),
-        InlineKeyboardButton(text="🔙 بازگشت", callback_data="menu:diplomacy"),
+        InlineKeyboardButton(text="🔙 بازگشت", callback_data="menu:diplomacy", style=STYLE_MAIN),
     )
     return builder.as_markup()
 
@@ -916,8 +916,9 @@ async def cb_sanction_cancel_list(call: CallbackQuery, session: AsyncSession, db
         builder.button(
             text=f"❌ {target.name_fa if target else '?'} — {stype_fa}",
             callback_data=f"sanc_cancel:{s.id}",
+            style=STYLE_OK,
         )
-    builder.button(text="🔙 بازگشت", callback_data="dip:sanction")
+    builder.button(text="🔙 بازگشت", callback_data="dip:sanction", style=STYLE_MAIN)
     builder.adjust(1)
     await call.message.edit_text("♻️ کدام تحریم را لغو می‌کنید؟", reply_markup=builder.as_markup())
 
@@ -1098,6 +1099,7 @@ async def msg_speech_photo(message: Message, state: FSMContext, session: AsyncSe
         InlineKeyboardButton(
             text="💬 نقل قول",
             url=f"https://t.me/{username}?start=quote_{speech.id}",
+            style=STYLE_MAIN,
         )
     ]])
     sent = await bot.send_photo(

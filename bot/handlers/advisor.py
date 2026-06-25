@@ -30,10 +30,12 @@ _DOMAIN_FA = {
 
 def _domain_kb():
     """کیبورد انتخاب دامنه‌ی مشاوره."""
+    from ..utils.ui import STYLE_MAIN
+
     builder = InlineKeyboardBuilder()
     for domain, fa in _DOMAIN_FA.items():
-        builder.button(text=fa, callback_data=f"adv:{domain.value}")
-    builder.button(text="🔙 بازگشت", callback_data="menu:main")
+        builder.button(text=fa, callback_data=f"adv:{domain.value}", style=STYLE_MAIN)
+    builder.button(text="🔙 بازگشت", callback_data="menu:main", style=STYLE_MAIN)
     builder.adjust(3, 1)
     return builder.as_markup()
 

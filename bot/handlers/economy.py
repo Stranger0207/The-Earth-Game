@@ -509,7 +509,7 @@ async def cb_sale_reject(
 def _tariff_menu_kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="➕ تعیین/تغییر تعرفه", callback_data="tariff:add", style=STYLE_MAIN)],
-        [InlineKeyboardButton(text="🔙 بازگشت", callback_data="menu:economy")],
+        [InlineKeyboardButton(text="🔙 بازگشت", callback_data="menu:economy", style=STYLE_MAIN)],
     ])
 
 

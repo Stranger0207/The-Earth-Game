@@ -12,13 +12,13 @@ from ..utils.ui import STYLE_MAIN, STYLE_NO, STYLE_OK
 def economy_menu_kb(is_usa: bool = False) -> InlineKeyboardMarkup:
     """منوی اصلی اقتصاد. برای آمریکا دکمه‌ی تعرفه‌ی بین‌المللی هم اضافه می‌شود (v1.5)."""
     builder = InlineKeyboardBuilder()
-    builder.button(text="📊 گزارش اقتصادی", callback_data="econ:report")
-    builder.button(text="📦 ذخایر", callback_data="econ:reserves")
-    builder.button(text="🏗 احداث تأسیسات", callback_data="econ:build", style=STYLE_MAIN)
+    builder.button(text="📊 گزارش اقتصادی", callback_data="econ:report", style=STYLE_MAIN)
+    builder.button(text="📦 ذخایر", callback_data="econ:reserves", style=STYLE_MAIN)
+    builder.button(text="🏗 احداث تأسیسات", callback_data="econ:build", style=STYLE_OK)
     builder.button(text="💱 فروش ذخیره", callback_data="econ:sell", style=STYLE_OK)
     if is_usa:
         builder.button(text="🇺🇸 تعرفه بین‌المللی", callback_data="econ:tariffs", style=STYLE_NO)
-    builder.button(text="🔙 بازگشت", callback_data="menu:main")
+    builder.button(text="🔙 بازگشت", callback_data="menu:main", style=STYLE_MAIN)
     if is_usa:
         builder.adjust(2, 2, 1, 1)
     else:
@@ -31,10 +31,10 @@ def facility_types_kb() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     for ftype in FacilityType:
         builder.button(
-            text=FACILITY_FA[ftype], callback_data=f"build_type:{ftype.value}"
+            text=FACILITY_FA[ftype], callback_data=f"build_type:{ftype.value}", style=STYLE_OK
         )
     builder.button(text="🏭 تأسیسات من", callback_data="econ:facilities", style=STYLE_MAIN)
-    builder.button(text="🔙 بازگشت", callback_data="menu:economy")
+    builder.button(text="🔙 بازگشت", callback_data="menu:economy", style=STYLE_MAIN)
     builder.adjust(2, 2, 1, 1)
     return builder.as_markup()
 
@@ -53,8 +53,9 @@ def mine_resources_kb() -> InlineKeyboardMarkup:
         builder.button(
             text=f"{RESOURCE_EMOJI[r]} {RESOURCE_FA[r]}",
             callback_data=f"mine_res:{r.value}",
+            style=STYLE_MAIN,
         )
-    builder.button(text="🔙 بازگشت", callback_data="econ:build")
+    builder.button(text="🔙 بازگشت", callback_data="econ:build", style=STYLE_MAIN)
     builder.adjust(2, 2, 1)
     return builder.as_markup()
 
@@ -66,7 +67,8 @@ def sell_resources_kb() -> InlineKeyboardMarkup:
         builder.button(
             text=f"{RESOURCE_EMOJI[r]} {RESOURCE_FA[r]}",
             callback_data=f"sell_res:{r.value}",
+            style=STYLE_MAIN,
         )
-    builder.button(text="🔙 بازگشت", callback_data="menu:economy")
+    builder.button(text="🔙 بازگشت", callback_data="menu:economy", style=STYLE_MAIN)
     builder.adjust(2, 2, 2, 1)
     return builder.as_markup()

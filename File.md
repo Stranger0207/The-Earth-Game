@@ -12,6 +12,10 @@
 - `meeting` → `D:\PictureDB\Didar` (خبر شروع نشست)
 - `embargo` → `D:\PictureDB\Embargo` (خبر تحریم؛ هر عکس مخصوص یک نوع تحریم، کلید کش: `embargo:<نوع>`)
 
+> برای پرکردن یک‌بارهٔ همهٔ عکس‌ها (به‌ویژه ۸ عکس تحریم) روی سیستمی که فولدرهای
+> `D:\PictureDB` را دارد، اجرا کن: `PYTHONUTF8=1 python -m scripts.cache_media`
+> سپس این فایل را commit و روی VPS `git pull` کن.
+
 ## فهرست file_idها
 هر خط با فرمت `- دسته | file_id` (به‌صورت خودکار توسط ربات افزوده می‌شود):
 

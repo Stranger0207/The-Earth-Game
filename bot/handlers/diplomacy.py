@@ -1174,14 +1174,6 @@ async def cb_sanction_type(call: CallbackQuery, state: FSMContext, session: Asyn
         except Exception:  # noqa: BLE001
             pass
 
-    president = db_user.president_name or country.name_fa
-    await publish_news(
-        bot,
-        NewsCategory.DIPLOMACY,
-        f"🚫 {country.flag} {country.name_fa} به ریاست‌جمهوری {president} "
-        f"کشور {target.flag} {target.name_fa} را تحت «{SANCTION_FA[stype]}» قرار داد.",
-    )
-
 
 # ============================================================
 #  🎤 سیستم سخنرانی و نقل قول (v1.5)

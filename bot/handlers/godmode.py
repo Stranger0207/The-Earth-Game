@@ -38,13 +38,19 @@ from ..database.models import (
     User,
 )
 from ..database.repositories import countries as countries_repo
+from ..database.repositories import facilities as fac_repo
 from ..database.repositories import military as mil_repo
+from ..database.repositories import military_factory as milfac_repo
 from ..database.repositories import reserves as reserves_repo
 from ..database.repositories import users as users_repo
 from ..enums import (
+    FACILITY_FA,
+    MIL_FACTORY_FA,
     RESOURCE_FA,
     RESOURCE_UNIT_FA,
     DiplomacyStatus,
+    FacilityType,
+    MilitaryFactoryType,
     ResourceType,
     TradeStatus,
 )
@@ -153,12 +159,13 @@ async def _country_panel_kb(country: Country) -> InlineKeyboardMarkup:
     builder.button(text="✏️ ویرایش اقتصاد", callback_data=f"godeco:{country.id}", style=STYLE_MAIN)
     builder.button(text="📦 ویرایش ذخایر", callback_data=f"godres:{country.id}", style=STYLE_MAIN)
     builder.button(text="⚔️ ویرایش تجهیزات", callback_data=f"godmil:{country.id}", style=STYLE_MAIN)
+    builder.button(text="🏭 تأسیسات و کارخانه‌ها", callback_data=f"godfac:{country.id}", style=STYLE_MAIN)
     if country.is_claimed:
         builder.button(text="🚪 آزادسازی (اخراج)", callback_data=f"godrelease:{country.id}", style=STYLE_NO)
         builder.button(text="⛔️ بن مالک", callback_data=f"godban:{country.id}", style=STYLE_NO)
         builder.button(text="✅ رفع بن مالک", callback_data=f"godunban:{country.id}", style=STYLE_OK)
     builder.button(text="🔙 بازگشت", callback_data="god:countries", style=STYLE_MAIN)
-    builder.adjust(2, 2, 2, 1)
+    builder.adjust(2, 2, 3, 1)
     return builder.as_markup()
 
 
@@ -188,6 +195,57 @@ async def cb_country_panel(call: CallbackQuery, session: AsyncSession) -> None:
         return
     await call.answer()
     await _show_country_panel(call, session, int(call.data.split(":")[1]))
+
+
+@router.callback_query(F.data.startswith("godfac:"))
+async def cb_god_facilities(call: CallbackQuery, session: AsyncSession) -> None:
+    """نمایش فهرست تأسیسات و کارخانه‌های نظامی یک کشور در پنل گاد (v1.9)."""
+    if not await _guard(call):
+        return
+    await call.answer()
+    cid = int(call.data.split(":")[1])
+    country = await countries_repo.get_country(session, cid)
+    if country is None:
+        await call.message.edit_text("کشور یافت نشد.", reply_markup=_home_kb())
+        return
+
+    facilities = await fac_repo.list_facilities(session, cid)
+    factories = await milfac_repo.list_factories(session, cid)
+
+    lines = [header(f"تأسیسات و کارخانه‌های {country.flag} {country.name_fa}", "🏭"), ""]
+
+    lines.append("🏗 <b>تأسیسات:</b>")
+    if facilities:
+        for f in facilities:
+            try:
+                label = FACILITY_FA[FacilityType(f.type)]
+            except (ValueError, KeyError):
+                label = f.type
+            if f.resource:
+                try:
+                    label += f" {RESOURCE_FA[ResourceType(f.resource)]}"
+                except (ValueError, KeyError):
+                    pass
+            lines.append(f"• {label} — 📍 {f.location or '—'}")
+    else:
+        lines.append("—")
+
+    lines.append("")
+    lines.append("🏭 <b>کارخانه‌های نظامی:</b>")
+    if factories:
+        for f in factories:
+            try:
+                label = MIL_FACTORY_FA[MilitaryFactoryType(f.factory_type)]
+            except (ValueError, KeyError):
+                label = f.factory_type
+            lines.append(f"• {label} — بازتولید {f.asset_name} (📍 {f.location or '—'})")
+    else:
+        lines.append("—")
+
+    kb = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="🔙 بازگشت", callback_data=f"godc:{cid}", style=STYLE_MAIN)
+    ]])
+    await call.message.edit_text("\n".join(lines), reply_markup=kb)
 
 
 # ============================================================

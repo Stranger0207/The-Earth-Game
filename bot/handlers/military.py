@@ -18,6 +18,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..config import get_settings
 from ..constants import (
+    BUILD_LIMIT_COUNT,
+    BUILD_LIMIT_WINDOW_HOURS,
     MIL_FACTORY_BUILD_RESOURCES,
     MIL_FACTORY_COST_USD,
     MIL_FACTORY_INTAKE,
@@ -25,6 +27,7 @@ from ..constants import (
 )
 from ..database.models import Attack, MilitaryFactory, MilitarySale, User
 from ..database.repositories import countries as countries_repo
+from ..database.repositories import facilities as fac_repo
 from ..database.repositories import military as mil_repo
 from ..database.repositories import military_factory as milfac_repo
 from ..database.repositories import military_sale as milsale_repo
@@ -351,6 +354,17 @@ async def cb_factory_confirm(call: CallbackQuery, state: FSMContext, session: As
     country = await get_player_country(session, db_user)
     if country is None:
         await call.message.edit_text(NO_COUNTRY_TEXT)
+        return
+
+    # محدودیت ساخت: حداکثر ۳ ساخت (تأسیسات + کارخانه) در هر ۱۲ ساعت (v1.9)
+    since = _utcnow() - timedelta(hours=BUILD_LIMIT_WINDOW_HOURS)
+    recent = await fac_repo.count_builds_since(session, country.id, since)
+    if recent >= BUILD_LIMIT_COUNT:
+        await call.message.edit_text(
+            f"⏳ شما در هر {fa_number(BUILD_LIMIT_WINDOW_HOURS)} ساعت حداکثر "
+            f"{fa_number(BUILD_LIMIT_COUNT)} تأسیسات/کارخانه می‌توانید بسازید. لطفاً بعداً تلاش کنید.",
+            reply_markup=military_factory_menu_kb(),
+        )
         return
 
     ftype = MilitaryFactoryType(data["factory_type"])

@@ -27,6 +27,27 @@ async def list_facilities(
     return list(result.scalars().all())
 
 
+async def count_builds_since(
+    session: AsyncSession, country_id: int, since: datetime
+) -> int:
+    """تعداد تأسیسات + کارخانه‌های نظامی ساخته‌شده توسط یک کشور از زمان `since` (v1.9)."""
+    from sqlalchemy import func
+
+    from ..models import MilitaryFactory
+
+    fac = await session.execute(
+        select(func.count()).select_from(Facility).where(
+            Facility.country_id == country_id, Facility.created_at >= since
+        )
+    )
+    mf = await session.execute(
+        select(func.count()).select_from(MilitaryFactory).where(
+            MilitaryFactory.country_id == country_id, MilitaryFactory.created_at >= since
+        )
+    )
+    return (fac.scalar() or 0) + (mf.scalar() or 0)
+
+
 async def all_active_facilities(session: AsyncSession) -> list[Facility]:
     """همه‌ی تأسیسات فعال (برای پردازش بازدهی توسط زمان‌بند)."""
     result = await session.execute(

@@ -11,6 +11,8 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMar
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..constants import (
+    BUILD_LIMIT_COUNT,
+    BUILD_LIMIT_WINDOW_HOURS,
     FACILITY_COST_USD,
     RESOURCE_SALE_COOLDOWN_HOURS,
 )
@@ -214,6 +216,19 @@ async def msg_location(
         await state.clear()
         return
 
+    # محدودیت ساخت: حداکثر ۳ ساخت (تأسیسات + کارخانه) در هر ۱۲ ساعت (v1.9)
+    since = _utcnow() - timedelta(hours=BUILD_LIMIT_WINDOW_HOURS)
+    recent = await fac_repo.count_builds_since(session, country.id, since)
+    if recent >= BUILD_LIMIT_COUNT:
+        await state.clear()
+        await message.answer(
+            f"⏳ شما در هر {fa_number(BUILD_LIMIT_WINDOW_HOURS)} ساعت حداکثر "
+            f"{fa_number(BUILD_LIMIT_COUNT)} تأسیسات/کارخانه می‌توانید بسازید. "
+            "لطفاً بعداً دوباره تلاش کنید.",
+            reply_markup=economy_menu_kb(),
+        )
+        return
+
     try:
         facility = await build_facility(session, country, ftype, resource, location)
     except EconomyError as exc:
@@ -236,11 +251,18 @@ async def msg_location(
     )
 
     # v1.7: خبر احداث تأسیسات در کانال عمومی منتشر نمی‌شود؛ فقط لاگ مدیران
+    # v1.9: نوع منبع تأسیسات معدنی هم در لاگ نوشته می‌شود (مثلاً «معدن آهن»)
+    fac_label = FACILITY_FA[ftype]
+    if facility.resource:
+        try:
+            fac_label = f"{FACILITY_FA[ftype]} {RESOURCE_FA[ResourceType(facility.resource)]}"
+        except (ValueError, KeyError):
+            pass
     await send_log(
         bot,
         "🏗 <b>احداث تأسیسات</b>\n"
         f"کشور: {country.flag} {country.name_fa}\n"
-        f"تأسیسات: {FACILITY_FA[ftype]}\n"
+        f"تأسیسات: {fac_label}\n"
         f"محل: {location}",
     )
 

@@ -150,6 +150,14 @@ async def msg_letter_body(message: Message, state: FSMContext, session: AsyncSes
             )
         except Exception:  # noqa: BLE001
             pass
+    # لاگ نامه به گروه لاگ مدیران
+    await send_log(
+        bot,
+        f"✉️ <b>نامه</b>\n"
+        f"فرستنده: {country.flag} {country.name_fa}\n"
+        f"گیرنده: {target.flag} {target.name_fa}\n\n"
+        f"📝 متن:\n{message.text}",
+    )
     await message.answer("✅ نامه ارسال شد.", reply_markup=diplomacy_menu_kb())
 
 

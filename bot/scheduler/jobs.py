@@ -212,6 +212,8 @@ async def process_meetings(bot: Bot) -> None:
     settings = get_settings()
     # خبرهای شروع نشست (کپشن) برای ارسال پس از commit
     start_captions: list[str] = []
+    # (owner_ids) دیدارهایی که تازه شروع شده‌اند تا دکمه‌ی «پایان نشست» برایشان برود
+    started_owner_ids: list[int] = []
 
     async def _pres(session, country) -> str:
         if country and country.owner_user_id:
@@ -241,6 +243,9 @@ async def process_meetings(bot: Bot) -> None:
                 m.start_announced = True
                 traveler = await countries_repo.get_country(session, m.traveler_country)
                 host = await countries_repo.get_country(session, m.host_country)
+                for c in (traveler, host):
+                    if c and c.owner_user_id:
+                        started_owner_ids.append(c.owner_user_id)
                 k = await _pres(session, traveler)
                 o = await _pres(session, host)
                 x = f"{traveler.flag} {traveler.name_fa}" if traveler else "?"
@@ -260,6 +265,20 @@ async def process_meetings(bot: Bot) -> None:
     if settings.news_diplomacy_channel_id is not None:
         for caption in start_captions:
             await send_photo_news(bot, settings.news_diplomacy_channel_id, "meeting", caption)
+
+    # ارسال دکمه‌ی «پایان نشست» به شرکت‌کنندگان دیدار دوجانبه‌ی تازه‌شروع‌شده (v1.8)
+    if started_owner_ids:
+        from ..keyboards.diplomacy import end_meeting_kb
+
+        for oid in started_owner_ids:
+            try:
+                await bot.send_message(
+                    oid,
+                    "🤝 نشست آغاز شد. برای پایان دادن به نشست از دکمه‌ی زیر استفاده کنید.",
+                    reply_markup=end_meeting_kb(),
+                )
+            except Exception:  # noqa: BLE001
+                pass
 
 
 async def process_group_meetings(bot: Bot) -> None:
@@ -335,10 +354,12 @@ async def process_group_meetings(bot: Bot) -> None:
         await session.commit()
 
     # ارسال اعلان‌ها پس از commit
+    from ..keyboards.diplomacy import end_meeting_kb
+
     for owner_ids, notice, news in started_notices:
         for oid in owner_ids:
             try:
-                await bot.send_message(oid, notice)
+                await bot.send_message(oid, notice, reply_markup=end_meeting_kb())
             except Exception:  # noqa: BLE001
                 pass
         if settings.news_diplomacy_channel_id is not None:

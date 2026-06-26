@@ -23,6 +23,7 @@ from ..keyboards.common import countries_kb
 from ..keyboards.diplomacy import (
     diplomacy_menu_kb,
     end_call_kb,
+    end_meeting_kb,
     sanction_menu_kb,
     sanction_types_kb,
 )
@@ -68,6 +69,13 @@ def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def _back_kb(callback_data: str) -> InlineKeyboardMarkup:
+    """کیبورد تک‌دکمه‌ای بازگشت به مرحله‌ی قبل (v1.8)."""
+    return InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="🔙 بازگشت", callback_data=callback_data, style=STYLE_MAIN)
+    ]])
+
+
 def _aware(dt: datetime | None) -> datetime | None:
     if dt is None:
         return None
@@ -103,7 +111,25 @@ async def cb_letter_to(call: CallbackQuery, state: FSMContext) -> None:
     await call.answer()
     await state.update_data(target_id=int(call.data.split(":")[1]))
     await state.set_state(LetterForm.writing_body)
-    await call.message.edit_text("متن نامه را بنویسید:")
+    await call.message.edit_text("متن نامه را بنویسید:", reply_markup=_back_kb("letterback"))
+
+
+@router.callback_query(StateFilter(LetterForm), F.data == "letterback")
+async def cb_letter_back(
+    call: CallbackQuery, state: FSMContext, session: AsyncSession, db_user: User
+) -> None:
+    """بازگشت به انتخاب کشور مقصد نامه."""
+    await call.answer()
+    country = await get_player_country(session, db_user)
+    if country is None:
+        await call.message.edit_text(NO_COUNTRY_TEXT)
+        return
+    await state.set_state(LetterForm.choosing_target)
+    others = await _other_countries(session, country.id)
+    await call.message.edit_text(
+        "✉️ نامه را به کدام کشور می‌فرستید؟",
+        reply_markup=countries_kb(others, prefix="letter_to", columns=2, back_data="menu:diplomacy"),
+    )
 
 
 @router.message(LetterForm.writing_body, F.text)
@@ -249,6 +275,56 @@ async def cb_call_end(call: CallbackQuery, session: AsyncSession, db_user: User)
 
 
 # ============================================================
+#  🔚 پایان نشست (دیدار دوجانبه/چندجانبه) — v1.8
+# ============================================================
+@router.callback_query(F.data == "meeting:end")
+async def cb_meeting_end(call: CallbackQuery, session: AsyncSession, db_user: User) -> None:
+    """پایان دادن به نشست فعال توسط یکی از شرکت‌کنندگان."""
+    country = await get_player_country(session, db_user)
+    if country is None:
+        await call.answer()
+        return
+
+    # ۱) دیدار دوجانبه‌ی فعال
+    meeting = await dip_repo.get_active_meeting_for_country(session, country.id)
+    if meeting is not None:
+        meeting.status = DiplomacyStatus.COMPLETED
+        await call.answer("نشست پایان یافت")
+        traveler = await countries_repo.get_country(session, meeting.traveler_country)
+        host = await countries_repo.get_country(session, meeting.host_country)
+        for c in (traveler, host):
+            if c and c.owner_user_id:
+                try:
+                    await bot.send_message(
+                        c.owner_user_id,
+                        f"🔚 نشست توسط {country.flag} {country.name_fa} پایان یافت.",
+                    )
+                except Exception:  # noqa: BLE001
+                    pass
+        return
+
+    # ۲) نشست چندجانبه‌ی فعال
+    group = await dip_repo.get_active_group_meeting_for_country(session, country.id)
+    if group is not None:
+        group.status = DiplomacyStatus.COMPLETED
+        await call.answer("نشست پایان یافت")
+        member_ids = await dip_repo.group_member_country_ids(session, group)
+        for cid in member_ids:
+            member = await countries_repo.get_country(session, cid)
+            if member and member.owner_user_id:
+                try:
+                    await bot.send_message(
+                        member.owner_user_id,
+                        f"🔚 نشست «{group.title}» توسط {country.flag} {country.name_fa} پایان یافت.",
+                    )
+                except Exception:  # noqa: BLE001
+                    pass
+        return
+
+    await call.answer("نشست فعالی ندارید.", show_alert=True)
+
+
+# ============================================================
 #  🤝 دیدار حضوری
 # ============================================================
 @router.callback_query(F.data == "dip:meeting")
@@ -359,7 +435,28 @@ async def cb_meeting_multi_next(call: CallbackQuery, state: FSMContext) -> None:
     await state.set_state(MeetingForm.entering_group_title)
     await call.message.edit_text(
         f"👥 {fa_number(len(selected))} کشور انتخاب شد.\n\n"
-        "عنوان نشست چندجانبه را وارد کنید (مثلاً «نشست امنیت منطقه‌ای»):"
+        "عنوان نشست چندجانبه را وارد کنید (مثلاً «نشست امنیت منطقه‌ای»):",
+        reply_markup=_back_kb("meetback:members"),
+    )
+
+
+@router.callback_query(StateFilter(MeetingForm), F.data == "meetback:members")
+async def cb_meeting_back_members(
+    call: CallbackQuery, state: FSMContext, session: AsyncSession, db_user: User
+) -> None:
+    """بازگشت به انتخاب کشورهای نشست چندجانبه."""
+    await call.answer()
+    country = await get_player_country(session, db_user)
+    if country is None:
+        await call.message.edit_text(NO_COUNTRY_TEXT)
+        return
+    data = await state.get_data()
+    selected = set(data.get("selected", []))
+    await state.set_state(MeetingForm.selecting_members)
+    others = await _other_countries(session, country.id)
+    await call.message.edit_text(
+        "👥 کشورهای شرکت‌کننده در نشست را انتخاب کنید (می‌توانید چند کشور را تیک بزنید):",
+        reply_markup=_group_select_kb(others, selected),
     )
 
 
@@ -461,6 +558,18 @@ async def _maybe_schedule_group_meeting(session: AsyncSession, meeting: GroupMee
                 await bot.send_message(c.owner_user_id, notice)
             except Exception:  # noqa: BLE001
                 pass
+
+    # لاگ + دکمه‌ی «آغاز فوری نشست» برای مدیران (v1.8)
+    arrive_kb = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(
+            text="⚡️ آغاز فوری نشست", callback_data=f"garrive:gmeet:{meeting.id}", style=STYLE_OK
+        )
+    ]])
+    await send_log(
+        bot,
+        f"👥 نشست چندجانبه «{meeting.title}» برنامه‌ریزی شد (شروع پس از رسیدن همه).",
+        reply_markup=arrive_kb,
+    )
 
 
 @router.callback_query(F.data.startswith("gmeet_accept:"))
@@ -623,6 +732,19 @@ async def cb_meet_accept(call: CallbackQuery, session: AsyncSession) -> None:
             bot, settings.news_diplomacy_channel_id, "diplomacy_travel", caption
         )
 
+    # لاگ سفر + دکمه‌ی «رساندن فوری» برای مدیران (v1.8)
+    arrive_kb = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(
+            text="⚡️ رساندن فوری و آغاز نشست", callback_data=f"garrive:meet:{meeting.id}", style=STYLE_OK
+        )
+    ]])
+    await send_log(
+        bot,
+        f"✈️ سفر دیپلماتیک: {traveler.name_fa if traveler else '?'} → "
+        f"{host.name_fa if host else '?'} (زمان رسیدن حدود {fa_number(minutes)} دقیقه)",
+        reply_markup=arrive_kb,
+    )
+
 
 @router.callback_query(F.data.startswith("meet_reject:"))
 async def cb_meet_reject(call: CallbackQuery, session: AsyncSession) -> None:
@@ -705,8 +827,17 @@ async def msg_contract_title(message: Message, state: FSMContext) -> None:
     await state.update_data(title=message.text.strip())
     await state.set_state(ContractForm.entering_body)
     await message.answer(
-        "متن کامل قرارداد را بنویسید (مفاد، تعهدات طرفین، تأمین مالی و ...):"
+        "متن کامل قرارداد را بنویسید (مفاد، تعهدات طرفین، تأمین مالی و ...):",
+        reply_markup=_back_kb("contractback:title"),
     )
+
+
+@router.callback_query(StateFilter(ContractForm), F.data == "contractback:title")
+async def cb_contract_back_title(call: CallbackQuery, state: FSMContext) -> None:
+    """بازگشت به وارد کردن عنوان قرارداد."""
+    await call.answer()
+    await state.set_state(ContractForm.entering_title)
+    await call.message.edit_text("📜 عنوان قرارداد را وارد کنید:")
 
 
 @router.message(ContractForm.entering_body, F.text)
@@ -1056,7 +1187,10 @@ async def cb_speech(call: CallbackQuery, state: FSMContext, session: AsyncSessio
         await call.message.edit_text(NO_COUNTRY_TEXT)
         return
     await state.set_state(SpeechForm.entering_text)
-    await call.message.edit_text("🎤 متن سخنرانی/بیانیه‌ی خود را وارد کنید:")
+    await call.message.edit_text(
+        "🎤 متن سخنرانی/بیانیه‌ی خود را وارد کنید:",
+        reply_markup=_back_kb("menu:diplomacy"),
+    )
 
 
 @router.message(SpeechForm.entering_text, F.text)
@@ -1064,7 +1198,21 @@ async def msg_speech_text(message: Message, state: FSMContext) -> None:
     """ثبت متن سخنرانی و درخواست عکس."""
     await state.update_data(speech_text=message.text)
     await state.set_state(SpeechForm.entering_photo)
-    await message.answer("📸 حالا عکس رئیس‌جمهور را ارسال کنید:")
+    await message.answer(
+        "📸 حالا عکس رئیس‌جمهور را ارسال کنید:",
+        reply_markup=_back_kb("speechback:text"),
+    )
+
+
+@router.callback_query(StateFilter(SpeechForm), F.data == "speechback:text")
+async def cb_speech_back_text(call: CallbackQuery, state: FSMContext) -> None:
+    """بازگشت به وارد کردن متن سخنرانی."""
+    await call.answer()
+    await state.set_state(SpeechForm.entering_text)
+    await call.message.edit_text(
+        "🎤 متن سخنرانی/بیانیه‌ی خود را وارد کنید:",
+        reply_markup=_back_kb("menu:diplomacy"),
+    )
 
 
 @router.message(SpeechForm.entering_photo, F.photo)

@@ -61,6 +61,13 @@ async def cmd_start(
                     "برای نقل قول باید رهبر یک کشور باشید. ابتدا کشورگیری کنید. /claim"
                 )
                 return
+            # کشور نمی‌تواند روی بیانیه‌ی خودش نقل قول بزند (v1.8)
+            from ..database.models import Speech
+
+            speech = await session.get(Speech, speech_id)
+            if speech is not None and speech.speaker_country == country.id:
+                await message.answer("روی حرف خودت میخوای نقل قول کنی؟ دیوانه ای؟ 😅")
+                return
             await state.set_state(SpeechForm.quoting)
             await state.update_data(quote_speech_id=speech_id)
             await message.answer("💬 متن نقل قول خود را بنویسید:")

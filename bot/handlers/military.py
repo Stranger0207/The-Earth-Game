@@ -6,6 +6,7 @@ import json
 from datetime import datetime, timedelta, timezone
 
 from aiogram import F, Router
+from aiogram.filters import StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.types import (
     CallbackQuery,
@@ -81,6 +82,15 @@ def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def _back_kb(callback_data: str) -> InlineKeyboardMarkup:
+    """کیبورد تک‌دکمه‌ای بازگشت به مرحله‌ی قبل (v1.8)."""
+    from ..utils.ui import STYLE_MAIN
+
+    return InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="🔙 بازگشت", callback_data=callback_data, style=STYLE_MAIN)
+    ]])
+
+
 @router.callback_query(F.data == "mil:report")
 async def cb_report(call: CallbackQuery, session: AsyncSession, db_user: User) -> None:
     """⚔️ پنل گزارش تجهیزات نظامی."""
@@ -130,7 +140,29 @@ async def cb_attack_target(call: CallbackQuery, state: FSMContext) -> None:
     await state.set_state(AttackForm.describing)
     await call.message.edit_text(
         "📝 تجهیزات و هدف حمله را شرح دهید (متن آزاد):\n"
-        "مثال: «حمله با ۲۰ جنگنده F-16 به پایگاه هوایی دشمن»"
+        "مثال: «حمله با ۲۰ جنگنده F-16 به پایگاه هوایی دشمن»",
+        reply_markup=_back_kb("atkback:target"),
+    )
+
+
+@router.callback_query(StateFilter(AttackForm), F.data == "atkback:target")
+async def cb_attack_back_target(
+    call: CallbackQuery, state: FSMContext, session: AsyncSession, db_user: User
+) -> None:
+    """بازگشت به انتخاب هدف حمله."""
+    await call.answer()
+    country = await get_player_country(session, db_user)
+    if country is None:
+        await call.message.edit_text(NO_COUNTRY_TEXT)
+        return
+    data = await state.get_data()
+    atype = AttackType(data["attack_type"])
+    await state.set_state(AttackForm.choosing_target)
+    countries = await countries_repo.list_countries(session)
+    others = [c for c in countries if c.id != country.id]
+    await call.message.edit_text(
+        f"🎯 هدف {ATTACK_FA[atype]} را انتخاب کنید:",
+        reply_markup=countries_kb(others, prefix="atk_target", columns=2, back_data="menu:military"),
     )
 
 
@@ -438,7 +470,31 @@ async def cb_factory_asset(call: CallbackQuery, state: FSMContext) -> None:
     await state.update_data(asset_name=assets[idx]["name"], asset_unit=assets[idx]["unit"])
     await state.set_state(MilitaryFactoryForm.entering_location)
     await call.message.edit_text(
-        f"🏭 کارخانه‌ی بازتولید <b>{assets[idx]['name']}</b>\n\n📍 محل احداث را وارد کنید:"
+        f"🏭 کارخانه‌ی بازتولید <b>{assets[idx]['name']}</b>\n\n📍 محل احداث را وارد کنید:",
+        reply_markup=_back_kb("mfback:asset"),
+    )
+
+
+@router.callback_query(StateFilter(MilitaryFactoryForm), F.data == "mfback:asset")
+async def cb_factory_back_asset(call: CallbackQuery, state: FSMContext) -> None:
+    """بازگشت به انتخاب قلم تجهیزات کارخانه."""
+    await call.answer()
+    data = await state.get_data()
+    assets = data.get("assets", [])
+    category = ""
+    try:
+        category = MIL_FACTORY_CATEGORY[MilitaryFactoryType(data["factory_type"])]
+    except (ValueError, KeyError):
+        pass
+    await state.set_state(MilitaryFactoryForm.choosing_asset)
+    builder = InlineKeyboardBuilder()
+    for idx, a in enumerate(assets):
+        builder.button(text=a["name"], callback_data=f"milfac_asset:{idx}", style=STYLE_OK)
+    builder.button(text="🔙 بازگشت", callback_data="milfac:build", style="primary")
+    builder.adjust(1)
+    await call.message.edit_text(
+        f"کدام قلم از «{category}» را بازتولید می‌کنید؟",
+        reply_markup=builder.as_markup(),
     )
 
 
@@ -620,7 +676,15 @@ async def cb_sell_category(call: CallbackQuery, state: FSMContext) -> None:
         return
     category = categories[idx]
     assets = [a for a in data.get("sell_assets", []) if a["category"] == category]
-    await state.update_data(sell_filtered=assets)
+    await state.update_data(sell_filtered=assets, sell_category_name=category)
+    await _show_sell_assets(call, state)
+
+
+async def _show_sell_assets(call: CallbackQuery, state: FSMContext) -> None:
+    """نمایش فهرست تجهیزات یک دسته برای فروش (با دکمه‌ی بازگشت)."""
+    data = await state.get_data()
+    assets = data.get("sell_filtered", [])
+    category = data.get("sell_category_name", "")
     await state.set_state(MilitarySaleForm.choosing_asset)
     builder = InlineKeyboardBuilder()
     for i, a in enumerate(assets):
@@ -628,6 +692,13 @@ async def cb_sell_category(call: CallbackQuery, state: FSMContext) -> None:
     builder.button(text="🔙 بازگشت", callback_data="mil:sell", style="primary")
     builder.adjust(1)
     await call.message.edit_text(f"کدام قلم از «{category}» را می‌فروشید؟", reply_markup=builder.as_markup())
+
+
+@router.callback_query(StateFilter(MilitarySaleForm), F.data == "msback:asset")
+async def cb_milsell_back_asset(call: CallbackQuery, state: FSMContext) -> None:
+    """بازگشت به انتخاب قلم تجهیزات برای فروش."""
+    await call.answer()
+    await _show_sell_assets(call, state)
 
 
 @router.callback_query(MilitarySaleForm.choosing_asset, F.data.startswith("milsell_asset:"))
@@ -643,7 +714,8 @@ async def cb_sell_asset(call: CallbackQuery, state: FSMContext) -> None:
     await state.update_data(sell_pick=assets[i])
     await state.set_state(MilitarySaleForm.entering_count)
     await call.message.edit_text(
-        f"تعداد {assets[i]['name']} برای فروش را وارد کنید (موجودی: {fa_number(assets[i]['count'])} {assets[i]['unit']}):"
+        f"تعداد {assets[i]['name']} برای فروش را وارد کنید (موجودی: {fa_number(assets[i]['count'])} {assets[i]['unit']}):",
+        reply_markup=_back_kb("msback:asset"),
     )
 
 
@@ -662,7 +734,26 @@ async def msg_sell_count(message: Message, state: FSMContext) -> None:
         return
     await state.update_data(sell_count=int(count))
     await state.set_state(MilitarySaleForm.entering_price)
-    await message.answer("مبلغ فروش را به دلار وارد کنید (مثلاً 5b برای ۵ میلیارد):")
+    await message.answer(
+        "مبلغ فروش را به دلار وارد کنید (مثلاً 5b برای ۵ میلیارد):",
+        reply_markup=_back_kb("msback:count"),
+    )
+
+
+@router.callback_query(StateFilter(MilitarySaleForm), F.data == "msback:count")
+async def cb_milsell_back_count(call: CallbackQuery, state: FSMContext) -> None:
+    """بازگشت به وارد کردن تعداد تجهیزات."""
+    await call.answer()
+    data = await state.get_data()
+    pick = data.get("sell_pick")
+    if pick is None:
+        await _show_sell_assets(call, state)
+        return
+    await state.set_state(MilitarySaleForm.entering_count)
+    await call.message.edit_text(
+        f"تعداد {pick['name']} برای فروش را وارد کنید (موجودی: {fa_number(pick['count'])} {pick['unit']}):",
+        reply_markup=_back_kb("msback:asset"),
+    )
 
 
 @router.message(MilitarySaleForm.entering_price, F.text)
@@ -683,7 +774,18 @@ async def msg_sell_price(message: Message, state: FSMContext, session: AsyncSess
     others = [c for c in countries if c.id != country.id]
     await message.answer(
         "کشور خریدار را انتخاب کنید:",
-        reply_markup=countries_kb(others, prefix="milsell_buyer", columns=2),
+        reply_markup=countries_kb(others, prefix="milsell_buyer", columns=2, back_data="msback:price"),
+    )
+
+
+@router.callback_query(StateFilter(MilitarySaleForm), F.data == "msback:price")
+async def cb_milsell_back_price(call: CallbackQuery, state: FSMContext) -> None:
+    """بازگشت به وارد کردن قیمت فروش تجهیزات."""
+    await call.answer()
+    await state.set_state(MilitarySaleForm.entering_price)
+    await call.message.edit_text(
+        "مبلغ فروش را به دلار وارد کنید (مثلاً 5b برای ۵ میلیارد):",
+        reply_markup=_back_kb("msback:count"),
     )
 
 
@@ -812,7 +914,12 @@ async def cb_milsale_ok(call: CallbackQuery, session: AsyncSession, db_user: Use
         )
         await send_photo_news(bot, settings.wto_channel_id, "wto", caption)
 
-    # لاگ فروش نظامی به گروه لاگ
+    # لاگ فروش نظامی به گروه لاگ + دکمه‌ی «تحویل فوری» برای مدیران (v1.8)
+    deliver_kb = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(
+            text="⚡️ تحویل فوری محموله", callback_data=f"gdeliver:mil:{sale.id}", style=STYLE_OK
+        )
+    ]])
     await send_log(
         bot,
         "🪖 <b>فروش تجهیزات نظامی</b>\n"
@@ -820,6 +927,7 @@ async def cb_milsale_ok(call: CallbackQuery, session: AsyncSession, db_user: Use
         f"خریدار: {buyer.flag} {buyer.name_fa}\n"
         f"تجهیزات: {fa_number(sale.count)} {sale.unit} {sale.name}\n"
         f"قیمت: {fa_money(sale.price)}",
+        reply_markup=deliver_kb,
     )
 
 

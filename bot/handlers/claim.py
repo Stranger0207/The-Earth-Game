@@ -90,10 +90,29 @@ async def cb_pick_country(
     await state.update_data(country_id=country_id)
     await state.set_state(ClaimForm.entering_president_name)
     vip = "⭐️ (کشور VIP) " if country.is_vip else ""
+    back_kb = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="🔙 بازگشت به فهرست کشورها", callback_data="claim:start", style="primary")
+    ]])
     await call.message.answer(
         f"{vip}شما کشور {country.flag} <b>{country.name_fa}</b> را انتخاب کردید.\n\n"
-        "لطفاً نام رئیس‌جمهور خود را وارد کنید (این نام در اخبار استفاده می‌شود):"
+        "لطفاً نام رئیس‌جمهور خود را وارد کنید (این نام در اخبار استفاده می‌شود):",
+        reply_markup=back_kb,
     )
+
+
+def _skip_note_kb() -> InlineKeyboardMarkup:
+    """دکمه‌ی «رد کردن این مرحله» برای توضیحات کشورگیری (v1.8)."""
+    return InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="⏭ رد کردن این مرحله", callback_data="claim:skip_note", style="primary")
+    ]])
+
+
+def _confirm_kb() -> InlineKeyboardMarkup:
+    """دکمه‌های تأیید نهایی کشورگیری (v1.8)."""
+    return InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="✅ بله، مطمئنم", callback_data="claim:confirm", style="success"),
+        InlineKeyboardButton(text="❌ انصراف", callback_data="claim:cancel", style="danger"),
+    ]])
 
 
 @router.message(ClaimForm.entering_president_name, F.text)
@@ -102,24 +121,79 @@ async def msg_president_name(message: Message, state: FSMContext) -> None:
     await state.update_data(president_name=message.text.strip())
     await state.set_state(ClaimForm.entering_note)
     await message.answer(
-        "در صورت تمایل توضیحی برای مالک بازی بنویسید (یا «-» برای رد کردن):"
+        "در صورت تمایل توضیحی برای مالک بازی بنویسید، یا این مرحله را رد کنید:",
+        reply_markup=_skip_note_kb(),
+    )
+
+
+async def _show_claim_confirm(
+    target: Message, state: FSMContext, session: AsyncSession
+) -> None:
+    """نمایش خلاصه‌ی درخواست و پرسیدن تأیید نهایی از بازیکن."""
+    data = await state.get_data()
+    country = await countries_repo.get_country(session, data["country_id"])
+    if country is None or country.is_claimed:
+        await target.answer("این کشور دیگر در دسترس نیست.")
+        await state.clear()
+        return
+    await state.set_state(ClaimForm.confirming)
+    note = data.get("note")
+    await target.answer(
+        "🔎 <b>تأیید نهایی کشورگیری</b>\n\n"
+        f"🏴 کشور: {country.flag} {country.name_fa}\n"
+        f"🧑‍💼 رئیس‌جمهور: {data.get('president_name') or '—'}\n"
+        f"📝 توضیح: {note or '—'}\n\n"
+        "آیا از گرفتن این کشور مطمئن هستید؟",
+        reply_markup=_confirm_kb(),
     )
 
 
 @router.message(ClaimForm.entering_note, F.text)
-async def msg_note(
-    message: Message, state: FSMContext, session: AsyncSession, db_user: User
-) -> None:
-    """ثبت درخواست کشورگیری و ارسال به مالک‌ها."""
-    data = await state.get_data()
+async def msg_note(message: Message, state: FSMContext, session: AsyncSession) -> None:
+    """ثبت توضیح و رفتن به مرحله‌ی تأیید نهایی."""
     note = None if message.text.strip() == "-" else message.text.strip()
+    await state.update_data(note=note)
+    await _show_claim_confirm(message, state, session)
+
+
+@router.callback_query(ClaimForm.entering_note, F.data == "claim:skip_note")
+async def cb_skip_note(call: CallbackQuery, state: FSMContext, session: AsyncSession) -> None:
+    """رد کردن مرحله‌ی توضیحات (توضیح خالی)."""
+    await call.answer()
+    await state.update_data(note=None)
+    await _show_claim_confirm(call.message, state, session)
+
+
+@router.callback_query(ClaimForm.confirming, F.data == "claim:cancel")
+async def cb_claim_cancel(call: CallbackQuery, state: FSMContext) -> None:
+    """انصراف از کشورگیری در مرحله‌ی تأیید."""
+    await call.answer("لغو شد")
+    await state.clear()
+    await call.message.edit_text("❌ کشورگیری لغو شد. هر زمان خواستید دوباره /claim بزنید.")
+
+
+@router.callback_query(ClaimForm.confirming, F.data == "claim:confirm")
+async def cb_claim_confirm(
+    call: CallbackQuery, state: FSMContext, session: AsyncSession, db_user: User
+) -> None:
+    """ثبت نهایی درخواست کشورگیری و ارسال به مالک‌ها."""
+    await call.answer()
+    data = await state.get_data()
+    note = data.get("note")
     country_id = data["country_id"]
     president_name = data.get("president_name")
 
     country = await countries_repo.get_country(session, country_id)
     if country is None or country.is_claimed:
-        await message.answer("این کشور دیگر در دسترس نیست.")
+        await call.message.edit_text("این کشور دیگر در دسترس نیست.")
         await state.clear()
+        return
+
+    # جلوگیری از ثبت درخواست تکراری (اگر بین مراحل درخواست دیگری ثبت شده باشد)
+    pending = await claims_repo.get_pending_for_user(session, db_user.telegram_id)
+    if pending is not None:
+        await state.clear()
+        await call.message.edit_text("⏳ درخواست شما در انتظار تأیید مالک است.")
         return
 
     claim = await claims_repo.create_claim(
@@ -128,7 +202,7 @@ async def msg_note(
     await session.flush()
     await state.clear()
 
-    await message.answer(
+    await call.message.edit_text(
         "✅ درخواست شما ثبت شد و برای تأیید به مالک بازی ارسال گردید.\n"
         "پس از تأیید، پنل کشورتان فعال می‌شود."
     )

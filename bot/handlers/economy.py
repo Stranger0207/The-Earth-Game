@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 
 from aiogram import F, Router
+from aiogram.filters import StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -158,8 +159,20 @@ async def cb_build_type(call: CallbackQuery, state: FSMContext) -> None:
         await call.message.edit_text(
             f"🏭 احداث {FACILITY_FA[ftype]}\n"
             f"💰 هزینه: {fa_money(cost)}\n\n"
-            "📍 محل احداث را وارد کنید:"
+            "📍 محل احداث را وارد کنید:",
+            reply_markup=_back_kb("facback:type"),
         )
+
+
+@router.callback_query(StateFilter(FacilityForm), F.data == "facback:type")
+async def cb_facility_back_type(call: CallbackQuery, state: FSMContext) -> None:
+    """بازگشت به انتخاب نوع تأسیسات."""
+    await call.answer()
+    await state.set_state(FacilityForm.choosing_type)
+    await call.message.edit_text(
+        "🏗 نوع تأسیساتی که می‌خواهید احداث کنید را انتخاب کنید:",
+        reply_markup=facility_types_kb(),
+    )
 
 
 @router.callback_query(FacilityForm.choosing_resource, F.data.startswith("mine_res:"))
@@ -169,7 +182,19 @@ async def cb_mine_resource(call: CallbackQuery, state: FSMContext) -> None:
     await state.update_data(resource=resource)
     await state.set_state(FacilityForm.entering_location)
     await call.message.edit_text(
-        f"⛏ معدن {RESOURCE_FA[ResourceType(resource)]}\n\n📍 محل احداث را وارد کنید:"
+        f"⛏ معدن {RESOURCE_FA[ResourceType(resource)]}\n\n📍 محل احداث را وارد کنید:",
+        reply_markup=_back_kb("mine_back"),
+    )
+
+
+@router.callback_query(StateFilter(FacilityForm), F.data == "mine_back")
+async def cb_mine_back(call: CallbackQuery, state: FSMContext) -> None:
+    """بازگشت به انتخاب منبع معدن."""
+    await call.answer()
+    await state.set_state(FacilityForm.choosing_resource)
+    await call.message.edit_text(
+        "⛏ معدن چه منبعی را می‌خواهید احداث کنید؟",
+        reply_markup=mine_resources_kb(),
     )
 
 
@@ -252,17 +277,52 @@ async def cb_sell(
     )
 
 
+def _back_kb(callback_data: str) -> InlineKeyboardMarkup:
+    """کیبورد تک‌دکمه‌ای بازگشت به مرحله‌ی قبل (v1.8)."""
+    return InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="🔙 بازگشت", callback_data=callback_data, style=STYLE_MAIN)
+    ]])
+
+
+async def _ask_sale_amount(target: CallbackQuery | Message, state: FSMContext, resource: str) -> None:
+    """نمایش پرسش مقدار فروش با دکمه‌ی بازگشت به انتخاب منبع."""
+    await state.set_state(SaleForm.entering_amount)
+    unit = RESOURCE_UNIT_FA[ResourceType(resource)]
+    text = (
+        f"مقدار {RESOURCE_FA[ResourceType(resource)]} برای فروش را وارد کنید (به {unit}):\n"
+        "می‌توانید از پسوند k/m/b استفاده کنید (مثلاً 50k)."
+    )
+    kb = _back_kb("sback:res")
+    if isinstance(target, CallbackQuery):
+        await target.message.edit_text(text, reply_markup=kb)
+    else:
+        await target.answer(text, reply_markup=kb)
+
+
 @router.callback_query(SaleForm.choosing_resource, F.data.startswith("sell_res:"))
 async def cb_sell_resource(call: CallbackQuery, state: FSMContext) -> None:
     await call.answer()
     resource = call.data.split(":")[1]
     await state.update_data(resource=resource)
-    await state.set_state(SaleForm.entering_amount)
-    unit = RESOURCE_UNIT_FA[ResourceType(resource)]
+    await _ask_sale_amount(call, state, resource)
+
+
+@router.callback_query(StateFilter(SaleForm), F.data == "sback:res")
+async def cb_sale_back_resource(call: CallbackQuery, state: FSMContext) -> None:
+    """بازگشت به انتخاب منبع فروش."""
+    await call.answer()
+    await state.set_state(SaleForm.choosing_resource)
     await call.message.edit_text(
-        f"مقدار {RESOURCE_FA[ResourceType(resource)]} برای فروش را وارد کنید (به {unit}):\n"
-        "می‌توانید از پسوند k/m/b استفاده کنید (مثلاً 50k)."
+        "💱 کدام منبع را می‌خواهید بفروشید؟", reply_markup=sell_resources_kb()
     )
+
+
+@router.callback_query(StateFilter(SaleForm), F.data == "sback:amt")
+async def cb_sale_back_amount(call: CallbackQuery, state: FSMContext) -> None:
+    """بازگشت به وارد کردن مقدار فروش."""
+    await call.answer()
+    data = await state.get_data()
+    await _ask_sale_amount(call, state, data["resource"])
 
 
 @router.message(SaleForm.entering_amount, F.text)
@@ -285,14 +345,21 @@ async def msg_sell_amount(
         return
 
     await state.update_data(amount=amount)
+    await _show_sale_buyers(message, state, session, country.id)
+
+
+async def _show_sale_buyers(
+    target: CallbackQuery | Message, state: FSMContext, session: AsyncSession, country_id: int
+) -> None:
+    """نمایش فهرست خریداران با دکمه‌ی بازگشت به مرحله‌ی مقدار."""
     await state.set_state(SaleForm.choosing_buyer)
-    # لیست کشورهای دیگر (به‌جز خودِ کشور)
     countries = await countries_repo.list_countries(session)
-    others = [c for c in countries if c.id != country.id]
-    await message.answer(
-        "کشور خریدار را انتخاب کنید:",
-        reply_markup=countries_kb(others, prefix="sell_buyer", columns=2),
-    )
+    others = [c for c in countries if c.id != country_id]
+    kb = countries_kb(others, prefix="sell_buyer", columns=2, back_data="sback:amt")
+    if isinstance(target, CallbackQuery):
+        await target.message.edit_text("کشور خریدار را انتخاب کنید:", reply_markup=kb)
+    else:
+        await target.answer("کشور خریدار را انتخاب کنید:", reply_markup=kb)
 
 
 @router.callback_query(SaleForm.choosing_buyer, F.data.startswith("sell_buyer:"))
@@ -302,8 +369,22 @@ async def cb_sell_buyer(call: CallbackQuery, state: FSMContext) -> None:
     await state.update_data(buyer_id=buyer_id)
     await state.set_state(SaleForm.entering_price)
     await call.message.edit_text(
-        "مبلغ فروش را به دلار وارد کنید (مثلاً 500m برای ۵۰۰ میلیون):"
+        "مبلغ فروش را به دلار وارد کنید (مثلاً 500m برای ۵۰۰ میلیون):",
+        reply_markup=_back_kb("sback:buyer"),
     )
+
+
+@router.callback_query(StateFilter(SaleForm), F.data == "sback:buyer")
+async def cb_sale_back_buyer(
+    call: CallbackQuery, state: FSMContext, session: AsyncSession, db_user: User
+) -> None:
+    """بازگشت به انتخاب کشور خریدار."""
+    await call.answer()
+    country = await get_player_country(session, db_user)
+    if country is None:
+        await call.message.edit_text(NO_COUNTRY_TEXT)
+        return
+    await _show_sale_buyers(call, state, session, country.id)
 
 
 @router.message(SaleForm.entering_price, F.text)
@@ -469,6 +550,12 @@ async def cb_sale_accept(
         await send_photo_news(bot, settings.wto_channel_id, "wto", caption)
 
     # لاگ تجارت به گروه لاگ مدیران: فروشنده، خریدار، منبع و مقدار، قیمت
+    # + دکمه‌ی «تحویل فوری» برای مدیران (v1.8)
+    deliver_kb = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(
+            text="⚡️ تحویل فوری محموله", callback_data=f"gdeliver:res:{sale.id}", style=STYLE_OK
+        )
+    ]])
     await send_log(
         bot,
         "🧾 <b>گزارش تجارت</b>\n"
@@ -476,6 +563,7 @@ async def cb_sale_accept(
         f"خریدار: {buyer_name}\n"
         f"منبع: {fa_number(sale.amount)} {unit} {rname}\n"
         f"قیمت: {fa_money(sale.price)}",
+        reply_markup=deliver_kb,
     )
 
 
@@ -572,7 +660,8 @@ async def cb_tariff_pick(call: CallbackQuery, state: FSMContext, session: AsyncS
     await state.set_state(TariffForm.entering_percent)
     await call.message.edit_text(
         f"درصد تعرفه برای {target.flag} {target.name_fa} را وارد کنید (۰ تا ۱۰۰).\n"
-        "عدد ۰ یعنی حذف تعرفه."
+        "عدد ۰ یعنی حذف تعرفه.",
+        reply_markup=_back_kb("econ:tariffs"),
     )
 
 

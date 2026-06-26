@@ -11,6 +11,7 @@ class ClaimForm(StatesGroup):
     choosing_country = State()
     entering_president_name = State()
     entering_note = State()
+    confirming = State()  # تأیید نهایی کشورگیری (v1.8)
 
 
 class FacilityForm(StatesGroup):
@@ -115,3 +116,9 @@ class SpeechForm(StatesGroup):
     entering_text = State()
     entering_photo = State()
     quoting = State()
+
+
+class GodForm(StatesGroup):
+    """فرم پنل گاد مود ادمین برای ویرایش مقادیر کشور (v1.8)."""
+
+    entering_value = State()  # وارد کردن مقدار جدید (اقتصاد/ذخیره/تجهیزات)

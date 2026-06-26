@@ -29,6 +29,13 @@ def end_call_kb() -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
+def end_meeting_kb() -> InlineKeyboardMarkup:
+    """دکمه‌ی پایان نشست (دیدار دوجانبه/چندجانبه) — v1.8."""
+    builder = InlineKeyboardBuilder()
+    builder.button(text="🔚 پایان نشست", callback_data="meeting:end", style=STYLE_NO)
+    return builder.as_markup()
+
+
 def sanction_menu_kb() -> InlineKeyboardMarkup:
     """منوی تحریم (v1.7): وضع/وضع‌شده/تحریم‌های من/لغو."""
     builder = InlineKeyboardBuilder()

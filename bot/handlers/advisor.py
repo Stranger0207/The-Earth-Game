@@ -82,8 +82,28 @@ async def cb_advisor_domain(
 
     await state.update_data(domain=domain.value)
     await state.set_state(AdvisorForm.asking)
+    from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+    from ..utils.ui import STYLE_MAIN
+
+    back_kb = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="🔙 بازگشت", callback_data="advback:domain", style=STYLE_MAIN)
+    ]])
     await call.message.edit_text(
-        f"🧠 پرسش خود را از مشاور «{_DOMAIN_FA[domain]}» بنویسید:"
+        f"🧠 پرسش خود را از مشاور «{_DOMAIN_FA[domain]}» بنویسید:",
+        reply_markup=back_kb,
+    )
+
+
+@router.callback_query(AdvisorForm.asking, F.data == "advback:domain")
+async def cb_advisor_back_domain(call: CallbackQuery, state: FSMContext) -> None:
+    """بازگشت به انتخاب دامنه‌ی مشاوره."""
+    await call.answer()
+    await state.set_state(AdvisorForm.choosing_domain)
+    await call.message.edit_text(
+        "🧠 <b>مشاور هوشمند</b>\n\n"
+        f"در هر دامنه هر {ADVISOR_COOLDOWN_HOURS} ساعت یک‌بار می‌توانید مشاوره بگیرید.\n"
+        "دامنه‌ی موردنظر را انتخاب کنید:",
+        reply_markup=_domain_kb(),
     )
 
 

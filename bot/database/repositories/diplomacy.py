@@ -58,17 +58,21 @@ async def get_call(session: AsyncSession, call_id: int) -> PhoneCall | None:
 async def get_active_call_for_country(
     session: AsyncSession, country_id: int
 ) -> PhoneCall | None:
-    """تماس فعالی که این کشور در آن درگیر است."""
+    """تماس فعالی که این کشور در آن درگیر است (در صورت چند مورد، جدیدترین)."""
+    # نکته: به‌جای scalar_one_or_none از first استفاده می‌کنیم تا اگر به هر دلیل
+    # بیش از یک تماس فعال برای یک کشور وجود داشته باشد، به‌جای کرش، جدیدترین برگردد.
     result = await session.execute(
-        select(PhoneCall).where(
+        select(PhoneCall)
+        .where(
             PhoneCall.status == DiplomacyStatus.ACTIVE,
             or_(
                 PhoneCall.caller_country == country_id,
                 PhoneCall.callee_country == country_id,
             ),
         )
+        .order_by(PhoneCall.id.desc())
     )
-    return result.scalar_one_or_none()
+    return result.scalars().first()
 
 
 async def add_call_message(
@@ -98,17 +102,20 @@ async def get_meeting(session: AsyncSession, meeting_id: int) -> Meeting | None:
 async def get_active_meeting_for_country(
     session: AsyncSession, country_id: int
 ) -> Meeting | None:
-    """دیدار فعالی که این کشور در آن درگیر است."""
+    """دیدار فعالی که این کشور در آن درگیر است (در صورت چند مورد، جدیدترین)."""
+    # نکته: first به‌جای scalar_one_or_none تا چند دیدار فعالِ هم‌زمان کرش ندهد.
     result = await session.execute(
-        select(Meeting).where(
+        select(Meeting)
+        .where(
             Meeting.status == DiplomacyStatus.ACTIVE,
             or_(
                 Meeting.traveler_country == country_id,
                 Meeting.host_country == country_id,
             ),
         )
+        .order_by(Meeting.id.desc())
     )
-    return result.scalar_one_or_none()
+    return result.scalars().first()
 
 
 # ------------------------- تحریم -------------------------
@@ -211,14 +218,17 @@ async def get_active_group_meeting_for_country(
     session: AsyncSession, country_id: int
 ) -> GroupMeeting | None:
     """نشست چندجانبه‌ی فعالی که این کشور (میزبان یا شرکت‌کننده‌ی پذیرفته) در آن حضور دارد."""
+    # نکته: first به‌جای scalar_one_or_none تا چند نشست فعالِ هم‌زمان کرش ندهد.
     # به‌عنوان میزبان
     result = await session.execute(
-        select(GroupMeeting).where(
+        select(GroupMeeting)
+        .where(
             GroupMeeting.status == DiplomacyStatus.ACTIVE,
             GroupMeeting.host_country == country_id,
         )
+        .order_by(GroupMeeting.id.desc())
     )
-    gm = result.scalar_one_or_none()
+    gm = result.scalars().first()
     if gm is not None:
         return gm
     # به‌عنوان شرکت‌کننده‌ی پذیرفته
@@ -230,8 +240,25 @@ async def get_active_group_meeting_for_country(
             GroupMeetingParticipant.country_id == country_id,
             GroupMeetingParticipant.response == DiplomacyStatus.ACTIVE,
         )
+        .order_by(GroupMeeting.id.desc())
     )
-    return result.scalar_one_or_none()
+    return result.scalars().first()
+
+
+async def get_active_engagement_label(
+    session: AsyncSession, country_id: int
+) -> str | None:
+    """
+    اگر کشور در یک تماس/دیدار/نشست فعال درگیر باشد، توضیح فارسی آن را برمی‌گرداند؛
+    در غیر این صورت None. مبنای «سیستم انحصار»: یک کشور هم‌زمان فقط یک نشست فعال دارد.
+    """
+    if await get_active_call_for_country(session, country_id) is not None:
+        return "یک تماس تلفنی فعال"
+    if await get_active_meeting_for_country(session, country_id) is not None:
+        return "یک دیدار حضوری فعال"
+    if await get_active_group_meeting_for_country(session, country_id) is not None:
+        return "یک نشست چندجانبه‌ی فعال"
+    return None
 
 
 async def group_member_country_ids(

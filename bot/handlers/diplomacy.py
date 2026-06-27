@@ -89,6 +89,36 @@ async def _other_countries(session: AsyncSession, country_id: int):
 
 
 # ============================================================
+#  ⛔ سیستم انحصار نشست‌ها (v1.10)
+#  یک کشور هم‌زمان فقط می‌تواند در یک نشست/تماس فعال باشد. برای شروع یا پذیرش
+#  هر تماس/دیدار/نشست جدید، نباید نشست فعالِ دیگری داشته باشد.
+# ============================================================
+async def _busy_block_cb(
+    call: CallbackQuery, session: AsyncSession, country_id: int, *, is_self: bool = True
+) -> bool:
+    """
+    اگر کشور موردنظر نشست/تماس فعالی داشته باشد، به کاربرِ دکمه‌زننده هشدار می‌دهد و
+    True برمی‌گرداند (یعنی باید عملیات متوقف شود). is_self مشخص می‌کند مشغول‌بودن مربوط
+    به خودِ کاربر است یا طرف مقابل (برای متن مناسب).
+    """
+    label = await dip_repo.get_active_engagement_label(session, country_id)
+    if label is None:
+        return False
+    if is_self:
+        text = (
+            f"⛔ شما هم‌اکنون {label} دارید.\n"
+            "ابتدا نشست فعلی را پایان دهید، سپس دوباره تلاش کنید."
+        )
+    else:
+        text = (
+            f"⛔ طرف مقابل هم‌اکنون {label} دارد.\n"
+            "تا پایان نشست فعلی او امکان شروع نشست جدید نیست."
+        )
+    await call.answer(text, show_alert=True)
+    return True
+
+
+# ============================================================
 #  ✉️ نامه
 # ============================================================
 @router.callback_query(F.data == "dip:letter")
@@ -189,6 +219,16 @@ async def cb_call_to(call: CallbackQuery, state: FSMContext, session: AsyncSessi
         await call.message.edit_text("امکان تماس با این کشور وجود ندارد (بدون رهبر).")
         return
 
+    # سیستم انحصار: تا وقتی نشست/تماس فعالی داری نمی‌توانی تماس جدید آغاز کنی (v1.10)
+    label = await dip_repo.get_active_engagement_label(session, country.id)
+    if label is not None:
+        await call.message.edit_text(
+            f"⛔ شما هم‌اکنون {label} دارید.\n"
+            "ابتدا نشست فعلی را پایان دهید، سپس دوباره برای تماس اقدام کنید.",
+            reply_markup=diplomacy_menu_kb(),
+        )
+        return
+
     phone_call = PhoneCall(
         caller_country=country.id,
         callee_country=target.id,
@@ -218,6 +258,11 @@ async def cb_call_accept(call: CallbackQuery, session: AsyncSession) -> None:
     phone_call = await dip_repo.get_call(session, call_id)
     if phone_call is None or phone_call.status != DiplomacyStatus.PENDING:
         await call.answer("این تماس دیگر معتبر نیست.", show_alert=True)
+        return
+    # سیستم انحصار: نه پذیرنده و نه تماس‌گیرنده نباید نشست فعال دیگری داشته باشند (v1.10)
+    if await _busy_block_cb(call, session, phone_call.callee_country, is_self=True):
+        return
+    if await _busy_block_cb(call, session, phone_call.caller_country, is_self=False):
         return
     phone_call.status = DiplomacyStatus.ACTIVE
     phone_call.started_at = _utcnow()
@@ -479,6 +524,16 @@ async def msg_group_title(message: Message, state: FSMContext, session: AsyncSes
         await message.answer("خطا در ساخت نشست.")
         return
 
+    # سیستم انحصار: تا وقتی نشست/تماس فعالی داری نمی‌توانی نشست جدیدی میزبانی کنی (v1.10)
+    label = await dip_repo.get_active_engagement_label(session, country.id)
+    if label is not None:
+        await message.answer(
+            f"⛔ شما هم‌اکنون {label} دارید.\n"
+            "ابتدا نشست فعلی را پایان دهید، سپس نشست جدید بسازید.",
+            reply_markup=diplomacy_menu_kb(),
+        )
+        return
+
     meeting = GroupMeeting(
         host_country=country.id,
         title=message.text.strip(),
@@ -597,6 +652,10 @@ async def cb_gmeet_accept(call: CallbackQuery, session: AsyncSession, db_user: U
         await call.answer("شما در این نشست دعوت نشده‌اید.", show_alert=True)
         return
 
+    # سیستم انحصار: تا وقتی نشست/تماس فعالی داری نمی‌توانی نشست جدیدی را بپذیری (v1.10)
+    if await _busy_block_cb(call, session, country.id, is_self=True):
+        return
+
     await call.answer("پذیرفته شد ✅")
     # تخمین زمان پرواز به کشور میزبان توسط AI
     host = await countries_repo.get_country(session, meeting.host_country)
@@ -663,6 +722,16 @@ async def cb_meet_to(call: CallbackQuery, state: FSMContext, session: AsyncSessi
         await call.message.edit_text("امکان دیدار با این کشور وجود ندارد (بدون رهبر).")
         return
 
+    # سیستم انحصار: تا وقتی نشست/تماس فعالی داری نمی‌توانی سفر/دیدار جدید آغاز کنی (v1.10)
+    label = await dip_repo.get_active_engagement_label(session, country.id)
+    if label is not None:
+        await call.message.edit_text(
+            f"⛔ شما هم‌اکنون {label} دارید.\n"
+            "ابتدا نشست فعلی را پایان دهید، سپس دوباره برای دیدار اقدام کنید.",
+            reply_markup=diplomacy_menu_kb(),
+        )
+        return
+
     meeting = Meeting(
         traveler_country=country.id,
         host_country=target.id,
@@ -692,6 +761,12 @@ async def cb_meet_accept(call: CallbackQuery, session: AsyncSession) -> None:
     meeting = await dip_repo.get_meeting(session, meeting_id)
     if meeting is None or meeting.status != DiplomacyStatus.PENDING:
         await call.answer("این درخواست دیگر معتبر نیست.", show_alert=True)
+        return
+
+    # سیستم انحصار: نه میزبان (پذیرنده) و نه مسافر نباید نشست فعال دیگری داشته باشند (v1.10)
+    if await _busy_block_cb(call, session, meeting.host_country, is_self=True):
+        return
+    if await _busy_block_cb(call, session, meeting.traveler_country, is_self=False):
         return
 
     traveler = await countries_repo.get_country(session, meeting.traveler_country)

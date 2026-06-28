@@ -53,8 +53,16 @@ def _aware(dt: datetime | None) -> datetime | None:
     return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
 
 
-async def process_facility_yields() -> None:
-    """به ازای هر تأسیسات سررسیدشده، بازدهی را به ذخایر اضافه می‌کند."""
+async def process_facility_yields(bot: Bot) -> None:
+    """به ازای هر تأسیسات سررسیدشده، بازدهی را به ذخایر اضافه و به مالک پیام می‌دهد (v1.9).
+
+    تأسیسات مشترک (v1.9): بازدهی بین کشور سازنده و شریک به نسبت درصد تقسیم می‌شود.
+    """
+    from ..database.repositories import countries as countries_repo
+    from ..enums import FACILITY_FA, RESOURCE_UNIT_FA
+
+    pings: list[tuple[int, str]] = []  # (owner_user_id, متن پیام بازدهی)
+
     async with async_session_factory() as session:
         facilities = await fac_repo.all_active_facilities(session)
         now = _utcnow()
@@ -62,6 +70,12 @@ async def process_facility_yields() -> None:
             if not fac_repo.is_due(f, now):
                 continue
 
+            partner_pct = float(getattr(f, "partner_percent", 0) or 0)
+            partner_id = getattr(f, "partner_country", None)
+            owner_share = (100.0 - partner_pct) / 100.0
+            partner_share = partner_pct / 100.0
+
+            produced_label = ""
             if f.type == FacilityType.STEEL_FACTORY.value:
                 # کارخانه فولاد: آهن مصرف و فولاد تولید می‌کند
                 has_iron = await reserves_repo.has_enough(
@@ -72,19 +86,110 @@ async def process_facility_yields() -> None:
                         session, f.country_id, ResourceType.IRON,
                         -STEEL_FACTORY_IRON_INTAKE_PER_24H,
                     )
-                    await reserves_repo.add_amount(
-                        session, f.country_id, ResourceType.STEEL,
-                        STEEL_FACTORY_OUTPUT_PER_24H,
-                    )
+                    out = STEEL_FACTORY_OUTPUT_PER_24H
+                    if partner_id and partner_pct > 0:
+                        await reserves_repo.add_amount(session, f.country_id, ResourceType.STEEL, out * owner_share)
+                        await reserves_repo.ensure_reserve(session, partner_id, ResourceType.STEEL.value)
+                        await reserves_repo.add_amount(session, partner_id, ResourceType.STEEL, out * partner_share)
+                    else:
+                        await reserves_repo.add_amount(session, f.country_id, ResourceType.STEEL, out)
+                    produced_label = f"{fa_number(out)} {RESOURCE_UNIT_FA[ResourceType.STEEL]} فولاد"
             elif f.resource:
                 # معدن/سکو: منبع مربوطه را اضافه می‌کند
-                await reserves_repo.add_amount(
-                    session, f.country_id, f.resource, f.yield_amount
-                )
+                total = f.yield_amount
+                if partner_id and partner_pct > 0:
+                    await reserves_repo.add_amount(session, f.country_id, f.resource, total * owner_share)
+                    await reserves_repo.ensure_reserve(session, partner_id, f.resource)
+                    await reserves_repo.add_amount(session, partner_id, f.resource, total * partner_share)
+                else:
+                    await reserves_repo.add_amount(session, f.country_id, f.resource, total)
+                try:
+                    unit = RESOURCE_UNIT_FA[ResourceType(f.resource)]
+                except (ValueError, KeyError):
+                    unit = ""
+                produced_label = f"{fa_number(total)} {unit}"
 
             f.last_yield_at = now
 
+            # پیام بازدهی به مالک (v1.9)
+            if produced_label:
+                try:
+                    fac_fa = FACILITY_FA[FacilityType(f.type)]
+                except (ValueError, KeyError):
+                    fac_fa = f.type
+                owner_country = await countries_repo.get_country(session, f.country_id)
+                if owner_country and owner_country.owner_user_id:
+                    pings.append((
+                        owner_country.owner_user_id,
+                        f"🏭 شما از «{fac_fa}» به اندازه‌ی {produced_label} بازدهی دریافت کردید.\n"
+                        f"⏳ زمان بازدهی بعدی: {fa_number(f.yield_interval_h)} ساعت",
+                    ))
+
         await session.commit()
+
+    for owner_id, text in pings:
+        try:
+            await bot.send_message(owner_id, text)
+        except Exception:  # noqa: BLE001
+            pass
+
+
+async def process_investments(bot: Bot) -> None:
+    """
+    سود ۲۴ساعته‌ی سرمایه‌گذاری‌ها را به سرمایه‌گذار واریز می‌کند و در سرمایه‌گذاری خارجی،
+    اثرات اجتماعی را روی کشور هدف اعمال می‌کند. به سرمایه‌گذار پیام بازدهی می‌فرستد (v1.9).
+    """
+    from ..constants import (
+        FOREIGN_INVEST_INFLATION_DROP,
+        FOREIGN_INVEST_SATISFACTION_GAIN,
+        FOREIGN_INVEST_UNEMPLOYMENT_DROP,
+        INVEST_SATISFACTION_GAIN,
+        INVESTMENT_CATEGORIES,
+        INVESTMENT_YIELD_INTERVAL_H,
+    )
+    from ..database.repositories import countries as countries_repo
+    from ..database.repositories import investments as inv_repo
+    from ..utils.numbers import fa_money
+
+    pings: list[tuple[int, str]] = []
+
+    async with async_session_factory() as session:
+        items = await inv_repo.all_active(session)
+        now = _utcnow()
+        for inv in items:
+            last = _aware(inv.last_yield_at)
+            if last is not None and (now - last).total_seconds() / 3600 < INVESTMENT_YIELD_INTERVAL_H:
+                continue
+            profit = inv.amount * inv.profit_pct / 100.0
+            investor = await countries_repo.get_country(session, inv.investor_country)
+            if investor is None:
+                continue
+            investor.budget = (investor.budget or 0.0) + profit
+            target = await countries_repo.get_country(session, inv.target_country)
+            if inv.target_country == inv.investor_country:
+                investor.public_satisfaction = min(100.0, (investor.public_satisfaction or 0.0) + INVEST_SATISFACTION_GAIN)
+            elif target is not None:
+                # اثرات اجتماعی سرمایه‌گذاری خارجی روی کشور هدف
+                target.public_satisfaction = min(100.0, (target.public_satisfaction or 0.0) + FOREIGN_INVEST_SATISFACTION_GAIN)
+                target.unemployment = max(0.0, (target.unemployment or 0.0) - FOREIGN_INVEST_UNEMPLOYMENT_DROP)
+                target.inflation = max(0.0, (target.inflation or 0.0) - FOREIGN_INVEST_INFLATION_DROP)
+
+            inv.last_yield_at = now
+
+            fa, _pct = INVESTMENT_CATEGORIES.get(inv.category, (inv.category, 0.0))
+            if investor.owner_user_id:
+                pings.append((
+                    investor.owner_user_id,
+                    f"📈 شما از سرمایه‌گذاری در «{fa}» به اندازه‌ی {fa_money(profit)} سود کردید.\n"
+                    f"⏳ زمان سود بعد: {fa_number(INVESTMENT_YIELD_INTERVAL_H)} ساعت",
+                ))
+        await session.commit()
+
+    for owner_id, text in pings:
+        try:
+            await bot.send_message(owner_id, text)
+        except Exception:  # noqa: BLE001
+            pass
 
 
 async def process_shipments(bot: Bot) -> None:
@@ -385,17 +490,20 @@ async def process_calls() -> None:
         await session.commit()
 
 
-async def process_military_factories() -> None:
+async def process_military_factories(bot: Bot) -> None:
     """
     کارخانه‌های نظامی سررسیدشده را پردازش می‌کند (v1.7):
     اگر منابع مصرفی هر چرخه کافی باشد، آن‌ها را کسر و تعداد بازدهی را به
-    قلم تجهیزات مربوطه اضافه می‌کند.
+    قلم تجهیزات مربوطه اضافه می‌کند. به مالک پیام بازدهی می‌دهد (v1.9).
     """
     from ..constants import MIL_FACTORY_INTAKE
     from ..database.models import MilitaryAsset
+    from ..database.repositories import countries as countries_repo
     from ..database.repositories import military as mil_repo
     from ..database.repositories import military_factory as milfac_repo
     from ..enums import MilitaryFactoryType
+
+    pings: list[tuple[int, str]] = []
 
     async with async_session_factory() as session:
         factories = await milfac_repo.all_active_factories(session)
@@ -432,7 +540,23 @@ async def process_military_factories() -> None:
                     count=f.yield_amount,
                 ))
             f.last_yield_at = now
+
+            # پیام بازدهی به مالک (v1.9)
+            owner_country = await countries_repo.get_country(session, f.country_id)
+            if owner_country and owner_country.owner_user_id:
+                pings.append((
+                    owner_country.owner_user_id,
+                    f"🏭 شما از کارخانه‌ی «{f.asset_name}» به اندازه‌ی {fa_number(f.yield_amount)} "
+                    f"{f.unit} بازدهی دریافت کردید.\n"
+                    f"⏳ زمان بازدهی بعدی: {fa_number(f.yield_interval_h)} ساعت",
+                ))
         await session.commit()
+
+    for owner_id, text in pings:
+        try:
+            await bot.send_message(owner_id, text)
+        except Exception:  # noqa: BLE001
+            pass
 
 
 async def process_military_shipments(bot: Bot) -> None:
@@ -500,14 +624,15 @@ async def process_military_shipments(bot: Bot) -> None:
 async def _tick(bot: Bot) -> None:
     """جاب اصلی که هر دقیقه همه‌ی پردازش‌های زمان‌دار را اجرا می‌کند."""
     try:
-        await process_facility_yields()
+        await process_facility_yields(bot)
         await process_shipments(bot)
-        await process_military_factories()
+        await process_military_factories(bot)
         await process_military_shipments(bot)
         await process_attacks(bot)
         await process_meetings(bot)
         await process_group_meetings(bot)
         await process_calls()
+        await process_investments(bot)
     except Exception as exc:  # noqa: BLE001 — خطای یک تیک نباید زمان‌بند را متوقف کند
         logger.exception("Scheduler tick failed: %s", exc)
 

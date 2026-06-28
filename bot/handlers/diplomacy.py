@@ -14,8 +14,15 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..config import get_settings
-from ..constants import MEETING_DURATION_MINUTES, PHONE_CALL_DURATION_MINUTES
+from ..constants import (
+    MEETING_COOLDOWN_HOURS,
+    MEETING_DURATION_MINUTES,
+    PHONE_CALL_COOLDOWN_MINUTES,
+    PHONE_CALL_DURATION_MINUTES,
+    SPEECH_COOLDOWN_MINUTES,
+)
 from ..database.models import Contract, GroupMeeting, Meeting, PhoneCall, Sanction, Speech, User
+from ..database.repositories import cooldowns as cd_repo
 from ..database.repositories import countries as countries_repo
 from ..database.repositories import diplomacy as dip_repo
 from ..enums import SANCTION_FA, DiplomacyStatus, NewsCategory, SanctionType
@@ -33,7 +40,7 @@ from ..services.media import send_photo_news, send_specific_photo
 from ..services.news_service import publish_news, send_log
 from ..services.sanction_service import apply_sanction_effects
 from ..database.repositories import users as users_repo
-from ..states import CallForm, ContractForm, LetterForm, MeetingForm, SanctionForm, SpeechForm
+from ..states import CallForm, ContractForm, MeetingForm, SanctionForm, SpeechForm
 from ..utils.numbers import fa_number
 from ..utils.ui import STYLE_MAIN, STYLE_NO, STYLE_OK, header
 from .deps import NO_COUNTRY_TEXT, get_player_country
@@ -118,77 +125,25 @@ async def _busy_block_cb(
     return True
 
 
+# ------------------------- کول‌داون کنش‌ها (v1.9) -------------------------
+async def _cooldown_remaining_min(
+    session: AsyncSession, country_id: int, action: str, hours: float
+) -> int:
+    """دقیقه‌ی باقی‌مانده تا پایان کول‌داون یک کنش (رند به بالا)."""
+    secs = await cd_repo.remaining_seconds(session, country_id, action, hours)
+    return int((secs + 59) // 60)
+
+
+def _cooldown_text(label: str, every_fa: str, mins: int) -> str:
+    return (
+        f"⏳ {label} هر {every_fa} یک‌بار امکان‌پذیر است.\n"
+        f"حدود {fa_number(mins)} دقیقه‌ی دیگر دوباره تلاش کنید."
+    )
+
+
 # ============================================================
-#  ✉️ نامه
+#  ✉️ نامه — به handlers/mail.py منتقل شد (v1.9): به یک/چند کشور + صندوق پستی
 # ============================================================
-@router.callback_query(F.data == "dip:letter")
-async def cb_letter(call: CallbackQuery, state: FSMContext, session: AsyncSession, db_user: User) -> None:
-    await call.answer()
-    country = await get_player_country(session, db_user)
-    if country is None:
-        await call.message.edit_text(NO_COUNTRY_TEXT)
-        return
-    await state.set_state(LetterForm.choosing_target)
-    others = await _other_countries(session, country.id)
-    await call.message.edit_text(
-        "✉️ نامه را به کدام کشور می‌فرستید؟",
-        reply_markup=countries_kb(others, prefix="letter_to", columns=2, back_data="menu:diplomacy"),
-    )
-
-
-@router.callback_query(LetterForm.choosing_target, F.data.startswith("letter_to:"))
-async def cb_letter_to(call: CallbackQuery, state: FSMContext) -> None:
-    await call.answer()
-    await state.update_data(target_id=int(call.data.split(":")[1]))
-    await state.set_state(LetterForm.writing_body)
-    await call.message.edit_text("متن نامه را بنویسید:", reply_markup=_back_kb("letterback"))
-
-
-@router.callback_query(StateFilter(LetterForm), F.data == "letterback")
-async def cb_letter_back(
-    call: CallbackQuery, state: FSMContext, session: AsyncSession, db_user: User
-) -> None:
-    """بازگشت به انتخاب کشور مقصد نامه."""
-    await call.answer()
-    country = await get_player_country(session, db_user)
-    if country is None:
-        await call.message.edit_text(NO_COUNTRY_TEXT)
-        return
-    await state.set_state(LetterForm.choosing_target)
-    others = await _other_countries(session, country.id)
-    await call.message.edit_text(
-        "✉️ نامه را به کدام کشور می‌فرستید؟",
-        reply_markup=countries_kb(others, prefix="letter_to", columns=2, back_data="menu:diplomacy"),
-    )
-
-
-@router.message(LetterForm.writing_body, F.text)
-async def msg_letter_body(message: Message, state: FSMContext, session: AsyncSession, db_user: User) -> None:
-    data = await state.get_data()
-    country = await get_player_country(session, db_user)
-    target = await countries_repo.get_country(session, data["target_id"])
-    await state.clear()
-    if country is None or target is None:
-        await message.answer("خطا در ارسال نامه.")
-        return
-
-    if target.owner_user_id:
-        try:
-            await bot.send_message(
-                target.owner_user_id,
-                f"✉️ <b>نامه از {country.flag} {country.name_fa}</b>\n\n{message.text}",
-            )
-        except Exception:  # noqa: BLE001
-            pass
-    # لاگ نامه به گروه لاگ مدیران
-    await send_log(
-        bot,
-        f"✉️ <b>نامه</b>\n"
-        f"فرستنده: {country.flag} {country.name_fa}\n"
-        f"گیرنده: {target.flag} {target.name_fa}\n\n"
-        f"📝 متن:\n{message.text}",
-    )
-    await message.answer("✅ نامه ارسال شد.", reply_markup=diplomacy_menu_kb())
 
 
 # ============================================================
@@ -200,6 +155,16 @@ async def cb_call(call: CallbackQuery, state: FSMContext, session: AsyncSession,
     country = await get_player_country(session, db_user)
     if country is None:
         await call.message.edit_text(NO_COUNTRY_TEXT)
+        return
+    # کول‌داون تماس: هر ۳۰ دقیقه ۱ تماس (v1.9)
+    mins = await _cooldown_remaining_min(
+        session, country.id, "phone_call", PHONE_CALL_COOLDOWN_MINUTES / 60
+    )
+    if mins > 0:
+        await call.message.edit_text(
+            _cooldown_text("تماس تلفنی", f"{fa_number(PHONE_CALL_COOLDOWN_MINUTES)} دقیقه", mins),
+            reply_markup=diplomacy_menu_kb(),
+        )
         return
     await state.set_state(CallForm.choosing_target)
     others = await _other_countries(session, country.id)
@@ -229,6 +194,17 @@ async def cb_call_to(call: CallbackQuery, state: FSMContext, session: AsyncSessi
         )
         return
 
+    # کول‌داون تماس: هر ۳۰ دقیقه ۱ تماس (v1.9)
+    mins = await _cooldown_remaining_min(
+        session, country.id, "phone_call", PHONE_CALL_COOLDOWN_MINUTES / 60
+    )
+    if mins > 0:
+        await call.message.edit_text(
+            _cooldown_text("تماس تلفنی", f"{fa_number(PHONE_CALL_COOLDOWN_MINUTES)} دقیقه", mins),
+            reply_markup=diplomacy_menu_kb(),
+        )
+        return
+
     phone_call = PhoneCall(
         caller_country=country.id,
         callee_country=target.id,
@@ -236,6 +212,8 @@ async def cb_call_to(call: CallbackQuery, state: FSMContext, session: AsyncSessi
     )
     await dip_repo.add_call(session, phone_call)
     await session.flush()
+    # ثبت کول‌داون تماس برای تماس‌گیرنده
+    await cd_repo.touch(session, country.id, "phone_call")
 
     kb = InlineKeyboardMarkup(inline_keyboard=[[
         InlineKeyboardButton(text="✅ پاسخ", callback_data=f"call_accept:{phone_call.id}", style=STYLE_OK),
@@ -388,6 +366,14 @@ async def cb_meeting(call: CallbackQuery, state: FSMContext, session: AsyncSessi
     if country is None:
         await call.message.edit_text(NO_COUNTRY_TEXT)
         return
+    # کول‌داون دیدار حضوری: هر ۳ ساعت ۱ نشست (v1.9)
+    mins = await _cooldown_remaining_min(session, country.id, "meeting", MEETING_COOLDOWN_HOURS)
+    if mins > 0:
+        await call.message.edit_text(
+            _cooldown_text("دیدار حضوری", f"{fa_number(MEETING_COOLDOWN_HOURS)} ساعت", mins),
+            reply_markup=diplomacy_menu_kb(),
+        )
+        return
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🤝 دیدار دوجانبه", callback_data="meet_kind:bi", style=STYLE_MAIN)],
         [InlineKeyboardButton(text="👥 دیدار چندجانبه", callback_data="meet_kind:multi", style=STYLE_MAIN)],
@@ -534,6 +520,15 @@ async def msg_group_title(message: Message, state: FSMContext, session: AsyncSes
         )
         return
 
+    # کول‌داون دیدار حضوری: هر ۳ ساعت ۱ نشست (شامل نشست چندجانبه) (v1.9)
+    mins = await _cooldown_remaining_min(session, country.id, "meeting", MEETING_COOLDOWN_HOURS)
+    if mins > 0:
+        await message.answer(
+            _cooldown_text("دیدار حضوری", f"{fa_number(MEETING_COOLDOWN_HOURS)} ساعت", mins),
+            reply_markup=diplomacy_menu_kb(),
+        )
+        return
+
     meeting = GroupMeeting(
         host_country=country.id,
         title=message.text.strip(),
@@ -541,6 +536,8 @@ async def msg_group_title(message: Message, state: FSMContext, session: AsyncSes
     )
     await dip_repo.add_group_meeting(session, meeting)
     await session.flush()
+    # ثبت کول‌داون نشست برای میزبان (v1.9)
+    await cd_repo.touch(session, country.id, "meeting")
 
     invited_names = []
     for cid in selected:
@@ -732,6 +729,15 @@ async def cb_meet_to(call: CallbackQuery, state: FSMContext, session: AsyncSessi
         )
         return
 
+    # کول‌داون دیدار حضوری: هر ۳ ساعت ۱ نشست (v1.9)
+    mins = await _cooldown_remaining_min(session, country.id, "meeting", MEETING_COOLDOWN_HOURS)
+    if mins > 0:
+        await call.message.edit_text(
+            _cooldown_text("دیدار حضوری", f"{fa_number(MEETING_COOLDOWN_HOURS)} ساعت", mins),
+            reply_markup=diplomacy_menu_kb(),
+        )
+        return
+
     meeting = Meeting(
         traveler_country=country.id,
         host_country=target.id,
@@ -739,6 +745,8 @@ async def cb_meet_to(call: CallbackQuery, state: FSMContext, session: AsyncSessi
     )
     await dip_repo.add_meeting(session, meeting)
     await session.flush()
+    # ثبت کول‌داون نشست برای آغازکننده (v1.9)
+    await cd_repo.touch(session, country.id, "meeting")
 
     kb = InlineKeyboardMarkup(inline_keyboard=[[
         InlineKeyboardButton(text="✅ پذیرش سفر", callback_data=f"meet_accept:{meeting.id}", style=STYLE_OK),
@@ -988,6 +996,13 @@ async def cb_sign_contract(call: CallbackQuery, session: AsyncSession, db_user: 
         NewsCategory.DIPLOMACY,
         f"🕊 قراردادی میان {a.name_fa if a else '?'} و {b.name_fa if b else '?'} منعقد شد.",
     )
+    # لاگ انعقاد قرارداد به گروه لاگ (v1.9)
+    await send_log(
+        bot,
+        f"📜 <b>قرارداد منعقد شد</b>\n"
+        f"عنوان: {contract.title}\n"
+        f"طرفین: {a.flag if a else ''} {a.name_fa if a else '?'} ↔ {b.flag if b else ''} {b.name_fa if b else '?'}",
+    )
 
 
 @router.callback_query(F.data.startswith("reject_contract:"))
@@ -1153,6 +1168,43 @@ async def cb_sanction_do_cancel(call: CallbackQuery, session: AsyncSession, db_u
         reply_markup=sanction_menu_kb(),
     )
 
+    # نام فارسی نوع تحریم
+    try:
+        stype_fa = SANCTION_FA[SanctionType(sanction.sanction_type)]
+    except (ValueError, KeyError):
+        stype_fa = sanction.sanction_type or "تحریم"
+
+    x = f"{target.flag} {target.name_fa}" if target else "?"   # کشور تحریم‌شده
+    y = f"{country.flag} {country.name_fa}"                      # کشور تحریم‌کننده
+
+    # خبر رفع تحریم در کانال دیپلماسی (v1.9)
+    if settings.news_diplomacy_channel_id is not None:
+        news = (
+            "🔴 | فوری!\n\n"
+            f"✅ | کشور {x} توسط کشور {y} که پیش‌تر مورد {stype_fa} قرار گرفته بود، "
+            "امروز در خبری اعلام کرده که تحریم‌های مرتبط با این موضوع در حال حذف شدن و رفع تحریم می‌باشد!"
+        )
+        try:
+            await bot.send_message(settings.news_diplomacy_channel_id, news)
+        except Exception:  # noqa: BLE001
+            pass
+
+    # اطلاع به کشور تحریم‌شده
+    if target and target.owner_user_id:
+        try:
+            await bot.send_message(
+                target.owner_user_id,
+                f"✅ کشور {y} {stype_fa} علیه شما را لغو کرد.",
+            )
+        except Exception:  # noqa: BLE001
+            pass
+
+    # لاگ رفع تحریم به گروه لاگ (v1.9)
+    await send_log(
+        bot,
+        f"✅ <b>رفع تحریم</b>\nتحریم‌کننده: {y}\nکشور هدف: {x}\nنوع: {stype_fa}",
+    )
+
 
 @router.callback_query(F.data.startswith("sanction_to:"))
 async def cb_sanction_to(call: CallbackQuery, state: FSMContext, session: AsyncSession, db_user: User) -> None:
@@ -1261,6 +1313,16 @@ async def cb_speech(call: CallbackQuery, state: FSMContext, session: AsyncSessio
     if country is None:
         await call.message.edit_text(NO_COUNTRY_TEXT)
         return
+    # کول‌داون بیانیه: هر ۱۰ دقیقه ۱ بیانیه (v1.9)
+    mins = await _cooldown_remaining_min(
+        session, country.id, "speech", SPEECH_COOLDOWN_MINUTES / 60
+    )
+    if mins > 0:
+        await call.message.edit_text(
+            _cooldown_text("ارسال بیانیه", f"{fa_number(SPEECH_COOLDOWN_MINUTES)} دقیقه", mins),
+            reply_markup=diplomacy_menu_kb(),
+        )
+        return
     await state.set_state(SpeechForm.entering_text)
     await call.message.edit_text(
         "🎤 متن سخنرانی/بیانیه‌ی خود را وارد کنید:",
@@ -1333,6 +1395,17 @@ async def msg_speech_photo(message: Message, state: FSMContext, session: AsyncSe
     )
     # ذخیره‌ی آی‌دی پیام کانال برای ریپلای نقل قول‌ها
     speech.channel_message_id = sent.message_id
+
+    # ثبت کول‌داون بیانیه: هر ۱۰ دقیقه ۱ بیانیه (v1.9)
+    await cd_repo.touch(session, country.id, "speech")
+
+    # لاگ بیانیه به گروه لاگ مدیران (v1.9)
+    await send_log(
+        bot,
+        f"📢 <b>بیانیه</b>\n"
+        f"کشور: {country.flag} {country.name_fa} (رئیس‌جمهور {president})\n\n"
+        f"📝 متن:\n{speech_text}",
+    )
 
     await message.answer("✅ سخنرانی شما در کانال دیپلماسی منتشر شد.", reply_markup=diplomacy_menu_kb())
 

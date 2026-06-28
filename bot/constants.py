@@ -6,7 +6,7 @@
 
 from __future__ import annotations
 
-from .enums import FacilityType, MilitaryFactoryType, ResourceType
+from .enums import FACILITY_FA, FacilityType, MilitaryFactoryType, ResourceType
 
 # ============================================================
 #  بازدهی پیش‌فرض ذخایر طبیعی (پلی‌بوک: بازدهی ۷۲ ساعته‌ی اولیه)
@@ -59,9 +59,64 @@ FACILITY_COST_USD: dict[FacilityType, int] = {
 RESOURCE_SALE_COOLDOWN_HOURS = 1    # هر کشور هر ۱ ساعت یک‌بار فروش ذخیره (v1.8)
 ADVISOR_COOLDOWN_HOURS = 24         # مشاور AI هر ۲۴ ساعت یک‌بار در هر دامنه
 
-# محدودیت ساخت تأسیسات/کارخانه (v1.9): حداکثر ۳ ساخت در هر ۱۲ ساعت (مجموع تأسیسات و کارخانه)
-BUILD_LIMIT_COUNT = 3
+# محدودیت ساخت تأسیسات/کارخانه — پنجره‌ی زمانی مشترک
 BUILD_LIMIT_WINDOW_HOURS = 12
+
+# محدودیت ساخت به تفکیک نوع تأسیسات (v1.9): تعداد مجاز در هر پنجره‌ی ۱۲ ساعته.
+# هر «گروه» = (کلید، مجموعه‌ی FacilityType، سقف تعداد، نام فارسی).
+# دکل نفتی و گازی یک سهمیه‌ی مشترک دارند (طبق متن آپدیت: «دکل نفتی و گازی: ۳ تا»).
+BUILD_LIMIT_GROUPS: list[tuple[str, frozenset[FacilityType], int, str]] = [
+    ("mining", frozenset({FacilityType.MINE}), 5, "تأسیسات معدنی"),
+    ("steel", frozenset({FacilityType.STEEL_FACTORY}), 2, "کارخانه فولاد"),
+    ("oilgas", frozenset({FacilityType.OIL_PLATFORM, FacilityType.GAS_PLATFORM}), 3, "دکل نفت و گاز"),
+]
+
+
+def build_limit_group_for(ftype: FacilityType) -> tuple[str, frozenset[FacilityType], int, str]:
+    """گروه محدودیت ساختِ مربوط به یک نوع تأسیسات را برمی‌گرداند."""
+    for group in BUILD_LIMIT_GROUPS:
+        if ftype in group[1]:
+            return group
+    # پیش‌فرض امن (نباید رخ دهد): سهمیه‌ی تک‌نوعی ۳تایی
+    return ("other", frozenset({ftype}), 3, FACILITY_FA.get(ftype, "تأسیسات"))
+
+
+# کارخانه‌ی نظامی: هر ۱۲ ساعت ۲ تا (v1.9)
+MIL_FACTORY_BUILD_LIMIT = 2
+
+# سیستم اتحاد (v1.9): حداکثر تعداد کشورهایی که سازنده می‌تواند به اتحاد بیاورد (به‌جز خودش)
+ALLIANCE_MAX_MEMBERS = 6
+
+# ============================================================
+#  سرمایه‌گذاری (v1.9): دسته‌ها و درصد سود در هر ۲۴ ساعت
+#  ساختار: کلید → (نام فارسی، درصد سود ۲۴ساعته)
+# ============================================================
+INVESTMENT_CATEGORIES: dict[str, tuple[str, float]] = {
+    "human_capital": ("سرمایه انسانی", 15.0),
+    "education": ("آموزش", 12.0),
+    "health": ("سلامت", 10.0),
+    "science_tech": ("علم و فناوری", 20.0),
+    "culture_art": ("فرهنگ و هنر", 7.0),
+    "environment": ("محیط زیست", 8.0),
+    "tourism": ("گردشگری", 9.0),
+    "security_defense": ("امنیت و دفاع", 6.0),
+    "intl_relations": ("روابط بین‌الملل", 7.0),
+    "digital_economy": ("اقتصاد دیجیتال", 18.0),
+}
+
+INVESTMENT_YIELD_INTERVAL_H = 24       # سود سرمایه‌گذاری هر ۲۴ ساعت
+INVEST_SATISFACTION_GAIN = 0.5         # افزایش رضایت عمومی (هر چرخه، داخلی یا خارجی)
+# اثر سرمایه‌گذاری خارجی روی کشور هدف (هر چرخه‌ی ۲۴ساعته)
+FOREIGN_INVEST_SATISFACTION_GAIN = 1.0
+FOREIGN_INVEST_UNEMPLOYMENT_DROP = 0.3
+FOREIGN_INVEST_INFLATION_DROP = 0.15
+
+# ============================================================
+#  کول‌داون کنش‌های دیپلماتیک (v1.9)
+# ============================================================
+MEETING_COOLDOWN_HOURS = 3            # دیدار حضوری: هر ۳ ساعت ۱ نشست
+SPEECH_COOLDOWN_MINUTES = 10         # بیانیه (سخنرانی): هر ۱۰ دقیقه ۱
+PHONE_CALL_COOLDOWN_MINUTES = 30     # تماس تلفنی: هر ۳۰ دقیقه ۱
 
 # ============================================================
 #  زمان‌بندی کنش‌های دیپلماتیک

@@ -5,11 +5,14 @@
 """
 
 from . import (
+    alliances,
     claims,
     cooldowns,
     countries,
     diplomacy,
     facilities,
+    investments,
+    letters,
     military,
     reserves,
     tariff,
@@ -18,11 +21,14 @@ from . import (
 )
 
 __all__ = [
+    "alliances",
     "claims",
     "cooldowns",
     "countries",
     "diplomacy",
     "facilities",
+    "investments",
+    "letters",
     "military",
     "reserves",
     "tariff",

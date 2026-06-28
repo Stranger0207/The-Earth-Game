@@ -11,10 +11,10 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMar
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..constants import (
-    BUILD_LIMIT_COUNT,
     BUILD_LIMIT_WINDOW_HOURS,
     FACILITY_COST_USD,
     RESOURCE_SALE_COOLDOWN_HOURS,
+    build_limit_group_for,
 )
 from ..database.models import User
 from ..database.repositories import cooldowns as cd_repo
@@ -216,14 +216,16 @@ async def msg_location(
         await state.clear()
         return
 
-    # محدودیت ساخت: حداکثر ۳ ساخت (تأسیسات + کارخانه) در هر ۱۲ ساعت (v1.9)
+    # محدودیت ساخت به تفکیک نوع تأسیسات (v1.9):
+    # معدنی ۵، فولاد ۲، دکل نفت/گاز ۳ (مشترک) — همگی در هر ۱۲ ساعت
     since = _utcnow() - timedelta(hours=BUILD_LIMIT_WINDOW_HOURS)
-    recent = await fac_repo.count_builds_since(session, country.id, since)
-    if recent >= BUILD_LIMIT_COUNT:
+    _key, _types, _limit, _label = build_limit_group_for(ftype)
+    recent = await fac_repo.count_facilities_by_types_since(session, country.id, _types, since)
+    if recent >= _limit:
         await state.clear()
         await message.answer(
             f"⏳ شما در هر {fa_number(BUILD_LIMIT_WINDOW_HOURS)} ساعت حداکثر "
-            f"{fa_number(BUILD_LIMIT_COUNT)} تأسیسات/کارخانه می‌توانید بسازید. "
+            f"{fa_number(_limit)} «{_label}» می‌توانید بسازید. "
             "لطفاً بعداً دوباره تلاش کنید.",
             reply_markup=economy_menu_kb(),
         )

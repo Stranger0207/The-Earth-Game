@@ -4,12 +4,14 @@ from __future__ import annotations
 
 from aiogram import F, Router
 from aiogram.filters import Command
+from aiogram.fsm.context import FSMContext
 from aiogram.types import (
     CallbackQuery,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
     Message,
 )
+from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..config import get_settings
@@ -20,8 +22,11 @@ from ..database.repositories import users as users_repo
 from ..enums import ClaimStatus
 from ..keyboards.menu import main_menu_kb
 from ..loader import bot
+from ..services.news_service import send_log
 from ..services.season_service import reset_season
+from ..states import AnnounceForm
 from ..utils.numbers import fa_number
+from ..utils.ui import PICK_OFF, PICK_ON, STYLE_MAIN, STYLE_OK
 
 router = Router(name="admin")
 settings = get_settings()
@@ -127,21 +132,20 @@ async def cmd_pending(
 #  پایان فصل: ریست کامل بازی به حالت اولیه (فقط مالک)
 #  با تأیید دومرحله‌ای برای جلوگیری از ریست تصادفی.
 # ============================================================
-@router.message(Command("announce"))
-async def cmd_announce(message: Message, session: AsyncSession) -> None:
-    """اعلان عمومی به همه‌ی کشورهای دارای مالک (فقط مالک/مدیر) — v1.6."""
-    if not settings.is_admin(message.from_user.id):
-        return
-    text = message.text.partition(" ")[2].strip()
-    if not text:
-        await message.answer("📛 استفاده: <code>/announce متن پیام</code>")
-        return
-
-    body = f"📛اعلانات عمومی کره زمین📛\n\n🔴 | {text}"
+async def _broadcast_announcement(
+    session: AsyncSession, text: str, target_ids: list[int] | None = None
+) -> int:
+    """
+    ارسال اعلان به همه‌ی کشورهای دارای مالک، یا فقط به کشورهای target_ids (v1.9).
+    تعداد دریافت‌کنندگان را برمی‌گرداند.
+    """
+    body = f"📛اعلانات کره زمین📛\n\n🔴 | {text}"
     countries = await countries_repo.list_countries(session)
     sent = 0
     seen: set[int] = set()
     for c in countries:
+        if target_ids is not None and c.id not in target_ids:
+            continue
         if c.owner_user_id and c.owner_user_id not in seen:
             seen.add(c.owner_user_id)
             try:
@@ -149,7 +153,115 @@ async def cmd_announce(message: Message, session: AsyncSession) -> None:
                 sent += 1
             except Exception:  # noqa: BLE001 — خطای ارسال نباید بقیه را متوقف کند
                 pass
-    await message.answer(f"✅ اعلان عمومی به {fa_number(sent)} کشور ارسال شد.")
+    return sent
+
+
+def _announce_kind_kb() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="📢 به همه‌ی کشورها", callback_data="annc:all", style=STYLE_MAIN)],
+        [InlineKeyboardButton(text="🎯 به یک یا چند کشور", callback_data="annc:multi", style=STYLE_MAIN)],
+    ])
+
+
+def _announce_select_kb(countries, selected: set[int]) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    for c in countries:
+        if not c.owner_user_id:
+            continue
+        chosen = c.id in selected
+        mark = PICK_ON if chosen else PICK_OFF
+        builder.button(
+            text=f"{mark} {c.flag} {c.name_fa}",
+            callback_data=f"annc_pick:{c.id}",
+            style=STYLE_OK if chosen else STYLE_MAIN,
+        )
+    builder.adjust(2)
+    cont = f"✅ ادامه ({fa_number(len(selected))})" if selected else "✔️ ادامه"
+    builder.row(InlineKeyboardButton(text=cont, callback_data="annc_next", style=STYLE_OK))
+    return builder.as_markup()
+
+
+@router.message(Command("announce"))
+async def cmd_announce(message: Message, state: FSMContext, session: AsyncSession) -> None:
+    """اعلان به همه یا یک/چند کشور (فقط مالک/مدیر) — v1.9."""
+    if not settings.is_admin(message.from_user.id):
+        return
+    text = message.text.partition(" ")[2].strip()
+    if text:
+        # سازگاری قبلی: /announce متن → ارسال به همه
+        sent = await _broadcast_announcement(session, text)
+        await send_log(bot, f"📢 <b>اعلان عمومی</b> به {fa_number(sent)} کشور:\n\n{text}")
+        await message.answer(f"✅ اعلان عمومی به {fa_number(sent)} کشور ارسال شد.")
+        return
+    await state.clear()
+    await message.answer("📢 نوع اعلان را انتخاب کنید:", reply_markup=_announce_kind_kb())
+
+
+@router.callback_query(F.data == "annc:all")
+async def cb_announce_all(call: CallbackQuery, state: FSMContext) -> None:
+    if not settings.is_admin(call.from_user.id):
+        await call.answer("فقط مدیر/مالک.", show_alert=True)
+        return
+    await call.answer()
+    await state.set_state(AnnounceForm.writing_body)
+    await state.update_data(targets=None)
+    await call.message.edit_text("📝 متن اعلان عمومی (به همه‌ی کشورها) را بنویسید:")
+
+
+@router.callback_query(F.data == "annc:multi")
+async def cb_announce_multi(call: CallbackQuery, state: FSMContext, session: AsyncSession) -> None:
+    if not settings.is_admin(call.from_user.id):
+        await call.answer("فقط مدیر/مالک.", show_alert=True)
+        return
+    await call.answer()
+    await state.set_state(AnnounceForm.multi_select)
+    await state.update_data(selected=[])
+    countries = await countries_repo.list_countries(session)
+    await call.message.edit_text(
+        "🎯 کشورهای مقصد اعلان را انتخاب کنید:",
+        reply_markup=_announce_select_kb(countries, set()),
+    )
+
+
+@router.callback_query(AnnounceForm.multi_select, F.data.startswith("annc_pick:"))
+async def cb_announce_pick(call: CallbackQuery, state: FSMContext, session: AsyncSession) -> None:
+    await call.answer()
+    cid = int(call.data.split(":")[1])
+    data = await state.get_data()
+    selected = set(data.get("selected", []))
+    selected.discard(cid) if cid in selected else selected.add(cid)
+    await state.update_data(selected=list(selected))
+    countries = await countries_repo.list_countries(session)
+    await call.message.edit_reply_markup(reply_markup=_announce_select_kb(countries, selected))
+
+
+@router.callback_query(AnnounceForm.multi_select, F.data == "annc_next")
+async def cb_announce_next(call: CallbackQuery, state: FSMContext) -> None:
+    await call.answer()
+    data = await state.get_data()
+    selected = data.get("selected", [])
+    if not selected:
+        await call.answer("حداقل یک کشور انتخاب کنید.", show_alert=True)
+        return
+    await state.update_data(targets=selected)
+    await state.set_state(AnnounceForm.writing_body)
+    await call.message.edit_text(
+        f"📝 متن اعلان به {fa_number(len(selected))} کشور انتخاب‌شده را بنویسید:"
+    )
+
+
+@router.message(AnnounceForm.writing_body, F.text)
+async def msg_announce_body(message: Message, state: FSMContext, session: AsyncSession) -> None:
+    if not settings.is_admin(message.from_user.id):
+        await state.clear()
+        return
+    data = await state.get_data()
+    await state.clear()
+    targets = data.get("targets")
+    sent = await _broadcast_announcement(session, message.text, target_ids=targets)
+    scope = "عمومی (همه)" if not targets else f"{fa_number(len(targets))} کشور"
+    await send_log(bot, f"📢 <b>اعلان {scope}</b>:\n\n{message.text}")
+    await message.answer(f"✅ اعلان به {fa_number(sent)} کشور ارسال شد.")
 
 
 @router.message(Command("endseason"))

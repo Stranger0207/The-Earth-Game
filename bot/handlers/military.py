@@ -18,8 +18,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..config import get_settings
 from ..constants import (
-    BUILD_LIMIT_COUNT,
     BUILD_LIMIT_WINDOW_HOURS,
+    MIL_FACTORY_BUILD_LIMIT,
     MIL_FACTORY_BUILD_RESOURCES,
     MIL_FACTORY_COST_USD,
     MIL_FACTORY_INTAKE,
@@ -356,13 +356,13 @@ async def cb_factory_confirm(call: CallbackQuery, state: FSMContext, session: As
         await call.message.edit_text(NO_COUNTRY_TEXT)
         return
 
-    # محدودیت ساخت: حداکثر ۳ ساخت (تأسیسات + کارخانه) در هر ۱۲ ساعت (v1.9)
+    # محدودیت ساخت کارخانه نظامی: هر ۱۲ ساعت ۲ کارخانه (v1.9)
     since = _utcnow() - timedelta(hours=BUILD_LIMIT_WINDOW_HOURS)
-    recent = await fac_repo.count_builds_since(session, country.id, since)
-    if recent >= BUILD_LIMIT_COUNT:
+    recent = await fac_repo.count_mil_factories_since(session, country.id, since)
+    if recent >= MIL_FACTORY_BUILD_LIMIT:
         await call.message.edit_text(
             f"⏳ شما در هر {fa_number(BUILD_LIMIT_WINDOW_HOURS)} ساعت حداکثر "
-            f"{fa_number(BUILD_LIMIT_COUNT)} تأسیسات/کارخانه می‌توانید بسازید. لطفاً بعداً تلاش کنید.",
+            f"{fa_number(MIL_FACTORY_BUILD_LIMIT)} کارخانه نظامی می‌توانید بسازید. لطفاً بعداً تلاش کنید.",
             reply_markup=military_factory_menu_kb(),
         )
         return

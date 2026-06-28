@@ -132,6 +132,68 @@ async def build_facility(
     return facility
 
 
+async def build_joint_facility(
+    session: AsyncSession,
+    initiator: Country,
+    partner: Country,
+    facility_type: FacilityType,
+    resource: str | None,
+    location: str,
+    partner_percent: float,
+) -> Facility:
+    """
+    احداث تأسیسات مشترک (v1.9): هزینه بین سازنده و شریک به نسبت درصد تقسیم می‌شود
+    (سهم شریک = partner_percent٪، سهم سازنده = بقیه). بازدهی هم با همان نسبت در زمان‌بند
+    بین دو کشور تقسیم می‌شود. در صورت خطا EconomyError پرتاب می‌شود.
+    """
+    cost = FACILITY_COST_USD[facility_type]
+    partner_share = cost * (partner_percent / 100.0)
+    owner_share = cost - partner_share
+
+    if initiator.budget < owner_share:
+        raise EconomyError(f"بودجه‌ی شما کافی نیست. سهم شما {owner_share:,.0f} دلار است.")
+    if partner.budget < partner_share:
+        raise EconomyError("بودجه‌ی شریک کافی نیست.")
+
+    # بررسی امکان استخراج منبع برای کشور سازنده (محل احداث در کشور سازنده است)
+    required = _required_resource_for_facility(facility_type, resource)
+    if required is not None:
+        reserve = await reserves_repo.get_reserve(session, initiator.id, required)
+        if reserve is None or not reserve.can_extract:
+            raise EconomyError("کشور سازنده امکان استخراج این منبع را ندارد.")
+
+    yield_amount, output_resource, intake = _facility_yield(facility_type, resource)
+
+    initiator.budget -= owner_share
+    partner.budget -= partner_share
+
+    facility = Facility(
+        country_id=initiator.id,
+        type=facility_type.value,
+        resource=output_resource,
+        location=location,
+        budget=cost,
+        yield_amount=yield_amount,
+        yield_interval_h=24,
+        intake_amount=intake,
+        active=True,
+        partner_country=partner.id,
+        partner_percent=partner_percent,
+        last_yield_at=_utcnow(),
+    )
+    session.add(facility)
+
+    # اثر مثبت اقتصادی (برای کشور سازنده)
+    initiator.unemployment = max(0.0, initiator.unemployment - FACILITY_UNEMPLOYMENT_DROP)
+    initiator.public_satisfaction = min(100.0, initiator.public_satisfaction + FACILITY_SATISFACTION_GAIN)
+    initiator.economic_power = min(100.0, initiator.economic_power + FACILITY_ECON_POWER_GAIN)
+    initiator.inflation = max(0.0, initiator.inflation - FACILITY_INFLATION_DROP)
+    initiator.growth = "up"
+
+    await session.flush()
+    return facility
+
+
 async def transfer_sale(
     session: AsyncSession,
     seller_id: int,

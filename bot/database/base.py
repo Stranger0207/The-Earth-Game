@@ -52,6 +52,9 @@ _COLUMN_MIGRATIONS = [
     ("group_meeting_participants", "travel_eta", "TIMESTAMP WITH TIME ZONE"),
     # v1.6
     ("meetings", "start_announced", "BOOLEAN NOT NULL DEFAULT FALSE"),
+    # v1.9 — تأسیسات مشترک
+    ("facilities", "partner_country", "INTEGER"),
+    ("facilities", "partner_percent", "DOUBLE PRECISION NOT NULL DEFAULT 0"),
 ]
 
 

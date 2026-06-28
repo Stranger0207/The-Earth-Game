@@ -245,12 +245,33 @@ async def get_active_group_meeting_for_country(
     return result.scalars().first()
 
 
+async def get_committed_group_meeting_for_country(
+    session: AsyncSession, country_id: int
+) -> GroupMeeting | None:
+    """
+    نشست چندجانبه‌ای که کشور به آن «متعهد» است حتی اگر هنوز رسماً ACTIVE نشده باشد:
+    شرکت‌کننده‌ای که دعوت را پذیرفته (response=ACTIVE) و در حال سفر به میزبان است،
+    در نشستی که هنوز پایان/لغو نشده (PENDING یا ACTIVE). (v1.9 — جلوگیری از پذیرش سفر دوم در پرواز)
+    """
+    result = await session.execute(
+        select(GroupMeeting)
+        .join(GroupMeetingParticipant, GroupMeetingParticipant.meeting_id == GroupMeeting.id)
+        .where(
+            GroupMeeting.status.in_([DiplomacyStatus.PENDING, DiplomacyStatus.ACTIVE]),
+            GroupMeetingParticipant.country_id == country_id,
+            GroupMeetingParticipant.response == DiplomacyStatus.ACTIVE,
+        )
+        .order_by(GroupMeeting.id.desc())
+    )
+    return result.scalars().first()
+
+
 async def get_active_engagement_label(
     session: AsyncSession, country_id: int
 ) -> str | None:
     """
-    اگر کشور در یک تماس/دیدار/نشست فعال درگیر باشد، توضیح فارسی آن را برمی‌گرداند؛
-    در غیر این صورت None. مبنای «سیستم انحصار»: یک کشور هم‌زمان فقط یک نشست فعال دارد.
+    اگر کشور در یک تماس/دیدار/نشست فعال یا در حال سفر به نشست درگیر باشد، توضیح فارسی آن را
+    برمی‌گرداند؛ در غیر این صورت None. مبنای «سیستم انحصار»: یک کشور هم‌زمان فقط یک نشست فعال دارد.
     """
     if await get_active_call_for_country(session, country_id) is not None:
         return "یک تماس تلفنی فعال"
@@ -258,6 +279,9 @@ async def get_active_engagement_label(
         return "یک دیدار حضوری فعال"
     if await get_active_group_meeting_for_country(session, country_id) is not None:
         return "یک نشست چندجانبه‌ی فعال"
+    # شرکت‌کننده‌ای که نشست چندجانبه را پذیرفته و در حال سفر است (نشست هنوز PENDING)
+    if await get_committed_group_meeting_for_country(session, country_id) is not None:
+        return "یک نشست چندجانبه‌ی در حال سفر/برگزاری"
     return None
 
 

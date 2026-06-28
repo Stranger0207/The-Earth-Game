@@ -48,6 +48,13 @@ class Facility(Base):
     intake_amount: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
 
     active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+    # --- تأسیسات مشترک (v1.9) ---
+    # کشور شریک و درصد سهم شریک از بازدهی/هزینه (۰ یعنی تأسیسات معمولی).
+    # عمداً ForeignKey نیست تا رابطه‌ی Country.facilities دچار ابهام مسیر FK نشود.
+    partner_country: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    partner_percent: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+
     last_yield_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False
     )

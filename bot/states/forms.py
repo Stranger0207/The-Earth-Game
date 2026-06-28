@@ -122,3 +122,62 @@ class GodForm(StatesGroup):
     """فرم پنل گاد مود ادمین برای ویرایش مقادیر کشور (v1.8)."""
 
     entering_value = State()  # وارد کردن مقدار جدید (اقتصاد/ذخیره/تجهیزات)
+
+
+class BankTransferForm(StatesGroup):
+    """فرم انتقال وجه بانکی به کشور دیگر (v1.9)."""
+
+    choosing_target = State()   # انتخاب کشور مقصد
+    entering_amount = State()    # مبلغ انتقال
+    confirming = State()         # تأیید نهایی
+
+
+class DebtPayForm(StatesGroup):
+    """فرم پرداخت بدهی دولتی (v1.9)."""
+
+    entering_amount = State()    # مبلغ پرداختی
+    confirming = State()         # تأیید نهایی
+
+
+class InvestForm(StatesGroup):
+    """فرم سرمایه‌گذاری داخلی/خارجی (v1.9)."""
+
+    choosing_scope = State()    # روی خودم / روی کشور خارجی
+    choosing_target = State()   # انتخاب کشور خارجی
+    choosing_category = State() # انتخاب دسته‌ی سرمایه‌گذاری
+    entering_amount = State()    # مبلغ سرمایه‌گذاری
+    confirming = State()         # تأیید نهایی
+
+
+class AllianceForm(StatesGroup):
+    """فرم ساخت اتحاد (v1.9)."""
+
+    entering_name = State()      # نام اتحاد
+    entering_terms = State()     # مفاد اتحاد
+    selecting_members = State()  # انتخاب اعضای دعوتی (حداکثر ۶)
+
+
+class MailForm(StatesGroup):
+    """فرم سیستم نامه‌رسان (v1.9)."""
+
+    single_target = State()     # انتخاب یک کشور
+    multi_select = State()       # انتخاب چند کشور
+    writing_body = State()       # نوشتن متن نامه
+    replying = State()           # نوشتن پاسخ نامه
+
+
+class AnnounceForm(StatesGroup):
+    """فرم اعلان ادمین به یک/چند کشور (v1.9)."""
+
+    multi_select = State()       # انتخاب کشورهای هدف
+    writing_body = State()       # متن اعلان
+
+
+class JointFacilityForm(StatesGroup):
+    """فرم تأسیسات مشترک (v1.9)."""
+
+    choosing_partner = State()   # انتخاب شریک
+    choosing_type = State()      # نوع تأسیسات
+    choosing_resource = State()  # منبع (برای معدن مشترک)
+    entering_percent = State()    # درصد شریک
+    entering_location = State()   # محل احداث

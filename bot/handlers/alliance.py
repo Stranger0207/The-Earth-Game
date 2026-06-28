@@ -94,12 +94,16 @@ async def cb_alliance_mine(call: CallbackQuery, session: AsyncSession, db_user: 
         f"(رئیس‌جمهور {owner_pres})\n"
         f"👥 اعضا ({fa_number(len(members))}):\n" + "\n".join(member_lines)
     )
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="📜 مفاد اتحاد", callback_data="alli:terms", style=STYLE_MAIN)],
-        [InlineKeyboardButton(text="🚪 خروج از اتحاد", callback_data="alli:leave", style=STYLE_NO)],
-        [InlineKeyboardButton(text="🔙 بازگشت", callback_data="dip:alliance", style=STYLE_MAIN)],
-    ])
-    await call.message.edit_text(text, reply_markup=kb)
+    rows = [[InlineKeyboardButton(text="📜 مفاد اتحاد", callback_data="alli:terms", style=STYLE_MAIN)]]
+    # دکمه‌های مدیریت اعضا فقط برای مالک اتحاد (v1.10.1)
+    if alliance.owner_country == country.id:
+        rows.append([
+            InlineKeyboardButton(text="➕ افزودن کشور", callback_data="alli:add", style=STYLE_OK),
+            InlineKeyboardButton(text="➖ حذف کشور", callback_data="alli:remove", style=STYLE_NO),
+        ])
+    rows.append([InlineKeyboardButton(text="🚪 خروج از اتحاد", callback_data="alli:leave", style=STYLE_NO)])
+    rows.append([InlineKeyboardButton(text="🔙 بازگشت", callback_data="dip:alliance", style=STYLE_MAIN)])
+    await call.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
 
 
 @router.callback_query(F.data == "alli:terms")
@@ -173,6 +177,230 @@ async def cb_alliance_leave_confirm(call: CallbackQuery, session: AsyncSession, 
             except Exception:  # noqa: BLE001
                 pass
         await send_log(bot, f"🚪 <b>خروج از اتحاد</b>\n{country.flag} {country.name_fa} از اتحاد «{name}» خارج شد.")
+
+
+# ============================================================
+#  مدیریت اعضا توسط مالک اتحاد: افزودن و حذف کشور (v1.10.1)
+# ============================================================
+async def _owner_alliance(session: AsyncSession, country):
+    """اتحادی که این کشور مالک آن است (یا None)."""
+    membership = await alli_repo.get_membership(session, country.id)
+    if membership is None:
+        return None
+    alliance = await alli_repo.get_alliance(session, membership.alliance_id)
+    if alliance is None or alliance.owner_country != country.id:
+        return None
+    return alliance
+
+
+@router.callback_query(F.data == "alli:add")
+async def cb_alliance_add(call: CallbackQuery, session: AsyncSession, db_user: User) -> None:
+    """فهرست کشورهای قابل‌افزودن (دارای مالک و عضو هیچ اتحادی نیستند)."""
+    await call.answer()
+    country = await get_player_country(session, db_user)
+    if country is None:
+        await call.message.edit_text(NO_COUNTRY_TEXT)
+        return
+    alliance = await _owner_alliance(session, country)
+    if alliance is None:
+        await call.message.edit_text("فقط مالک اتحاد می‌تواند کشور اضافه کند.", reply_markup=_back_alliance_kb())
+        return
+    members = await alli_repo.list_members(session, alliance.id)
+    if len(members) - 1 >= ALLIANCE_MAX_MEMBERS:
+        await call.message.edit_text(
+            f"⛔️ ظرفیت اتحاد پر است (حداکثر {fa_number(ALLIANCE_MAX_MEMBERS)} عضو غیر از مالک).",
+            reply_markup=_back_alliance_kb(),
+        )
+        return
+    countries = await countries_repo.list_countries(session)
+    candidates = []
+    for c in countries:
+        if c.id == country.id or c.owner_user_id is None:
+            continue
+        if await alli_repo.get_membership(session, c.id) is not None:
+            continue  # قبلاً عضو یک اتحاد است
+        candidates.append(c)
+    if not candidates:
+        await call.message.edit_text(
+            "هیچ کشور آزادی برای افزودن وجود ندارد.", reply_markup=_back_alliance_kb()
+        )
+        return
+    builder = InlineKeyboardBuilder()
+    for c in candidates:
+        builder.button(text=f"{c.flag} {c.name_fa}", callback_data=f"alli_add_to:{c.id}", style=STYLE_OK)
+    builder.adjust(2)
+    builder.row(InlineKeyboardButton(text="🔙 بازگشت", callback_data="alli:mine", style=STYLE_MAIN))
+    await call.message.edit_text(
+        "➕ کدام کشور را به اتحاد دعوت می‌کنید؟", reply_markup=builder.as_markup()
+    )
+
+
+@router.callback_query(F.data.startswith("alli_add_to:"))
+async def cb_alliance_add_to(call: CallbackQuery, session: AsyncSession, db_user: User) -> None:
+    """ارسال درخواست عضویت به کشور انتخاب‌شده."""
+    await call.answer()
+    country = await get_player_country(session, db_user)
+    if country is None:
+        await call.message.edit_text(NO_COUNTRY_TEXT)
+        return
+    alliance = await _owner_alliance(session, country)
+    if alliance is None:
+        await call.message.edit_text("فقط مالک اتحاد می‌تواند کشور اضافه کند.", reply_markup=_back_alliance_kb())
+        return
+    target = await countries_repo.get_country(session, int(call.data.split(":")[1]))
+    if target is None or target.owner_user_id is None:
+        await call.message.edit_text("این کشور در دسترس نیست.", reply_markup=_back_alliance_kb())
+        return
+    if await alli_repo.get_membership(session, target.id) is not None:
+        await call.message.edit_text(
+            "این کشور هم‌اکنون عضو یک اتحاد است.", reply_markup=_back_alliance_kb()
+        )
+        return
+    kb = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="✅ می‌پذیرم", callback_data=f"alli_join_ok:{alliance.id}:{target.id}", style=STYLE_OK),
+        InlineKeyboardButton(text="❌ رد", callback_data=f"alli_join_no:{alliance.id}:{target.id}", style=STYLE_NO),
+    ]])
+    try:
+        await bot.send_message(
+            target.owner_user_id,
+            f"🛡 <b>دعوت به اتحاد «{alliance.name}»</b>\n\n"
+            f"کشور {country.flag} {country.name_fa} شما را به این اتحاد دعوت کرده است.",
+            reply_markup=kb,
+        )
+    except Exception:  # noqa: BLE001
+        pass
+    await call.message.edit_text(
+        f"📨 دعوت برای {target.flag} {target.name_fa} ارسال شد. منتظر پاسخ بمانید.",
+        reply_markup=_back_alliance_kb(),
+    )
+
+
+@router.callback_query(F.data.startswith("alli_join_ok:"))
+async def cb_alliance_join_ok(call: CallbackQuery, session: AsyncSession, db_user: User) -> None:
+    """پذیرش دعوت عضویت توسط کشور دعوت‌شده."""
+    _, aid_s, cid_s = call.data.split(":")
+    alliance_id, cid = int(aid_s), int(cid_s)
+    country = await get_player_country(session, db_user)
+    if country is None or country.id != cid:
+        await call.answer("این دعوت برای شما نیست.", show_alert=True)
+        return
+    alliance = await alli_repo.get_alliance(session, alliance_id)
+    if alliance is None:
+        await call.answer("این اتحاد دیگر وجود ندارد.", show_alert=True)
+        await call.message.edit_text("⚠️ این اتحاد دیگر وجود ندارد.")
+        return
+    if await alli_repo.get_membership(session, country.id) is not None:
+        await call.answer("شما هم‌اکنون عضو یک اتحاد هستید.", show_alert=True)
+        return
+    members = await alli_repo.list_members(session, alliance.id)
+    if len(members) - 1 >= ALLIANCE_MAX_MEMBERS:
+        await call.answer("ظرفیت اتحاد پر شده است.", show_alert=True)
+        await call.message.edit_text("⛔️ ظرفیت این اتحاد پر شده است.")
+        return
+    await alli_repo.add_member(session, alliance.id, country.id)
+    await call.answer("به اتحاد پیوستید ✅")
+    await call.message.edit_text(f"🛡 شما به اتحاد «{alliance.name}» پیوستید.")
+    owner = await countries_repo.get_country(session, alliance.owner_country)
+    if owner and owner.owner_user_id:
+        try:
+            await bot.send_message(
+                owner.owner_user_id,
+                f"✅ {country.flag} {country.name_fa} دعوت به اتحاد «{alliance.name}» را پذیرفت.",
+            )
+        except Exception:  # noqa: BLE001
+            pass
+    await send_log(
+        bot,
+        f"🛡 <b>عضو جدید اتحاد</b>\n{country.flag} {country.name_fa} به اتحاد «{alliance.name}» پیوست.",
+    )
+
+
+@router.callback_query(F.data.startswith("alli_join_no:"))
+async def cb_alliance_join_no(call: CallbackQuery, session: AsyncSession, db_user: User) -> None:
+    """رد دعوت عضویت."""
+    _, aid_s, cid_s = call.data.split(":")
+    alliance_id, cid = int(aid_s), int(cid_s)
+    country = await get_player_country(session, db_user)
+    if country is None or country.id != cid:
+        await call.answer("این دعوت برای شما نیست.", show_alert=True)
+        return
+    await call.answer("رد شد")
+    alliance = await alli_repo.get_alliance(session, alliance_id)
+    await call.message.edit_text("❌ دعوت اتحاد را رد کردید.")
+    if alliance is not None:
+        owner = await countries_repo.get_country(session, alliance.owner_country)
+        if owner and owner.owner_user_id:
+            try:
+                await bot.send_message(
+                    owner.owner_user_id,
+                    f"❌ {country.flag} {country.name_fa} دعوت به اتحاد «{alliance.name}» را رد کرد.",
+                )
+            except Exception:  # noqa: BLE001
+                pass
+
+
+@router.callback_query(F.data == "alli:remove")
+async def cb_alliance_remove(call: CallbackQuery, session: AsyncSession, db_user: User) -> None:
+    """فهرست اعضا برای حذف (به‌جز مالک)."""
+    await call.answer()
+    country = await get_player_country(session, db_user)
+    if country is None:
+        await call.message.edit_text(NO_COUNTRY_TEXT)
+        return
+    alliance = await _owner_alliance(session, country)
+    if alliance is None:
+        await call.message.edit_text("فقط مالک اتحاد می‌تواند عضو حذف کند.", reply_markup=_back_alliance_kb())
+        return
+    members = await alli_repo.list_members(session, alliance.id)
+    others = [m for m in members if m.country_id != alliance.owner_country]
+    if not others:
+        await call.message.edit_text("عضو دیگری برای حذف وجود ندارد.", reply_markup=_back_alliance_kb())
+        return
+    builder = InlineKeyboardBuilder()
+    for m in others:
+        c = await countries_repo.get_country(session, m.country_id)
+        if c:
+            builder.button(text=f"❌ {c.flag} {c.name_fa}", callback_data=f"alli_rm:{c.id}", style=STYLE_NO)
+    builder.adjust(1)
+    builder.row(InlineKeyboardButton(text="🔙 بازگشت", callback_data="alli:mine", style=STYLE_MAIN))
+    await call.message.edit_text("➖ کدام کشور را از اتحاد حذف می‌کنید؟", reply_markup=builder.as_markup())
+
+
+@router.callback_query(F.data.startswith("alli_rm:"))
+async def cb_alliance_remove_do(call: CallbackQuery, session: AsyncSession, db_user: User) -> None:
+    """حذف یک عضو از اتحاد توسط مالک."""
+    await call.answer()
+    country = await get_player_country(session, db_user)
+    if country is None:
+        await call.message.edit_text(NO_COUNTRY_TEXT)
+        return
+    alliance = await _owner_alliance(session, country)
+    if alliance is None:
+        await call.message.edit_text("فقط مالک اتحاد می‌تواند عضو حذف کند.", reply_markup=_back_alliance_kb())
+        return
+    cid = int(call.data.split(":")[1])
+    if cid == alliance.owner_country:
+        await call.answer("مالک را نمی‌توان حذف کرد.", show_alert=True)
+        return
+    target = await countries_repo.get_country(session, cid)
+    await alli_repo.remove_member(session, alliance.id, cid)
+    await call.message.edit_text(
+        f"✅ {target.flag if target else ''} {target.name_fa if target else '?'} از اتحاد حذف شد.",
+        reply_markup=_back_alliance_kb(),
+    )
+    if target and target.owner_user_id:
+        try:
+            await bot.send_message(
+                target.owner_user_id,
+                f"🚪 کشور شما توسط مالک از اتحاد «{alliance.name}» حذف شد.",
+            )
+        except Exception:  # noqa: BLE001
+            pass
+    await send_log(
+        bot,
+        f"➖ <b>حذف عضو اتحاد</b>\n{target.flag if target else ''} {target.name_fa if target else '?'} "
+        f"از اتحاد «{alliance.name}» حذف شد.",
+    )
 
 
 # ============================================================

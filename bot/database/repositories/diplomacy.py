@@ -266,12 +266,52 @@ async def get_committed_group_meeting_for_country(
     return result.scalars().first()
 
 
+async def get_hosted_group_meeting_for_country(
+    session: AsyncSession, country_id: int
+) -> GroupMeeting | None:
+    """
+    نشست چندجانبه‌ای که این کشور میزبان آن است و هنوز پایان/لغو نشده (PENDING یا ACTIVE).
+    (v1.10.1 — جلوگیری از میزبانیِ هم‌زمانِ دو نشست و قفل‌ماندن میزبان).
+    """
+    result = await session.execute(
+        select(GroupMeeting)
+        .where(
+            GroupMeeting.status.in_([DiplomacyStatus.PENDING, DiplomacyStatus.ACTIVE]),
+            GroupMeeting.host_country == country_id,
+        )
+        .order_by(GroupMeeting.id.desc())
+    )
+    return result.scalars().first()
+
+
+async def get_traveling_meeting_for_country(
+    session: AsyncSession, country_id: int
+) -> Meeting | None:
+    """
+    دیدار دوجانبه‌ای که این کشور در آن «درگیر» است و هنوز پایان نیافته (PENDING یا ACTIVE):
+    چه به‌عنوان مسافرِ در حال پرواز و چه میزبان. (v1.10.1)
+    """
+    result = await session.execute(
+        select(Meeting)
+        .where(
+            Meeting.status.in_([DiplomacyStatus.PENDING, DiplomacyStatus.ACTIVE]),
+            or_(
+                Meeting.traveler_country == country_id,
+                Meeting.host_country == country_id,
+            ),
+        )
+        .order_by(Meeting.id.desc())
+    )
+    return result.scalars().first()
+
+
 async def get_active_engagement_label(
     session: AsyncSession, country_id: int
 ) -> str | None:
     """
     اگر کشور در یک تماس/دیدار/نشست فعال یا در حال سفر به نشست درگیر باشد، توضیح فارسی آن را
     برمی‌گرداند؛ در غیر این صورت None. مبنای «سیستم انحصار»: یک کشور هم‌زمان فقط یک نشست فعال دارد.
+    نکته (v1.10.1): دیدار دوجانبه از همان لحظه‌ی پذیرش (وضعیت ACTIVE = در حال پرواز) قفل می‌شود.
     """
     if await get_active_call_for_country(session, country_id) is not None:
         return "یک تماس تلفنی فعال"
@@ -279,10 +319,97 @@ async def get_active_engagement_label(
         return "یک دیدار حضوری فعال"
     if await get_active_group_meeting_for_country(session, country_id) is not None:
         return "یک نشست چندجانبه‌ی فعال"
+    # میزبانِ نشست چندجانبه‌ای که هنوز فعال نشده (در حال جمع‌شدن کشورها)
+    if await get_hosted_group_meeting_for_country(session, country_id) is not None:
+        return "یک نشست چندجانبه‌ی در حال برگزاری (میزبان)"
     # شرکت‌کننده‌ای که نشست چندجانبه را پذیرفته و در حال سفر است (نشست هنوز PENDING)
     if await get_committed_group_meeting_for_country(session, country_id) is not None:
         return "یک نشست چندجانبه‌ی در حال سفر/برگزاری"
     return None
+
+
+# ------------------------- نشست‌های اخیر و بستن سراسری (v1.10.1) -------------------------
+
+
+async def list_recent_meetings_for_country(
+    session: AsyncSession, country_id: int, limit: int = 8
+) -> list[Meeting]:
+    """دیدارهای دوجانبه‌ی اخیر این کشور (مسافر یا میزبان)، جدیدترین اول."""
+    result = await session.execute(
+        select(Meeting)
+        .where(
+            or_(
+                Meeting.traveler_country == country_id,
+                Meeting.host_country == country_id,
+            )
+        )
+        .order_by(Meeting.id.desc())
+        .limit(limit)
+    )
+    return list(result.scalars().all())
+
+
+async def list_recent_group_meetings_for_country(
+    session: AsyncSession, country_id: int, limit: int = 8
+) -> list[GroupMeeting]:
+    """نشست‌های چندجانبه‌ی اخیر این کشور (میزبان یا شرکت‌کننده)، جدیدترین اول."""
+    # نشست‌هایی که میزبانشان است
+    hosted = await session.execute(
+        select(GroupMeeting)
+        .where(GroupMeeting.host_country == country_id)
+        .order_by(GroupMeeting.id.desc())
+        .limit(limit)
+    )
+    result_map: dict[int, GroupMeeting] = {g.id: g for g in hosted.scalars().all()}
+    # نشست‌هایی که در آن‌ها شرکت‌کننده بوده
+    joined = await session.execute(
+        select(GroupMeeting)
+        .join(GroupMeetingParticipant, GroupMeetingParticipant.meeting_id == GroupMeeting.id)
+        .where(GroupMeetingParticipant.country_id == country_id)
+        .order_by(GroupMeeting.id.desc())
+        .limit(limit)
+    )
+    for g in joined.scalars().all():
+        result_map.setdefault(g.id, g)
+    meetings = sorted(result_map.values(), key=lambda g: g.id, reverse=True)
+    return meetings[:limit]
+
+
+async def close_all_active_meetings(session: AsyncSession) -> dict[str, int]:
+    """
+    همه‌ی دیدارها/نشست‌ها/تماس‌های فعال یا معلق را می‌بندد (برای کامند ریست مالک — v1.10.1).
+    تعداد هر دسته را برمی‌گرداند.
+    """
+    counts = {"meetings": 0, "group_meetings": 0, "calls": 0}
+
+    res = await session.execute(
+        select(Meeting).where(
+            Meeting.status.in_([DiplomacyStatus.PENDING, DiplomacyStatus.ACTIVE])
+        )
+    )
+    for m in res.scalars().all():
+        m.status = DiplomacyStatus.COMPLETED
+        counts["meetings"] += 1
+
+    res = await session.execute(
+        select(GroupMeeting).where(
+            GroupMeeting.status.in_([DiplomacyStatus.PENDING, DiplomacyStatus.ACTIVE])
+        )
+    )
+    for g in res.scalars().all():
+        g.status = DiplomacyStatus.COMPLETED
+        counts["group_meetings"] += 1
+
+    res = await session.execute(
+        select(PhoneCall).where(
+            PhoneCall.status.in_([DiplomacyStatus.PENDING, DiplomacyStatus.ACTIVE])
+        )
+    )
+    for c in res.scalars().all():
+        c.status = DiplomacyStatus.COMPLETED
+        counts["calls"] += 1
+
+    return counts
 
 
 async def group_member_country_ids(

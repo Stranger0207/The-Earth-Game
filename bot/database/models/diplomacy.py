@@ -134,10 +134,14 @@ class Meeting(Base):
     meeting_ends_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
-    # توضیح AI درباره‌ی زمان سفر
+    # توضیح AI درباره‌ی زمان سفر (در v1.10.1 دیگر استفاده نمی‌شود؛ برای سازگاری مانده)
     travel_note: Mapped[str | None] = mapped_column(Text, nullable=True)
     # آیا خبر شروع نشست (پس از رسیدن مسافر) در کانال اعلام شده؟ (v1.6)
     start_announced: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # زمان آخرین پیام ردوبدل‌شده در نشست فعال — برای تایم‌اوت سکوت ۱۰ دقیقه (v1.10.1)
+    last_msg_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False
     )
@@ -209,6 +213,10 @@ class GroupMeeting(Base):
         DateTime(timezone=True), nullable=True
     )
     meeting_ends_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    # زمان آخرین پیام ردوبدل‌شده در نشست فعال — برای تایم‌اوت سکوت ۱۰ دقیقه (v1.10.1)
+    last_msg_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(

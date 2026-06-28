@@ -240,10 +240,20 @@ async def cb_mail_inbox(call: CallbackQuery, session: AsyncSession, db_user: Use
         await call.message.edit_text("📭 صندوق پستی شما خالی است.", reply_markup=_back_mail_kb())
         return
     lines = ["📬 <b>صندوق پستی</b>", ""]
-    for ltr in inbox[:20]:
+    builder = InlineKeyboardBuilder()
+    for idx, ltr in enumerate(inbox[:20], start=1):
         sender = await countries_repo.get_country(session, ltr.sender_country)
         who = f"{sender.flag} {sender.name_fa}" if sender else "?"
         status = "✅ پاسخ داده شد" if ltr.replied else "🕒 بی‌پاسخ"
         preview = (ltr.body or "")[:60]
-        lines.append(f"• از {who} — {status}\n   «{preview}»")
-    await call.message.edit_text("\n".join(lines), reply_markup=_back_mail_kb())
+        lines.append(f"{fa_number(idx)}. از {who} — {status}\n   «{preview}»")
+        # دکمه‌ی پاسخ فقط برای نامه‌های بی‌پاسخ؛ پس از پاسخ، دکمه حذف می‌شود (v1.10.1)
+        if not ltr.replied:
+            builder.button(
+                text=f"📩 پاسخ به نامه‌ی {fa_number(idx)} ({sender.name_fa if sender else '?'})",
+                callback_data=f"mail_reply:{ltr.id}",
+                style=STYLE_OK,
+            )
+    builder.button(text="🔙 بازگشت", callback_data="dip:letter", style=STYLE_MAIN)
+    builder.adjust(1)
+    await call.message.edit_text("\n".join(lines), reply_markup=builder.as_markup())

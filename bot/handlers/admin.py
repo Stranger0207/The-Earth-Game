@@ -18,6 +18,7 @@ from ..config import get_settings
 from ..database.models import User
 from ..database.repositories import claims as claims_repo
 from ..database.repositories import countries as countries_repo
+from ..database.repositories import diplomacy as dip_repo
 from ..database.repositories import users as users_repo
 from ..enums import ClaimStatus
 from ..keyboards.menu import main_menu_kb
@@ -262,6 +263,29 @@ async def msg_announce_body(message: Message, state: FSMContext, session: AsyncS
     scope = "عمومی (همه)" if not targets else f"{fa_number(len(targets))} کشور"
     await send_log(bot, f"📢 <b>اعلان {scope}</b>:\n\n{message.text}")
     await message.answer(f"✅ اعلان به {fa_number(sent)} کشور ارسال شد.")
+
+
+@router.message(Command("resetmeetings"))
+async def cmd_reset_meetings(message: Message, session: AsyncSession) -> None:
+    """
+    ریست/غیرفعال‌سازی همه‌ی نشست‌های دوجانبه/چندجانبه و تماس‌های فعال یا معلق (فقط مالک — v1.10.1).
+    برای رفع قفل‌ماندن کشورها در نشست‌های گیرکرده استفاده می‌شود.
+    """
+    if not _is_owner(message.from_user.id):
+        return
+    counts = await dip_repo.close_all_active_meetings(session)
+    await message.answer(
+        "♻️ <b>همه‌ی نشست‌ها ریست شدند.</b>\n\n"
+        f"🤝 دیدار دوجانبه: {fa_number(counts['meetings'])}\n"
+        f"👥 نشست چندجانبه: {fa_number(counts['group_meetings'])}\n"
+        f"📞 تماس تلفنی: {fa_number(counts['calls'])}\n\n"
+        "اکنون همه‌ی کشورها از نشست‌های فعلی آزاد شدند و می‌توانند نشست/تماس جدید داشته باشند."
+    )
+    await send_log(
+        bot,
+        "♻️ <b>ریست نشست‌ها (مالک)</b>\n"
+        f"دوجانبه: {counts['meetings']} | چندجانبه: {counts['group_meetings']} | تماس: {counts['calls']}",
+    )
 
 
 @router.message(Command("endseason"))

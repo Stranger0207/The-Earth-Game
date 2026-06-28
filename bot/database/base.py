@@ -55,6 +55,9 @@ _COLUMN_MIGRATIONS = [
     # v1.9 — تأسیسات مشترک
     ("facilities", "partner_country", "INTEGER"),
     ("facilities", "partner_percent", "DOUBLE PRECISION NOT NULL DEFAULT 0"),
+    # v1.10.1 — تایم‌اوت سکوت نشست‌ها
+    ("meetings", "last_msg_at", "TIMESTAMP WITH TIME ZONE"),
+    ("group_meetings", "last_msg_at", "TIMESTAMP WITH TIME ZONE"),
 ]
 
 

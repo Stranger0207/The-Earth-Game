@@ -15,8 +15,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..config import get_settings
 from ..constants import (
+    FLIGHT_DURATION_MINUTES,
     MEETING_COOLDOWN_HOURS,
     MEETING_DURATION_MINUTES,
+    MEETING_IDLE_TIMEOUT_MINUTES,
     PHONE_CALL_COOLDOWN_MINUTES,
     PHONE_CALL_DURATION_MINUTES,
     SPEECH_COOLDOWN_MINUTES,
@@ -194,6 +196,16 @@ async def cb_call_to(call: CallbackQuery, state: FSMContext, session: AsyncSessi
         )
         return
 
+    # (v1.10.1) اگر طرف مقابل در نشست/تماس/پرواز باشد، اصلاً نمی‌توان برایش درخواست فرستاد
+    target_label = await dip_repo.get_active_engagement_label(session, target.id)
+    if target_label is not None:
+        await call.message.edit_text(
+            f"⛔ کشور {target.flag} {target.name_fa} هم‌اکنون {target_label} دارد.\n"
+            "تا پایان آن نمی‌توانید با این کشور تماس بگیرید.",
+            reply_markup=diplomacy_menu_kb(),
+        )
+        return
+
     # کول‌داون تماس: هر ۳۰ دقیقه ۱ تماس (v1.9)
     mins = await _cooldown_remaining_min(
         session, country.id, "phone_call", PHONE_CALL_COOLDOWN_MINUTES / 60
@@ -308,19 +320,20 @@ async def cb_call_end(call: CallbackQuery, session: AsyncSession, db_user: User)
 # ============================================================
 #  🔚 پایان نشست (دیدار دوجانبه/چندجانبه) — v1.8
 # ============================================================
-@router.callback_query(F.data == "meeting:end")
-async def cb_meeting_end(call: CallbackQuery, session: AsyncSession, db_user: User) -> None:
-    """پایان دادن به نشست فعال توسط یکی از شرکت‌کنندگان."""
-    country = await get_player_country(session, db_user)
-    if country is None:
-        await call.answer()
-        return
+async def _end_all_engagements_for_country(session: AsyncSession, country) -> int:
+    """
+    همه‌ی نشست‌های دوجانبه/چندجانبه‌ای که این کشور در آن‌ها درگیر است (فعال یا در حال سفر/معلق)
+    را می‌بندد و به اعضای درگیر اطلاع می‌دهد. تعداد نشست‌های بسته‌شده را برمی‌گرداند (v1.10.1).
+    این تابع تضمین می‌کند کشور پس از کلیک «پایان نشست» هیچ نشست قفل‌کننده‌ای باقی نگذارد.
+    """
+    ended = 0
 
-    # ۱) دیدار دوجانبه‌ی فعال
-    meeting = await dip_repo.get_active_meeting_for_country(session, country.id)
-    if meeting is not None:
+    # ۱) همه‌ی دیدارهای دوجانبه‌ی فعال/معلق این کشور
+    for meeting in await dip_repo.list_recent_meetings_for_country(session, country.id, limit=20):
+        if meeting.status not in (DiplomacyStatus.PENDING, DiplomacyStatus.ACTIVE):
+            continue
         meeting.status = DiplomacyStatus.COMPLETED
-        await call.answer("نشست پایان یافت")
+        ended += 1
         traveler = await countries_repo.get_country(session, meeting.traveler_country)
         host = await countries_repo.get_country(session, meeting.host_country)
         for c in (traveler, host):
@@ -332,13 +345,13 @@ async def cb_meeting_end(call: CallbackQuery, session: AsyncSession, db_user: Us
                     )
                 except Exception:  # noqa: BLE001
                     pass
-        return
 
-    # ۲) نشست چندجانبه‌ی فعال
-    group = await dip_repo.get_active_group_meeting_for_country(session, country.id)
-    if group is not None:
+    # ۲) همه‌ی نشست‌های چندجانبه‌ی فعال/معلق این کشور (میزبان یا شرکت‌کننده)
+    for group in await dip_repo.list_recent_group_meetings_for_country(session, country.id, limit=20):
+        if group.status not in (DiplomacyStatus.PENDING, DiplomacyStatus.ACTIVE):
+            continue
         group.status = DiplomacyStatus.COMPLETED
-        await call.answer("نشست پایان یافت")
+        ended += 1
         member_ids = await dip_repo.group_member_country_ids(session, group)
         for cid in member_ids:
             member = await countries_repo.get_country(session, cid)
@@ -350,9 +363,156 @@ async def cb_meeting_end(call: CallbackQuery, session: AsyncSession, db_user: Us
                     )
                 except Exception:  # noqa: BLE001
                     pass
-        return
 
-    await call.answer("نشست فعالی ندارید.", show_alert=True)
+    return ended
+
+
+@router.callback_query(F.data == "meeting:end")
+async def cb_meeting_end(call: CallbackQuery, session: AsyncSession, db_user: User) -> None:
+    """پایان دادن به نشست فعال توسط یکی از شرکت‌کنندگان (همه‌ی نشست‌های درگیر را می‌بندد)."""
+    country = await get_player_country(session, db_user)
+    if country is None:
+        await call.answer()
+        return
+    ended = await _end_all_engagements_for_country(session, country)
+    if ended:
+        await call.answer("نشست پایان یافت ✅")
+    else:
+        await call.answer("نشست فعالی ندارید.", show_alert=True)
+
+
+# ============================================================
+#  🕘 نشست‌های اخیر (v1.10.1)
+#  فهرست نشست‌های دوجانبه/چندجانبه‌ی اخیر کشور؛ نشست‌های فعال/معلق دکمه‌ی «پایان» دارند
+#  تا کاربر مطمئن شود نشست بسته شده و از قفل‌ماندن خارج شود.
+# ============================================================
+_DIP_STATUS_FA = {
+    DiplomacyStatus.PENDING: "⏳ در حال سفر/انتظار",
+    DiplomacyStatus.ACTIVE: "🟢 فعال",
+    DiplomacyStatus.COMPLETED: "✔️ پایان‌یافته",
+    DiplomacyStatus.REJECTED: "❌ ردشده",
+    DiplomacyStatus.CANCELLED: "🚫 لغوشده",
+}
+
+
+def _status_fa(status: str) -> str:
+    try:
+        return _DIP_STATUS_FA[DiplomacyStatus(status)]
+    except (ValueError, KeyError):
+        return status
+
+
+async def _render_recent_meetings(call: CallbackQuery, session: AsyncSession, country) -> None:
+    meetings = await dip_repo.list_recent_meetings_for_country(session, country.id, limit=8)
+    groups = await dip_repo.list_recent_group_meetings_for_country(session, country.id, limit=8)
+
+    lines = ["🕘 <b>نشست‌های اخیر شما</b>", ""]
+    builder = InlineKeyboardBuilder()
+    open_states = (DiplomacyStatus.PENDING, DiplomacyStatus.ACTIVE)
+
+    if meetings:
+        lines.append("🤝 <b>دوجانبه:</b>")
+        for m in meetings:
+            other_id = m.host_country if m.traveler_country == country.id else m.traveler_country
+            other = await countries_repo.get_country(session, other_id)
+            other_name = f"{other.flag} {other.name_fa}" if other else "?"
+            lines.append(f"• {other_name} — {_status_fa(m.status)}")
+            if m.status in open_states:
+                builder.button(
+                    text=f"🔚 پایان دیدار با {other.name_fa if other else '?'}",
+                    callback_data=f"meet_force_end:bi:{m.id}",
+                    style=STYLE_NO,
+                )
+        lines.append("")
+
+    if groups:
+        lines.append("👥 <b>چندجانبه:</b>")
+        for g in groups:
+            lines.append(f"• «{g.title}» — {_status_fa(g.status)}")
+            if g.status in open_states:
+                builder.button(
+                    text=f"🔚 پایان نشست «{g.title}»",
+                    callback_data=f"meet_force_end:grp:{g.id}",
+                    style=STYLE_NO,
+                )
+        lines.append("")
+
+    if not meetings and not groups:
+        lines.append("هیچ نشستی در سابقه‌ی شما نیست.")
+
+    builder.button(text="🔙 بازگشت", callback_data="dip:meeting", style=STYLE_MAIN)
+    builder.adjust(1)
+    await call.message.edit_text("\n".join(lines).strip(), reply_markup=builder.as_markup())
+
+
+@router.callback_query(F.data == "dip:meetings_recent")
+async def cb_meetings_recent(call: CallbackQuery, session: AsyncSession, db_user: User) -> None:
+    await call.answer()
+    country = await get_player_country(session, db_user)
+    if country is None:
+        await call.message.edit_text(NO_COUNTRY_TEXT)
+        return
+    await _render_recent_meetings(call, session, country)
+
+
+@router.callback_query(F.data.startswith("meet_force_end:"))
+async def cb_meet_force_end(call: CallbackQuery, session: AsyncSession, db_user: User) -> None:
+    """پایان‌دادن دستی به یک نشست مشخص از فهرست نشست‌های اخیر."""
+    country = await get_player_country(session, db_user)
+    if country is None:
+        await call.answer()
+        return
+    _, kind, mid_s = call.data.split(":", 2)
+    mid = int(mid_s)
+
+    if kind == "bi":
+        meeting = await dip_repo.get_meeting(session, mid)
+        if meeting is None or (
+            country.id not in (meeting.traveler_country, meeting.host_country)
+        ):
+            await call.answer("این دیدار متعلق به شما نیست.", show_alert=True)
+            return
+        if meeting.status not in (DiplomacyStatus.PENDING, DiplomacyStatus.ACTIVE):
+            await call.answer("این دیدار از قبل بسته شده است.")
+            await _render_recent_meetings(call, session, country)
+            return
+        meeting.status = DiplomacyStatus.COMPLETED
+        traveler = await countries_repo.get_country(session, meeting.traveler_country)
+        host = await countries_repo.get_country(session, meeting.host_country)
+        for c in (traveler, host):
+            if c and c.owner_user_id:
+                try:
+                    await bot.send_message(
+                        c.owner_user_id,
+                        f"🔚 دیدار توسط {country.flag} {country.name_fa} پایان یافت.",
+                    )
+                except Exception:  # noqa: BLE001
+                    pass
+        await call.answer("دیدار پایان یافت ✅")
+    else:  # grp
+        group = await dip_repo.get_group_meeting(session, mid)
+        member_ids = await dip_repo.group_member_country_ids(session, group) if group else []
+        if group is None or country.id not in member_ids:
+            await call.answer("این نشست متعلق به شما نیست.", show_alert=True)
+            return
+        if group.status not in (DiplomacyStatus.PENDING, DiplomacyStatus.ACTIVE):
+            await call.answer("این نشست از قبل بسته شده است.")
+            await _render_recent_meetings(call, session, country)
+            return
+        group.status = DiplomacyStatus.COMPLETED
+        for cid in member_ids:
+            member = await countries_repo.get_country(session, cid)
+            if member and member.owner_user_id:
+                try:
+                    await bot.send_message(
+                        member.owner_user_id,
+                        f"🔚 نشست «{group.title}» توسط {country.flag} {country.name_fa} پایان یافت.",
+                    )
+                except Exception:  # noqa: BLE001
+                    pass
+        await call.answer("نشست پایان یافت ✅")
+
+    await _render_recent_meetings(call, session, country)
 
 
 # ============================================================
@@ -366,17 +526,12 @@ async def cb_meeting(call: CallbackQuery, state: FSMContext, session: AsyncSessi
     if country is None:
         await call.message.edit_text(NO_COUNTRY_TEXT)
         return
-    # کول‌داون دیدار حضوری: هر ۳ ساعت ۱ نشست (v1.9)
-    mins = await _cooldown_remaining_min(session, country.id, "meeting", MEETING_COOLDOWN_HOURS)
-    if mins > 0:
-        await call.message.edit_text(
-            _cooldown_text("دیدار حضوری", f"{fa_number(MEETING_COOLDOWN_HOURS)} ساعت", mins),
-            reply_markup=diplomacy_menu_kb(),
-        )
-        return
+    # نکته (v1.10.1): کول‌داون اینجا چک نمی‌شود تا کاربر همیشه به «نشست‌های اخیر» دسترسی
+    # داشته باشد و بتواند نشست گیرکرده را پایان دهد. کول‌داون در مرحله‌ی ساخت نشست اعمال می‌شود.
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🤝 دیدار دوجانبه", callback_data="meet_kind:bi", style=STYLE_MAIN)],
         [InlineKeyboardButton(text="👥 دیدار چندجانبه", callback_data="meet_kind:multi", style=STYLE_MAIN)],
+        [InlineKeyboardButton(text="🕘 نشست‌های اخیر", callback_data="dip:meetings_recent", style=STYLE_MAIN)],
         [InlineKeyboardButton(text="🔙 بازگشت", callback_data="menu:diplomacy", style=STYLE_MAIN)],
     ])
     await call.message.edit_text(
@@ -540,31 +695,47 @@ async def msg_group_title(message: Message, state: FSMContext, session: AsyncSes
     await cd_repo.touch(session, country.id, "meeting")
 
     invited_names = []
+    busy_names = []
     for cid in selected:
-        await dip_repo.add_group_participant(session, meeting.id, cid)
         target = await countries_repo.get_country(session, cid)
-        if target is None:
+        if target is None or target.owner_user_id is None:
             continue
+        # (v1.10.1) کشورهای مشغول (نشست/تماس/پرواز) دعوت نمی‌شوند
+        if await dip_repo.get_active_engagement_label(session, cid) is not None:
+            busy_names.append(f"{target.flag} {target.name_fa}")
+            continue
+        await dip_repo.add_group_participant(session, meeting.id, cid)
         invited_names.append(f"{target.flag} {target.name_fa}")
-        if target.owner_user_id:
-            kb = InlineKeyboardMarkup(inline_keyboard=[[
-                InlineKeyboardButton(text="✅ شرکت می‌کنم", callback_data=f"gmeet_accept:{meeting.id}", style=STYLE_OK),
-                InlineKeyboardButton(text="❌ رد", callback_data=f"gmeet_reject:{meeting.id}", style=STYLE_NO),
-            ]])
-            try:
-                await bot.send_message(
-                    target.owner_user_id,
-                    f"👥 <b>دعوت به نشست چندجانبه</b>\n\n"
-                    f"عنوان: {meeting.title}\n"
-                    f"میزبان: {country.flag} {country.name_fa}",
-                    reply_markup=kb,
-                )
-            except Exception:  # noqa: BLE001
-                pass
+        kb = InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="✅ شرکت می‌کنم", callback_data=f"gmeet_accept:{meeting.id}", style=STYLE_OK),
+            InlineKeyboardButton(text="❌ رد", callback_data=f"gmeet_reject:{meeting.id}", style=STYLE_NO),
+        ]])
+        try:
+            await bot.send_message(
+                target.owner_user_id,
+                f"👥 <b>دعوت به نشست چندجانبه</b>\n\n"
+                f"عنوان: {meeting.title}\n"
+                f"میزبان: {country.flag} {country.name_fa}",
+                reply_markup=kb,
+            )
+        except Exception:  # noqa: BLE001
+            pass
 
+    # اگر هیچ کشوری قابل‌دعوت نبود، نشست لغو می‌شود تا میزبان قفل نماند (v1.10.1)
+    if not invited_names:
+        meeting.status = DiplomacyStatus.CANCELLED
+        await message.answer(
+            "⛔ هیچ‌کدام از کشورهای انتخاب‌شده در دسترس نبودند (همه مشغول نشست/تماس بودند). "
+            "نشست ساخته نشد.",
+            reply_markup=diplomacy_menu_kb(),
+        )
+        return
+
+    extra = f"\n\n⛔ کشورهای مشغول (دعوت نشدند): {('، '.join(busy_names))}" if busy_names else ""
     await message.answer(
         f"👥 نشست «{meeting.title}» ساخته شد و دعوت برای کشورهای زیر ارسال گردید:\n"
         + "، ".join(invited_names)
+        + extra
         + "\n\nپس از پاسخ کشورها، نشست فعال می‌شود.",
         reply_markup=diplomacy_menu_kb(),
     )
@@ -654,13 +825,9 @@ async def cb_gmeet_accept(call: CallbackQuery, session: AsyncSession, db_user: U
         return
 
     await call.answer("پذیرفته شد ✅")
-    # تخمین زمان پرواز به کشور میزبان توسط AI
+    # (v1.10.1) زمان پرواز ثابت ۳۰ دقیقه به کشور میزبان — دیگر AI نیست
     host = await countries_repo.get_country(session, meeting.host_country)
-    eta_data = await evaluators.estimate_travel_time(
-        country.name_fa, host.name_fa if host else "?"
-    )
-    minutes = int(eta_data.get("travel_minutes", 20) or 20)
-    minutes = max(5, min(minutes, 90))
+    minutes = FLIGHT_DURATION_MINUTES
     participant.response = DiplomacyStatus.ACTIVE
     participant.travel_eta = _utcnow() + timedelta(minutes=minutes)
 
@@ -729,6 +896,16 @@ async def cb_meet_to(call: CallbackQuery, state: FSMContext, session: AsyncSessi
         )
         return
 
+    # (v1.10.1) اگر طرف مقابل مشغول نشست/تماس/پرواز باشد، اصلاً نمی‌توان برایش درخواست فرستاد
+    target_label = await dip_repo.get_active_engagement_label(session, target.id)
+    if target_label is not None:
+        await call.message.edit_text(
+            f"⛔ کشور {target.flag} {target.name_fa} هم‌اکنون {target_label} دارد.\n"
+            "تا پایان آن نمی‌توانید با این کشور دیدار داشته باشید.",
+            reply_markup=diplomacy_menu_kb(),
+        )
+        return
+
     # کول‌داون دیدار حضوری: هر ۳ ساعت ۱ نشست (v1.9)
     mins = await _cooldown_remaining_min(session, country.id, "meeting", MEETING_COOLDOWN_HOURS)
     if mins > 0:
@@ -781,24 +958,19 @@ async def cb_meet_accept(call: CallbackQuery, session: AsyncSession) -> None:
     host = await countries_repo.get_country(session, meeting.host_country)
     await call.answer("سفر پذیرفته شد")
 
-    # تخمین زمان سفر توسط AI
-    eta_data = await evaluators.estimate_travel_time(
-        traveler.name_fa if traveler else "?", host.name_fa if host else "?"
-    )
-    minutes = int(eta_data.get("travel_minutes", 20) or 20)
-    minutes = max(5, min(minutes, 90))
-    note = eta_data.get("note", "")
-
+    # (v1.10.1) زمان پرواز ثابت ۳۰ دقیقه — دیگر بر اساس فاصله/AI نیست
+    minutes = FLIGHT_DURATION_MINUTES
     meeting.status = DiplomacyStatus.ACTIVE
     meeting.travel_eta = _utcnow() + timedelta(minutes=minutes)
     meeting.meeting_ends_at = meeting.travel_eta + timedelta(minutes=MEETING_DURATION_MINUTES)
-    meeting.travel_note = note
+    meeting.travel_note = ""
 
     msg = (
-        f"✈️ سفر آغاز شد. زمان تقریبی رسیدن: {fa_number(minutes)} دقیقه.\n"
-        f"{note}\n\n"
-        f"پس از رسیدن، دیدار به مدت {MEETING_DURATION_MINUTES} دقیقه فعال می‌شود.\n"
-        "💬 در طول دیدار، هر پیامی که بنویسید مستقیماً برای طرف مقابل ارسال می‌شود.\n"
+        f"✈️ سفر آغاز شد. زمان رسیدن: {fa_number(minutes)} دقیقه.\n\n"
+        f"پس از رسیدن، دیدار به مدت {fa_number(MEETING_DURATION_MINUTES)} دقیقه فعال می‌شود.\n"
+        "⛔ تا پایان نشست، شما و طرف مقابل نمی‌توانید نشست/تماس/نامه‌ی دیگری داشته باشید.\n"
+        "💬 در طول دیدار، هر پیامی که بنویسید مستقیماً برای طرف مقابل ارسال می‌شود "
+        "(می‌توانید روی پیام طرف مقابل ریپلای کنید).\n"
         "📜 برای عقد قرارداد از دستور /contract استفاده کنید."
     )
     for c in (traveler, host):
@@ -1455,20 +1627,44 @@ async def msg_speech_quote(message: Message, state: FSMContext, session: AsyncSe
 # ============================================================
 #  رله‌ی پیام‌ها (در حالت پیش‌فرض): تماس تلفنی، چت دیدار دوجانبه و چندجانبه
 # ============================================================
+def _reply_prefix(message: Message) -> str:
+    """
+    اگر این پیام ریپلای به یک پیامِ نشست باشد، یک سرخط «در پاسخ به ...» می‌سازد (v1.10.1).
+    این کار باعث می‌شود ریپلای‌کردن روی پیام طرف مقابل، برای او معنادار رله شود.
+    """
+    replied = message.reply_to_message
+    if replied is None:
+        return ""
+    quoted = (replied.text or replied.caption or "").strip()
+    if not quoted:
+        return ""
+    # حذف پیشوند رله‌ی قبلی (مثل «🤝 پرچم نام: ») برای خلاصه‌ی تمیزتر
+    if ": " in quoted[:60]:
+        quoted = quoted.split(": ", 1)[1]
+    snippet = quoted[:50] + ("…" if len(quoted) > 50 else "")
+    return f"↩️ در پاسخ به «{snippet}»:\n"
+
+
 @router.message(StateFilter(None), F.text & ~F.text.startswith("/"))
 async def relay_chat_message(message: Message, session: AsyncSession, db_user: User) -> None:
     """
     اگر کاربر در یک تماس تلفنی، دیدار دوجانبه یا نشست چندجانبه‌ی فعال باشد،
-    پیام متنی او به طرف(های) مقابل رله می‌شود. در غیر این صورت پیام نادیده گرفته می‌شود.
+    پیام متنی او به طرف(های) مقابل رله می‌شود (شامل ریپلای). در غیر این صورت نادیده گرفته می‌شود.
+    نکته (v1.10.1): در هر رله زمان آخرین پیام نشست به‌روز می‌شود تا تایم‌اوت سکوت درست کار کند،
+    و خطای ارسال هرگز جریان را متوقف نمی‌کند.
     """
     country = await get_player_country(session, db_user)
     if country is None:
         return
 
+    now = _utcnow()
+    prefix = _reply_prefix(message)
+    text = message.text or ""
+
     # ۱) تماس تلفنی فعال
     active = await dip_repo.get_active_call_for_country(session, country.id)
     if active is not None:
-        if _aware(active.ends_at) and _aware(active.ends_at) <= _utcnow():
+        if _aware(active.ends_at) and _aware(active.ends_at) <= now:
             active.status = DiplomacyStatus.COMPLETED
             await message.answer("📵 زمان تماس به پایان رسید.")
             return
@@ -1476,24 +1672,28 @@ async def relay_chat_message(message: Message, session: AsyncSession, db_user: U
             active.callee_country if active.caller_country == country.id else active.caller_country
         )
         partner = await countries_repo.get_country(session, partner_id)
-        await dip_repo.add_call_message(session, active.id, country.id, message.text)
+        await dip_repo.add_call_message(session, active.id, country.id, text)
         if partner and partner.owner_user_id:
             try:
                 await bot.send_message(
                     partner.owner_user_id,
-                    f"📞 {country.flag} {country.name_fa}: {message.text}",
+                    f"📞 {country.flag} {country.name_fa}: {prefix}{text}",
                 )
             except Exception:  # noqa: BLE001
                 pass
-        await send_log(bot, f"📞 [{country.name_fa} → {partner.name_fa if partner else '?'}]: {message.text}")
+        await send_log(bot, f"📞 [{country.name_fa} → {partner.name_fa if partner else '?'}]: {text}")
         return
 
     # ۲) دیدار دوجانبه‌ی فعال (پس از رسیدن مسافر، تا پایان جلسه) → چت با طرف مقابل
     meeting = await dip_repo.get_active_meeting_for_country(session, country.id)
     if meeting is not None:
-        arrived = not (_aware(meeting.travel_eta) and _aware(meeting.travel_eta) > _utcnow())
-        ended = _aware(meeting.meeting_ends_at) and _aware(meeting.meeting_ends_at) <= _utcnow()
-        if arrived and not ended:
+        arrived = not (_aware(meeting.travel_eta) and _aware(meeting.travel_eta) > now)
+        ended = _aware(meeting.meeting_ends_at) and _aware(meeting.meeting_ends_at) <= now
+        if not arrived:
+            await message.answer("✈️ هنوز به مقصد نرسیده‌اید؛ نشست پس از رسیدن آغاز می‌شود.")
+            return
+        if not ended:
+            meeting.last_msg_at = now  # تایم‌اوت سکوت (v1.10.1)
             partner_id = (
                 meeting.host_country if meeting.traveler_country == country.id else meeting.traveler_country
             )
@@ -1502,22 +1702,23 @@ async def relay_chat_message(message: Message, session: AsyncSession, db_user: U
                 try:
                     await bot.send_message(
                         partner.owner_user_id,
-                        f"🤝 {country.flag} {country.name_fa}: {message.text}",
+                        f"🤝 {country.flag} {country.name_fa}: {prefix}{text}",
                     )
                 except Exception:  # noqa: BLE001
                     pass
             # لاگ صحبت‌های دیدار دوجانبه به گروه لاگ (v1.6)
             await send_log(
                 bot,
-                f"🤝 [{country.name_fa} → {partner.name_fa if partner else '?'}]: {message.text}",
+                f"🤝 [{country.name_fa} → {partner.name_fa if partner else '?'}]: {text}",
             )
             return
 
     # ۳) نشست چندجانبه‌ی فعال → چت با همه‌ی کشورهای حاضر
     group = await dip_repo.get_active_group_meeting_for_country(session, country.id)
     if group is not None:
-        ended = _aware(group.meeting_ends_at) and _aware(group.meeting_ends_at) <= _utcnow()
+        ended = _aware(group.meeting_ends_at) and _aware(group.meeting_ends_at) <= now
         if not ended:
+            group.last_msg_at = now  # تایم‌اوت سکوت (v1.10.1)
             member_ids = await dip_repo.group_member_country_ids(session, group)
             for cid in member_ids:
                 if cid == country.id:
@@ -1527,13 +1728,13 @@ async def relay_chat_message(message: Message, session: AsyncSession, db_user: U
                     try:
                         await bot.send_message(
                             member.owner_user_id,
-                            f"👥 {country.flag} {country.name_fa}: {message.text}",
+                            f"👥 {country.flag} {country.name_fa}: {prefix}{text}",
                         )
                     except Exception:  # noqa: BLE001
                         pass
             # لاگ صحبت‌های نشست چندجانبه به گروه لاگ (v1.6)
             await send_log(
                 bot,
-                f"👥 [{group.title}] {country.name_fa}: {message.text}",
+                f"👥 [{group.title}] {country.name_fa}: {text}",
             )
             return

@@ -304,11 +304,15 @@ async def process_attacks(bot: Bot) -> None:
 
 
 async def process_meetings(bot: Bot) -> None:
-    """رسیدن مسافر (اعلام شروع نشست) و پایان دیدارهای دوجانبه را مدیریت می‌کند."""
+    """رسیدن مسافر (اعلام شروع نشست) و پایان دیدارهای دوجانبه را مدیریت می‌کند.
+
+    v1.10.1: علاوه بر پایان ۶۰ دقیقه‌ای، نشست‌هایی که ۱۰ دقیقه هیچ پیامی نداشته‌اند نیز
+    خودکار بسته می‌شوند و به طرفین اطلاع داده می‌شود.
+    """
     from sqlalchemy import select
 
     from ..config import get_settings
-    from ..constants import MEETING_DURATION_MINUTES
+    from ..constants import MEETING_DURATION_MINUTES, MEETING_IDLE_TIMEOUT_MINUTES
     from ..database.models import Meeting
     from ..database.repositories import countries as countries_repo
     from ..database.repositories import users as users_repo
@@ -319,6 +323,8 @@ async def process_meetings(bot: Bot) -> None:
     start_captions: list[str] = []
     # (owner_ids) دیدارهایی که تازه شروع شده‌اند تا دکمه‌ی «پایان نشست» برایشان برود
     started_owner_ids: list[int] = []
+    # (owner_ids) دیدارهایی که خودکار بسته شدند تا پیام پایان برایشان برود
+    ended_owner_ids: list[int] = []
 
     async def _pres(session, country) -> str:
         if country and country.owner_user_id:
@@ -346,6 +352,7 @@ async def process_meetings(bot: Bot) -> None:
                 and travel_eta <= now
             ):
                 m.start_announced = True
+                m.last_msg_at = now  # شروع شمارش تایم‌اوت سکوت از لحظه‌ی رسیدن (v1.10.1)
                 traveler = await countries_repo.get_country(session, m.traveler_country)
                 host = await countries_repo.get_country(session, m.host_country)
                 for c in (traveler, host):
@@ -362,9 +369,19 @@ async def process_meetings(bot: Bot) -> None:
                     f"⏳ | مدت زمان گفتگو {fa_number(MEETING_DURATION_MINUTES)} دقیقه پیش بینی شده. "
                     "اطلاعات بیشتر در رابطه با این نشست بزودی اعلام خواهد شد."
                 )
-            # پایان جلسه
-            if m.status == DiplomacyStatus.ACTIVE and meeting_ends and meeting_ends <= now:
-                m.status = DiplomacyStatus.COMPLETED
+            # پایان جلسه: یا اتمام ۶۰ دقیقه، یا سکوت ۱۰ دقیقه پس از رسیدن (v1.10.1)
+            if m.status == DiplomacyStatus.ACTIVE and travel_eta and travel_eta <= now:
+                arrived_idle = _aware(m.last_msg_at) or travel_eta
+                idle_too_long = now - arrived_idle >= timedelta(
+                    minutes=MEETING_IDLE_TIMEOUT_MINUTES
+                )
+                time_up = meeting_ends and meeting_ends <= now
+                if time_up or idle_too_long:
+                    m.status = DiplomacyStatus.COMPLETED
+                    for cid in (m.traveler_country, m.host_country):
+                        c = await countries_repo.get_country(session, cid)
+                        if c and c.owner_user_id:
+                            ended_owner_ids.append(c.owner_user_id)
         await session.commit()
 
     if settings.news_diplomacy_channel_id is not None:
@@ -379,11 +396,23 @@ async def process_meetings(bot: Bot) -> None:
             try:
                 await bot.send_message(
                     oid,
-                    "🤝 نشست آغاز شد. برای پایان دادن به نشست از دکمه‌ی زیر استفاده کنید.",
+                    "🤝 نشست آغاز شد. برای پایان دادن به نشست از دکمه‌ی زیر استفاده کنید.\n"
+                    "💬 می‌توانید روی پیام طرف مقابل ریپلای کنید.",
                     reply_markup=end_meeting_kb(),
                 )
             except Exception:  # noqa: BLE001
                 pass
+
+    # اطلاع پایان خودکار نشست به طرفین (v1.10.1)
+    for oid in ended_owner_ids:
+        try:
+            await bot.send_message(
+                oid,
+                "🔚 نشست شما به‌صورت خودکار پایان یافت (اتمام زمان یا سکوت طولانی). "
+                "اکنون می‌توانید نشست/تماس جدید داشته باشید.",
+            )
+        except Exception:  # noqa: BLE001
+            pass
 
 
 async def process_group_meetings(bot: Bot) -> None:
@@ -395,13 +424,14 @@ async def process_group_meetings(bot: Bot) -> None:
     from sqlalchemy import select
 
     from ..config import get_settings
-    from ..constants import MEETING_DURATION_MINUTES
+    from ..constants import MEETING_DURATION_MINUTES, MEETING_IDLE_TIMEOUT_MINUTES
     from ..database.models import GroupMeeting, GroupMeetingParticipant
     from ..database.repositories import countries as countries_repo
     from ..services.media import send_photo_news
 
     settings = get_settings()
     started_notices: list[tuple[list[int], str, str]] = []  # (owner_ids, notice, news)
+    ended_owner_ids: list[int] = []  # نشست‌های چندجانبه‌ی خودکار بسته‌شده (v1.10.1)
 
     async with async_session_factory() as session:
         now = _utcnow()
@@ -415,6 +445,7 @@ async def process_group_meetings(bot: Bot) -> None:
                 continue
             meeting.status = DiplomacyStatus.ACTIVE
             meeting.meeting_ends_at = now + timedelta(minutes=MEETING_DURATION_MINUTES)
+            meeting.last_msg_at = now  # شروع شمارش تایم‌اوت سکوت (v1.10.1)
 
             host = await countries_repo.get_country(session, meeting.host_country)
             pres = await session.execute(
@@ -448,14 +479,30 @@ async def process_group_meetings(bot: Bot) -> None:
             )
             started_notices.append((owner_ids, notice, news))
 
-        # بستن نشست‌های پایان‌یافته
+        # بستن نشست‌های پایان‌یافته: اتمام زمان یا سکوت ۱۰ دقیقه (v1.10.1)
         result = await session.execute(
             select(GroupMeeting).where(GroupMeeting.status == DiplomacyStatus.ACTIVE)
         )
         for meeting in result.scalars().all():
             ends = _aware(meeting.meeting_ends_at)
-            if ends and ends <= now:
+            last = _aware(meeting.last_msg_at) or ends
+            time_up = ends and ends <= now
+            idle_too_long = last and (now - last >= timedelta(minutes=MEETING_IDLE_TIMEOUT_MINUTES))
+            if time_up or idle_too_long:
                 meeting.status = DiplomacyStatus.COMPLETED
+                host = await countries_repo.get_country(session, meeting.host_country)
+                if host and host.owner_user_id:
+                    ended_owner_ids.append(host.owner_user_id)
+                pres = await session.execute(
+                    select(GroupMeetingParticipant).where(
+                        GroupMeetingParticipant.meeting_id == meeting.id,
+                        GroupMeetingParticipant.response == DiplomacyStatus.ACTIVE,
+                    )
+                )
+                for p in pres.scalars().all():
+                    c = await countries_repo.get_country(session, p.country_id)
+                    if c and c.owner_user_id:
+                        ended_owner_ids.append(c.owner_user_id)
         await session.commit()
 
     # ارسال اعلان‌ها پس از commit
@@ -469,6 +516,17 @@ async def process_group_meetings(bot: Bot) -> None:
                 pass
         if settings.news_diplomacy_channel_id is not None:
             await send_photo_news(bot, settings.news_diplomacy_channel_id, "meeting", news)
+
+    # اطلاع پایان خودکار نشست چندجانبه به اعضا (v1.10.1)
+    for oid in ended_owner_ids:
+        try:
+            await bot.send_message(
+                oid,
+                "🔚 نشست چندجانبه‌ی شما به‌صورت خودکار پایان یافت (اتمام زمان یا سکوت طولانی). "
+                "اکنون می‌توانید نشست/تماس جدید داشته باشید.",
+            )
+        except Exception:  # noqa: BLE001
+            pass
 
 
 async def process_calls() -> None:

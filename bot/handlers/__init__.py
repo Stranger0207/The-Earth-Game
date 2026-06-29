@@ -14,6 +14,7 @@ from . import (
     investment,
     joint,
     mail,
+    maintenance,
     menu,
     military,
     start,
@@ -28,6 +29,7 @@ def register_all_routers(dp: Dispatcher) -> None:
     dp.include_router(start.router)
     dp.include_router(claim.router)
     dp.include_router(admin.router)
+    dp.include_router(maintenance.router)
     dp.include_router(godmode.router)
     dp.include_router(menu.router)
     dp.include_router(economy.router)

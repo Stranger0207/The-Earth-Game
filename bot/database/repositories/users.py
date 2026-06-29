@@ -61,6 +61,13 @@ async def set_banned(session: AsyncSession, telegram_id: int, banned: bool) -> N
         user.is_banned = banned
 
 
+async def set_suspended(session: AsyncSession, telegram_id: int, suspended: bool) -> None:
+    """تعلیق/رفع تعلیق کاربر (v1.10.5) — متمایز از بن کامل."""
+    user = await session.get(User, telegram_id)
+    if user is not None:
+        user.is_suspended = suspended
+
+
 async def all_users(session: AsyncSession) -> list[User]:
     """فهرست همه‌ی کاربران."""
     result = await session.execute(select(User))

@@ -12,7 +12,7 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMar
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..config import get_settings
-from ..constants import INVESTMENT_CATEGORIES
+from ..constants import FOREIGN_INVEST_NEWS_MIN_USD, INVESTMENT_CATEGORIES
 from ..database.models import Investment, User
 from ..database.repositories import countries as countries_repo
 from ..database.repositories import investments as inv_repo
@@ -251,19 +251,21 @@ async def cb_invest_confirm(call: CallbackQuery, state: FSMContext, session: Asy
     )
 
     # خبر سرمایه‌گذاری خارجی در کانال اقتصاد (داخلی منتشر نمی‌شود) — v1.9
-    if is_foreign and settings.news_economy_channel_id is not None and target is not None:
+    if is_foreign and target is not None:
         x = f"{country.flag} {country.name_fa}"   # سرمایه‌گذار
         y = f"{target.flag} {target.name_fa}"      # سرمایه‌گیر
-        news = (
-            "🔰 فووری!!\n\n"
-            f"✅ | در خبری جدید کشور {x} اعلام کرده که بزودی قرار است در کشور {y} به مبلغ "
-            f"{fa_money(amount)} سرمایه‌گذاری کند! جزئیات بیشتر توسط مقامات کشور {x} بزودی اعلام خواهد شد..."
-        )
-        try:
-            await bot.send_message(settings.news_economy_channel_id, news)
-        except Exception:  # noqa: BLE001
-            pass
-        # اطلاع به کشور هدف
+        # v1.10.5: فقط سرمایه‌گذاری‌های ۱۰۰ میلیارد دلار و بیشتر در کانال منتشر می‌شوند
+        if amount >= FOREIGN_INVEST_NEWS_MIN_USD and settings.news_economy_channel_id is not None:
+            news = (
+                "🔰 فووری!!\n\n"
+                f"✅ | در خبری جدید کشور {x} اعلام کرده که بزودی قرار است در کشور {y} به مبلغ "
+                f"{fa_money(amount)} سرمایه‌گذاری کند! جزئیات بیشتر توسط مقامات کشور {x} بزودی اعلام خواهد شد..."
+            )
+            try:
+                await bot.send_message(settings.news_economy_channel_id, news)
+            except Exception:  # noqa: BLE001
+                pass
+        # اطلاع به کشور هدف (مستقل از سقف خبر کانال)
         if target.owner_user_id:
             try:
                 await bot.send_message(

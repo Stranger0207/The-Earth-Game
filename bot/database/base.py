@@ -58,6 +58,8 @@ _COLUMN_MIGRATIONS = [
     # v1.10.1 — تایم‌اوت سکوت نشست‌ها
     ("meetings", "last_msg_at", "TIMESTAMP WITH TIME ZONE"),
     ("group_meetings", "last_msg_at", "TIMESTAMP WITH TIME ZONE"),
+    # v1.10.5 — تعلیق پلیر
+    ("users", "is_suspended", "BOOLEAN NOT NULL DEFAULT FALSE"),
 ]
 
 

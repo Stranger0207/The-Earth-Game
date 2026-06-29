@@ -6,6 +6,7 @@
 
 from . import (
     alliances,
+    bot_state,
     claims,
     cooldowns,
     countries,
@@ -22,6 +23,7 @@ from . import (
 
 __all__ = [
     "alliances",
+    "bot_state",
     "claims",
     "cooldowns",
     "countries",

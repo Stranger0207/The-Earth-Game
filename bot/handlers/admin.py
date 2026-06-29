@@ -288,6 +288,39 @@ async def cmd_reset_meetings(message: Message, session: AsyncSession) -> None:
     )
 
 
+@router.message(Command("runyields"))
+async def cmd_run_yields(message: Message, session: AsyncSession) -> None:
+    """
+    اجرای دستی بازدهی تأسیسات و کارخانه‌های نظامی (فقط مالک — v1.10.5).
+    برای راستی‌آزمایی/بازیابی وقتی پلیرها گزارش می‌دهند بازدهی نمی‌گیرند.
+    گزارش می‌دهد چند تأسیسات/کارخانه‌ی فعال و چندتا سررسیده هستند.
+    """
+    if not _is_owner(message.from_user.id):
+        return
+    from datetime import datetime, timezone
+
+    from ..database.repositories import facilities as fac_repo
+    from ..database.repositories import military_factory as milfac_repo
+    from ..scheduler.jobs import process_facility_yields, process_military_factories
+
+    now = datetime.now(timezone.utc)
+    facilities = await fac_repo.all_active_facilities(session)
+    factories = await milfac_repo.all_active_factories(session)
+    fac_due = sum(1 for f in facilities if fac_repo.is_due(f, now))
+    mil_due = sum(1 for f in factories if milfac_repo.is_due(f, now))
+
+    # اجرای واقعی بازدهی (هر کدام سشن خودش را می‌سازد)
+    await process_facility_yields(bot)
+    await process_military_factories(bot)
+
+    await message.answer(
+        "🏭 <b>اجرای دستی بازدهی انجام شد.</b>\n\n"
+        f"🏗 تأسیسات فعال: {fa_number(len(facilities))} (سررسیده: {fa_number(fac_due)})\n"
+        f"🪖 کارخانه نظامی فعال: {fa_number(len(factories))} (سررسیده: {fa_number(mil_due)})\n\n"
+        "اگر تعداد فعال صفر است یا سررسیده‌ها پردازش نشدند، احتمالاً زمان‌بند روی سرور اجرا نمی‌شود."
+    )
+
+
 @router.message(Command("endseason"))
 async def cmd_endseason(message: Message) -> None:
     """نمایش هشدار و دکمه‌ی تأیید پایان فصل (فقط برای مالک)."""

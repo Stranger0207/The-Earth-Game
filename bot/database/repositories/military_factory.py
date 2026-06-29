@@ -38,6 +38,9 @@ def is_due(factory: MilitaryFactory, now: datetime | None = None) -> bool:
     """آیا زمان بازدهی این کارخانه فرارسیده است؟"""
     now = now or datetime.now(timezone.utc)
     last = factory.last_yield_at
+    # مقاوم‌سازی (v1.10.5): اگر زمان آخرین بازدهی نامشخص بود، سررسیده فرض می‌شود.
+    if last is None:
+        return True
     if last.tzinfo is None:
         last = last.replace(tzinfo=timezone.utc)
     elapsed_h = (now - last).total_seconds() / 3600

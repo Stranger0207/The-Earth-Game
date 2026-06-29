@@ -37,7 +37,6 @@ from ..keyboards.diplomacy import (
     sanction_types_kb,
 )
 from ..loader import bot
-from ..services.ai import evaluators
 from ..services.media import send_photo_news, send_specific_photo
 from ..services.news_service import publish_news, send_log
 from ..services.sanction_service import apply_sanction_effects
@@ -1392,9 +1391,12 @@ async def cb_sanction_to(call: CallbackQuery, state: FSMContext, session: AsyncS
     )
 
 
+_SEVERITY_FA = {"low": "خفیف", "medium": "متوسط", "high": "شدید"}
+
+
 @router.callback_query(SanctionForm.choosing_type, F.data.startswith("sanc_type:"))
 async def cb_sanction_type(call: CallbackQuery, state: FSMContext, session: AsyncSession, db_user: User) -> None:
-    """سنجش منطقی‌بودن تحریم و اعمال اثرات در صورت قابل‌اجرا بودن (v1.5)."""
+    """درخواست تحریم را برای تأیید مالک به گروه لاگ می‌فرستد (v1.10.5: بدون امکان‌سنجی AI)."""
     await call.answer()
     stype = SanctionType(call.data.split(":")[1])
     data = await state.get_data()
@@ -1405,22 +1407,57 @@ async def cb_sanction_type(call: CallbackQuery, state: FSMContext, session: Asyn
         await call.message.edit_text("خطا.")
         return
 
-    await call.message.edit_text("⏳ در حال بررسی امکان‌پذیری تحریم...")
-    verdict = await evaluators.evaluate_sanction(
-        session, country.id, target.id, SANCTION_FA[stype]
-    )
+    x = f"{country.flag} {country.name_fa}"
+    y = f"{target.flag} {target.name_fa}"
 
-    # تحریم غیرمنطقی/غیرقابل‌اجرا (مثل تحریم آمریکا توسط ایران)
-    if verdict.get("feasible") is False:
-        reason = verdict.get("reason") or "این تحریم اهرم واقعی بر کشور هدف ندارد."
+    if settings.log_group_id is None:
         await call.message.edit_text(
-            f"⛔️ <b>تحریم غیرمنطقی و غیرقابل‌اجراست</b>\n\n"
-            f"دلیل: {reason}",
+            "⛔️ امکان ثبت درخواست تحریم نیست (گروه لاگ تنظیم نشده). با مدیریت تماس بگیرید.",
             reply_markup=diplomacy_menu_kb(),
         )
         return
 
-    severity = verdict.get("severity", "medium")
+    # کیبورد تأیید/رد برای مالک در گروه لاگ: انتخاب شدت یا رد
+    builder = InlineKeyboardBuilder()
+    base = f"{country.id}:{target.id}:{stype.value}"
+    builder.button(text="🟢 خفیف", callback_data=f"sancok:{base}:low", style=STYLE_OK)
+    builder.button(text="🟡 متوسط", callback_data=f"sancok:{base}:medium", style=STYLE_OK)
+    builder.button(text="🔴 شدید", callback_data=f"sancok:{base}:high", style=STYLE_OK)
+    builder.button(text="❌ رد", callback_data=f"sancno:{base}", style=STYLE_NO)
+    builder.adjust(3, 1)
+
+    await bot.send_message(
+        settings.log_group_id,
+        "🚫 <b>درخواست تحریم (نیازمند تأیید مالک)</b>\n\n"
+        f"🔴 تحریم‌کننده: {x}\n"
+        f"🔵 هدف: {y}\n"
+        f"📋 نوع: {SANCTION_FA[stype]}\n\n"
+        "شدت تحریم را انتخاب کنید یا درخواست را رد کنید:",
+        reply_markup=builder.as_markup(),
+    )
+
+    await call.message.edit_text(
+        "✅ درخواست تحریم شما برای بررسی و تأیید مدیریت بازی ارسال شد. "
+        "نتیجه پس از تصمیم مدیریت اعلام می‌شود.",
+        reply_markup=sanction_menu_kb(),
+    )
+
+
+@router.callback_query(F.data.startswith("sancok:"))
+async def cb_sanction_approve(call: CallbackQuery, session: AsyncSession) -> None:
+    """تأیید تحریم توسط مالک با انتخاب شدت → اعمال اثر + خبر (v1.10.5)."""
+    if not settings.is_owner(call.from_user.id):
+        await call.answer("فقط مالک بازی می‌تواند تأیید کند.", show_alert=True)
+        return
+    _, from_id, to_id, stype_v, sev = call.data.split(":")
+    stype = SanctionType(stype_v)
+    country = await countries_repo.get_country(session, int(from_id))
+    target = await countries_repo.get_country(session, int(to_id))
+    if country is None or target is None:
+        await call.answer("کشور یافت نشد.", show_alert=True)
+        return
+
+    sev_fa = _SEVERITY_FA.get(sev, "متوسط")
     sanction = Sanction(
         from_country=country.id,
         to_country=target.id,
@@ -1429,18 +1466,13 @@ async def cb_sanction_type(call: CallbackQuery, state: FSMContext, session: Asyn
         active=True,
     )
     await dip_repo.add_sanction(session, sanction)
-    # اعمال اثرات واقعی روی کشور هدف
-    await apply_sanction_effects(session, target, stype, severity)
+    await apply_sanction_effects(session, target, stype, sev)
 
-    sev_fa = {"low": "خفیف", "medium": "متوسط", "high": "شدید"}.get(severity, "متوسط")
+    await call.answer("تحریم تأیید و اعمال شد ✅")
     await call.message.edit_text(
-        f"🚫 <b>{SANCTION_FA[stype]}</b> علیه {target.flag} {target.name_fa} اعمال شد.\n"
-        f"شدت تأثیر: {sev_fa}\n"
-        "اثرات این تحریم روی اقتصاد، رضایت و ثبات کشور هدف اعمال شد.",
-        reply_markup=sanction_menu_kb(),
+        call.message.html_text + f"\n\n✅ <b>تأیید شد</b> (شدت: {sev_fa})"
     )
 
-    # خبر تحریم با عکس مخصوص همان نوع تحریم در کانال دیپلماسی (v1.7)
     x = f"{country.flag} {country.name_fa}"
     y = f"{target.flag} {target.name_fa}"
     caption = (
@@ -1456,22 +1488,54 @@ async def cb_sanction_type(call: CallbackQuery, state: FSMContext, session: Asyn
             bot, settings.news_diplomacy_channel_id,
             f"embargo:{stype.value}", "embargo", stem, caption,
         )
-    # لاگ تحریم به گروه لاگ
     await send_log(
         bot,
-        f"🚫 <b>تحریم وضع شد</b>\nتحریم‌کننده: {x}\nهدف: {y}\nنوع: {SANCTION_FA[stype]}\nشدت: {sev_fa}",
+        f"🚫 <b>تحریم تأیید و وضع شد</b>\nتحریم‌کننده: {x}\nهدف: {y}\nنوع: {SANCTION_FA[stype]}\nشدت: {sev_fa}",
     )
 
-    # اطلاع به کشور هدف
+    # اطلاع به درخواست‌کننده و کشور هدف
+    if country.owner_user_id:
+        try:
+            await bot.send_message(
+                country.owner_user_id,
+                f"✅ درخواست تحریم شما تأیید شد: <b>{SANCTION_FA[stype]}</b> علیه {y} (شدت {sev_fa}).",
+            )
+        except Exception:  # noqa: BLE001
+            pass
     if target.owner_user_id:
         try:
             await bot.send_message(
                 target.owner_user_id,
-                f"🚨 کشور شما توسط {country.flag} {country.name_fa} تحریم شد: "
-                f"<b>{SANCTION_FA[stype]}</b> (شدت {sev_fa}).",
+                f"🚨 کشور شما توسط {x} تحریم شد: <b>{SANCTION_FA[stype]}</b> (شدت {sev_fa}).",
             )
         except Exception:  # noqa: BLE001
             pass
+
+
+@router.callback_query(F.data.startswith("sancno:"))
+async def cb_sanction_reject(call: CallbackQuery, session: AsyncSession) -> None:
+    """رد درخواست تحریم توسط مالک (v1.10.5)."""
+    if not settings.is_owner(call.from_user.id):
+        await call.answer("فقط مالک بازی می‌تواند رد کند.", show_alert=True)
+        return
+    _, from_id, to_id, stype_v = call.data.split(":")
+    stype = SanctionType(stype_v)
+    country = await countries_repo.get_country(session, int(from_id))
+    target = await countries_repo.get_country(session, int(to_id))
+
+    await call.answer("درخواست رد شد ❌")
+    await call.message.edit_text(call.message.html_text + "\n\n❌ <b>رد شد</b>")
+
+    if country and country.owner_user_id:
+        y = f"{target.flag} {target.name_fa}" if target else "کشور هدف"
+        try:
+            await bot.send_message(
+                country.owner_user_id,
+                f"❌ درخواست تحریم شما ({SANCTION_FA[stype]} علیه {y}) توسط مدیریت بازی رد شد.",
+            )
+        except Exception:  # noqa: BLE001
+            pass
+    await send_log(bot, f"❌ <b>درخواست تحریم رد شد</b> (نوع: {SANCTION_FA[stype]}).")
 
 
 # ============================================================

@@ -67,63 +67,68 @@ async def process_facility_yields(bot: Bot) -> None:
         facilities = await fac_repo.all_active_facilities(session)
         now = _utcnow()
         for f in facilities:
-            if not fac_repo.is_due(f, now):
-                continue
+            # v1.10.5: هر تأسیسات مستقل پردازش می‌شود تا یک ردیف خراب کل بازدهی را نیندازد
+            try:
+                if not fac_repo.is_due(f, now):
+                    continue
 
-            partner_pct = float(getattr(f, "partner_percent", 0) or 0)
-            partner_id = getattr(f, "partner_country", None)
-            owner_share = (100.0 - partner_pct) / 100.0
-            partner_share = partner_pct / 100.0
+                partner_pct = float(getattr(f, "partner_percent", 0) or 0)
+                partner_id = getattr(f, "partner_country", None)
+                owner_share = (100.0 - partner_pct) / 100.0
+                partner_share = partner_pct / 100.0
 
-            produced_label = ""
-            if f.type == FacilityType.STEEL_FACTORY.value:
-                # کارخانه فولاد: آهن مصرف و فولاد تولید می‌کند
-                has_iron = await reserves_repo.has_enough(
-                    session, f.country_id, ResourceType.IRON, STEEL_FACTORY_IRON_INTAKE_PER_24H
-                )
-                if has_iron:
-                    await reserves_repo.add_amount(
-                        session, f.country_id, ResourceType.IRON,
-                        -STEEL_FACTORY_IRON_INTAKE_PER_24H,
+                produced_label = ""
+                if f.type == FacilityType.STEEL_FACTORY.value:
+                    # کارخانه فولاد: آهن مصرف و فولاد تولید می‌کند
+                    has_iron = await reserves_repo.has_enough(
+                        session, f.country_id, ResourceType.IRON, STEEL_FACTORY_IRON_INTAKE_PER_24H
                     )
-                    out = STEEL_FACTORY_OUTPUT_PER_24H
+                    if has_iron:
+                        await reserves_repo.add_amount(
+                            session, f.country_id, ResourceType.IRON,
+                            -STEEL_FACTORY_IRON_INTAKE_PER_24H,
+                        )
+                        out = STEEL_FACTORY_OUTPUT_PER_24H
+                        if partner_id and partner_pct > 0:
+                            await reserves_repo.add_amount(session, f.country_id, ResourceType.STEEL, out * owner_share)
+                            await reserves_repo.ensure_reserve(session, partner_id, ResourceType.STEEL.value)
+                            await reserves_repo.add_amount(session, partner_id, ResourceType.STEEL, out * partner_share)
+                        else:
+                            await reserves_repo.add_amount(session, f.country_id, ResourceType.STEEL, out)
+                        produced_label = f"{fa_number(out)} {RESOURCE_UNIT_FA[ResourceType.STEEL]} فولاد"
+                elif f.resource:
+                    # معدن/سکو: منبع مربوطه را اضافه می‌کند
+                    total = f.yield_amount
                     if partner_id and partner_pct > 0:
-                        await reserves_repo.add_amount(session, f.country_id, ResourceType.STEEL, out * owner_share)
-                        await reserves_repo.ensure_reserve(session, partner_id, ResourceType.STEEL.value)
-                        await reserves_repo.add_amount(session, partner_id, ResourceType.STEEL, out * partner_share)
+                        await reserves_repo.add_amount(session, f.country_id, f.resource, total * owner_share)
+                        await reserves_repo.ensure_reserve(session, partner_id, f.resource)
+                        await reserves_repo.add_amount(session, partner_id, f.resource, total * partner_share)
                     else:
-                        await reserves_repo.add_amount(session, f.country_id, ResourceType.STEEL, out)
-                    produced_label = f"{fa_number(out)} {RESOURCE_UNIT_FA[ResourceType.STEEL]} فولاد"
-            elif f.resource:
-                # معدن/سکو: منبع مربوطه را اضافه می‌کند
-                total = f.yield_amount
-                if partner_id and partner_pct > 0:
-                    await reserves_repo.add_amount(session, f.country_id, f.resource, total * owner_share)
-                    await reserves_repo.ensure_reserve(session, partner_id, f.resource)
-                    await reserves_repo.add_amount(session, partner_id, f.resource, total * partner_share)
-                else:
-                    await reserves_repo.add_amount(session, f.country_id, f.resource, total)
-                try:
-                    unit = RESOURCE_UNIT_FA[ResourceType(f.resource)]
-                except (ValueError, KeyError):
-                    unit = ""
-                produced_label = f"{fa_number(total)} {unit}"
+                        await reserves_repo.add_amount(session, f.country_id, f.resource, total)
+                    try:
+                        unit = RESOURCE_UNIT_FA[ResourceType(f.resource)]
+                    except (ValueError, KeyError):
+                        unit = ""
+                    produced_label = f"{fa_number(total)} {unit}"
 
-            f.last_yield_at = now
+                f.last_yield_at = now
 
-            # پیام بازدهی به مالک (v1.9)
-            if produced_label:
-                try:
-                    fac_fa = FACILITY_FA[FacilityType(f.type)]
-                except (ValueError, KeyError):
-                    fac_fa = f.type
-                owner_country = await countries_repo.get_country(session, f.country_id)
-                if owner_country and owner_country.owner_user_id:
-                    pings.append((
-                        owner_country.owner_user_id,
-                        f"🏭 شما از «{fac_fa}» به اندازه‌ی {produced_label} بازدهی دریافت کردید.\n"
-                        f"⏳ زمان بازدهی بعدی: {fa_number(f.yield_interval_h)} ساعت",
-                    ))
+                # پیام بازدهی به مالک (v1.9)
+                if produced_label:
+                    try:
+                        fac_fa = FACILITY_FA[FacilityType(f.type)]
+                    except (ValueError, KeyError):
+                        fac_fa = f.type
+                    owner_country = await countries_repo.get_country(session, f.country_id)
+                    if owner_country and owner_country.owner_user_id:
+                        pings.append((
+                            owner_country.owner_user_id,
+                            f"🏭 شما از «{fac_fa}» به اندازه‌ی {produced_label} بازدهی دریافت کردید.\n"
+                            f"⏳ زمان بازدهی بعدی: {fa_number(f.yield_interval_h)} ساعت",
+                        ))
+            except Exception as exc:  # noqa: BLE001
+                logger.exception("Facility yield failed (id=%s): %s", getattr(f, "id", None), exc)
+                continue
 
         await session.commit()
 
@@ -567,47 +572,52 @@ async def process_military_factories(bot: Bot) -> None:
         factories = await milfac_repo.all_active_factories(session)
         now = _utcnow()
         for f in factories:
-            if not milfac_repo.is_due(f, now):
-                continue
+            # v1.10.5: هر کارخانه مستقل پردازش می‌شود تا یک ردیف خراب کل بازدهی را نیندازد
             try:
-                intake = MIL_FACTORY_INTAKE[MilitaryFactoryType(f.factory_type)]
-            except (ValueError, KeyError):
-                intake = {}
-            # بررسی کافی‌بودن همه‌ی منابع مصرفی این چرخه
-            enough = True
-            for key, amount in intake.items():
-                if not await reserves_repo.has_enough(session, f.country_id, key, amount):
-                    enough = False
-                    break
-            if not enough:
-                # منابع کافی نیست؛ این چرخه تولیدی ندارد (زمان بازدهی هم جلو نمی‌رود)
+                if not milfac_repo.is_due(f, now):
+                    continue
+                try:
+                    intake = MIL_FACTORY_INTAKE[MilitaryFactoryType(f.factory_type)]
+                except (ValueError, KeyError):
+                    intake = {}
+                # بررسی کافی‌بودن همه‌ی منابع مصرفی این چرخه
+                enough = True
+                for key, amount in intake.items():
+                    if not await reserves_repo.has_enough(session, f.country_id, key, amount):
+                        enough = False
+                        break
+                if not enough:
+                    # منابع کافی نیست؛ این چرخه تولیدی ندارد (زمان بازدهی هم جلو نمی‌رود)
+                    continue
+                for key, amount in intake.items():
+                    await reserves_repo.add_amount(session, f.country_id, key, -amount)
+
+                asset = await mil_repo.get_asset_by_name(session, f.country_id, f.asset_name)
+                if asset is not None:
+                    asset.count += f.yield_amount
+                else:
+                    session.add(MilitaryAsset(
+                        country_id=f.country_id,
+                        category=f.category,
+                        branch="",
+                        name=f.asset_name,
+                        unit=f.unit,
+                        count=f.yield_amount,
+                    ))
+                f.last_yield_at = now
+
+                # پیام بازدهی به مالک (v1.9)
+                owner_country = await countries_repo.get_country(session, f.country_id)
+                if owner_country and owner_country.owner_user_id:
+                    pings.append((
+                        owner_country.owner_user_id,
+                        f"🏭 شما از کارخانه‌ی «{f.asset_name}» به اندازه‌ی {fa_number(f.yield_amount)} "
+                        f"{f.unit} بازدهی دریافت کردید.\n"
+                        f"⏳ زمان بازدهی بعدی: {fa_number(f.yield_interval_h)} ساعت",
+                    ))
+            except Exception as exc:  # noqa: BLE001
+                logger.exception("Military factory yield failed (id=%s): %s", getattr(f, "id", None), exc)
                 continue
-            for key, amount in intake.items():
-                await reserves_repo.add_amount(session, f.country_id, key, -amount)
-
-            asset = await mil_repo.get_asset_by_name(session, f.country_id, f.asset_name)
-            if asset is not None:
-                asset.count += f.yield_amount
-            else:
-                session.add(MilitaryAsset(
-                    country_id=f.country_id,
-                    category=f.category,
-                    branch="",
-                    name=f.asset_name,
-                    unit=f.unit,
-                    count=f.yield_amount,
-                ))
-            f.last_yield_at = now
-
-            # پیام بازدهی به مالک (v1.9)
-            owner_country = await countries_repo.get_country(session, f.country_id)
-            if owner_country and owner_country.owner_user_id:
-                pings.append((
-                    owner_country.owner_user_id,
-                    f"🏭 شما از کارخانه‌ی «{f.asset_name}» به اندازه‌ی {fa_number(f.yield_amount)} "
-                    f"{f.unit} بازدهی دریافت کردید.\n"
-                    f"⏳ زمان بازدهی بعدی: {fa_number(f.yield_interval_h)} ساعت",
-                ))
         await session.commit()
 
     for owner_id, text in pings:
@@ -680,19 +690,27 @@ async def process_military_shipments(bot: Bot) -> None:
 
 
 async def _tick(bot: Bot) -> None:
-    """جاب اصلی که هر دقیقه همه‌ی پردازش‌های زمان‌دار را اجرا می‌کند."""
-    try:
-        await process_facility_yields(bot)
-        await process_shipments(bot)
-        await process_military_factories(bot)
-        await process_military_shipments(bot)
-        await process_attacks(bot)
-        await process_meetings(bot)
-        await process_group_meetings(bot)
-        await process_calls()
-        await process_investments(bot)
-    except Exception as exc:  # noqa: BLE001 — خطای یک تیک نباید زمان‌بند را متوقف کند
-        logger.exception("Scheduler tick failed: %s", exc)
+    """جاب اصلی که هر دقیقه همه‌ی پردازش‌های زمان‌دار را اجرا می‌کند.
+
+    v1.10.5: هر پردازش در try/except مستقل اجرا می‌شود تا خطای یکی از جاب‌ها
+    (مثلاً بازدهی تأسیسات) بقیه‌ی جاب‌ها را در همان تیک متوقف نکند.
+    """
+    jobs = (
+        ("process_facility_yields", lambda: process_facility_yields(bot)),
+        ("process_shipments", lambda: process_shipments(bot)),
+        ("process_military_factories", lambda: process_military_factories(bot)),
+        ("process_military_shipments", lambda: process_military_shipments(bot)),
+        ("process_attacks", lambda: process_attacks(bot)),
+        ("process_meetings", lambda: process_meetings(bot)),
+        ("process_group_meetings", lambda: process_group_meetings(bot)),
+        ("process_calls", lambda: process_calls()),
+        ("process_investments", lambda: process_investments(bot)),
+    )
+    for name, run in jobs:
+        try:
+            await run()
+        except Exception as exc:  # noqa: BLE001 — خطای یک جاب نباید بقیه را متوقف کند
+            logger.exception("Scheduler job '%s' failed: %s", name, exc)
 
 
 def setup_scheduler(bot: Bot) -> AsyncIOScheduler:

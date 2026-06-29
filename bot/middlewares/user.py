@@ -43,5 +43,14 @@ class UserMiddleware(BaseMiddleware):
                 await event.answer("⛔️ دسترسی شما مسدود شده است.", show_alert=True)
             return None
 
+        # کاربر معلق (v1.10.5): متمایز از بن — برگشت‌پذیر؛ نمی‌تواند اقدامی انجام دهد
+        if getattr(db_user, "is_suspended", False):
+            msg = "⏸ کشور شما توسط مدیریت بازی معلق شده و فعلاً نمی‌توانید اقدامی انجام دهید."
+            if isinstance(event, Message):
+                await event.answer(msg)
+            elif isinstance(event, CallbackQuery):
+                await event.answer(msg, show_alert=True)
+            return None
+
         data["db_user"] = db_user
         return await handler(event, data)

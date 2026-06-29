@@ -39,6 +39,8 @@ class User(Base):
     president_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
 
     is_banned: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # تعلیق (v1.10.5): متمایز از بن کامل — پلیر معلق نمی‌تواند در کشورش اقدامی کند
+    is_suspended: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False
     )

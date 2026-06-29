@@ -181,3 +181,9 @@ class JointFacilityForm(StatesGroup):
     choosing_resource = State()  # منبع (برای معدن مشترک)
     entering_percent = State()    # درصد شریک
     entering_location = State()   # محل احداث
+
+
+class MaintenanceForm(StatesGroup):
+    """فرم تنظیم بازه‌ی خاموشی روزانه‌ی ربات (v1.10.5)."""
+
+    entering_window = State()    # ورود بازه به‌صورت "HH:MM HH:MM"

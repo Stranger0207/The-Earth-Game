@@ -5,6 +5,7 @@
 
 from .alliance import Alliance, AllianceMember
 from .attack import Attack
+from .bot_state import BotState
 from .claim import ClaimRequest
 from .cooldown import Cooldown
 from .country import Country
@@ -34,6 +35,7 @@ __all__ = [
     "Alliance",
     "AllianceMember",
     "Attack",
+    "BotState",
     "ClaimRequest",
     "Contract",
     "Cooldown",

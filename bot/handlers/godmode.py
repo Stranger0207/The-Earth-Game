@@ -164,8 +164,10 @@ async def _country_panel_kb(country: Country) -> InlineKeyboardMarkup:
         builder.button(text="🚪 آزادسازی (اخراج)", callback_data=f"godrelease:{country.id}", style=STYLE_NO)
         builder.button(text="⛔️ بن مالک", callback_data=f"godban:{country.id}", style=STYLE_NO)
         builder.button(text="✅ رفع بن مالک", callback_data=f"godunban:{country.id}", style=STYLE_OK)
+        builder.button(text="⏸ تعلیق", callback_data=f"godsuspend:{country.id}", style=STYLE_NO)
+        builder.button(text="▶️ رفع تعلیق", callback_data=f"godunsuspend:{country.id}", style=STYLE_OK)
     builder.button(text="🔙 بازگشت", callback_data="god:countries", style=STYLE_MAIN)
-    builder.adjust(2, 2, 3, 1)
+    builder.adjust(2, 2, 3, 2, 1)
     return builder.as_markup()
 
 
@@ -179,7 +181,8 @@ async def _show_country_panel(call: CallbackQuery, session: AsyncSession, countr
         u = await users_repo.get_user(session, country.owner_user_id)
         uname = (f"@{u.username}" if u and u.username else (u.first_name if u else None)) or "—"
         banned = " (بن‌شده ⛔️)" if u and u.is_banned else ""
-        owner_txt = f"{uname} (<code>{country.owner_user_id}</code>){banned}"
+        suspended = " (معلق ⏸)" if u and getattr(u, "is_suspended", False) else ""
+        owner_txt = f"{uname} (<code>{country.owner_user_id}</code>){banned}{suspended}"
     text = (
         header(f"مدیریت {country.flag} {country.name_fa}", "🛠")
         + f"\n\n👤 مالک: {owner_txt}\n"
@@ -557,6 +560,50 @@ async def cb_unban(call: CallbackQuery, session: AsyncSession) -> None:
     await call.answer("بن کاربر برداشته شد ✅")
     try:
         await bot.send_message(country.owner_user_id, "✅ دسترسی شما به بازی دوباره فعال شد.")
+    except Exception:  # noqa: BLE001
+        pass
+    await _show_country_panel(call, session, cid)
+
+
+@router.callback_query(F.data.startswith("godsuspend:"))
+async def cb_suspend(call: CallbackQuery, session: AsyncSession) -> None:
+    """تعلیق مالک کشور (v1.10.5) — متمایز از بن کامل."""
+    if not await _guard(call):
+        return
+    cid = int(call.data.split(":")[1])
+    country = await countries_repo.get_country(session, cid)
+    if country is None or country.owner_user_id is None:
+        await call.answer("این کشور مالک ندارد.", show_alert=True)
+        return
+    await users_repo.set_suspended(session, country.owner_user_id, True)
+    await call.answer("مالک معلق شد ⏸")
+    try:
+        await bot.send_message(
+            country.owner_user_id,
+            "⏸ کشور شما توسط مدیریت بازی معلق شد و فعلاً نمی‌توانید اقدامی انجام دهید.",
+        )
+    except Exception:  # noqa: BLE001
+        pass
+    await _show_country_panel(call, session, cid)
+
+
+@router.callback_query(F.data.startswith("godunsuspend:"))
+async def cb_unsuspend(call: CallbackQuery, session: AsyncSession) -> None:
+    """رفع تعلیق مالک کشور (v1.10.5)."""
+    if not await _guard(call):
+        return
+    cid = int(call.data.split(":")[1])
+    country = await countries_repo.get_country(session, cid)
+    if country is None or country.owner_user_id is None:
+        await call.answer("این کشور مالک ندارد.", show_alert=True)
+        return
+    await users_repo.set_suspended(session, country.owner_user_id, False)
+    await call.answer("تعلیق مالک برداشته شد ▶️")
+    try:
+        await bot.send_message(
+            country.owner_user_id,
+            "▶️ تعلیق کشور شما برداشته شد؛ اکنون می‌توانید دوباره فعالیت کنید.",
+        )
     except Exception:  # noqa: BLE001
         pass
     await _show_country_panel(call, session, cid)

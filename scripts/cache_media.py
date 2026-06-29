@@ -36,12 +36,15 @@ SANCTION_IMAGE_STEM: dict[SanctionType, str] = {
 }
 
 
-async def _upload(chat_id: int, path: Path, cache_key: str) -> bool:
-    """یک عکس را آپلود و file_id آن را زیر cache_key در File.md ذخیره می‌کند."""
+async def _upload(chat_id: int, path: Path, cache_key: str, filename: str = "") -> bool:
+    """یک عکس را آپلود و file_id آن را زیر cache_key در File.md ذخیره می‌کند.
+
+    اگر filename داده شود، به‌صورت سه‌بخشی ذخیره می‌شود تا تنوع عکس‌ها قابل‌ردیابی باشد.
+    """
     try:
         sent = await bot.send_photo(chat_id, photo=FSInputFile(str(path)), caption=cache_key)
         if sent.photo:
-            media._append_cache(cache_key, sent.photo[-1].file_id)
+            media._append_cache(cache_key, sent.photo[-1].file_id, filename)
             print(f"  ✅ {cache_key} ← {path.name}")
             return True
     except Exception as exc:  # noqa: BLE001
@@ -73,18 +76,19 @@ async def main() -> None:
             continue
         await _upload(chat_id, path, key)
 
-    # --- دسته‌های تصادفی (هر عکسِ هنوز کش‌نشده یک‌بار آپلود می‌شود) ---
+    # --- دسته‌های تصادفی (هر عکسِ هنوز کش‌نشده «بر اساس نام فایل» آپلود می‌شود) ---
+    # v1.10.5: به‌جای برش ناپایدارِ local[already:]، با نام فایل تشخیص می‌دهیم چه عکسی
+    # هنوز کش نشده تا همه‌ی عکس‌ها (به‌ویژه WTO/Trump) قطعی و کامل کش شوند.
     for category in ("wto", "trump", "diplomacy_travel", "meeting"):
-        folder = media.MEDIA_DIRS.get(category)
-        already = len(cache.get(category, []))
         local = media._local_images(category)
-        need = len(local) - already
-        if need <= 0:
+        cached_names = media._cached_filenames(category)
+        pending = [p for p in local if p.name not in cached_names]
+        if not pending:
             print(f"⏭ دسته‌ی {category}: همه‌ی {len(local)} عکس از قبل کش شده‌اند")
             continue
-        print(f"📤 دسته‌ی {category}: آپلود {need} عکس باقی‌مانده...")
-        for path in local[already:]:
-            await _upload(chat_id, path, category)
+        print(f"📤 دسته‌ی {category}: آپلود {len(pending)} عکس کش‌نشده...")
+        for path in pending:
+            await _upload(chat_id, path, category, path.name)
 
     await bot.session.close()
     print("\n✅ تمام شد. حالا File.md را commit و روی VPS pull کن.")

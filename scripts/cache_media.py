@@ -19,6 +19,7 @@ from pathlib import Path
 from aiogram.types import FSInputFile
 
 from bot.config import get_settings
+from bot.constants import DEPLOY_BRANCHES
 from bot.enums import SANCTION_FA, SanctionType
 from bot.loader import bot
 from bot.services import media
@@ -73,6 +74,20 @@ async def main() -> None:
         path = media._find_local_file("embargo", stem)
         if path is None:
             print(f"  ⚠️ عکس {stem} برای {SANCTION_FA[stype]} در {embargo_dir} پیدا نشد")
+            continue
+        await _upload(chat_id, path, key)
+
+    # --- عکس‌های استقرار نیرو (v1.11): ground / navy / air ---
+    print("📤 آپلود عکس‌های استقرار نیرو (military)...")
+    military_dir = media.MEDIA_DIRS.get("military")
+    for branch_key, (branch_fa, stem, _branches) in DEPLOY_BRANCHES.items():
+        key = f"military_{stem}"
+        if cache.get(key):
+            print(f"  ⏭ {key} از قبل کش شده — رد شد")
+            continue
+        path = media._find_local_file("military", stem)
+        if path is None:
+            print(f"  ⚠️ عکس {stem} برای نیروی {branch_fa} در {military_dir} پیدا نشد")
             continue
         await _upload(chat_id, path, key)
 

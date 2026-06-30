@@ -31,6 +31,7 @@ MEDIA_DIRS: dict[str, str] = {
     "diplomacy_travel": r"D:\PictureDB\Diplomaci",
     "meeting": r"D:\PictureDB\Didar",
     "embargo": r"D:\PictureDB\Embargo",
+    "military": r"D:\PictureDB\Military",
 }
 
 _IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp"}

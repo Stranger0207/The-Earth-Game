@@ -9,6 +9,7 @@ from .bot_state import BotState
 from .claim import ClaimRequest
 from .cooldown import Cooldown
 from .country import Country
+from .deployment import Deployment
 from .diplomacy import (
     Contract,
     GroupMeeting,
@@ -40,6 +41,7 @@ __all__ = [
     "Contract",
     "Cooldown",
     "Country",
+    "Deployment",
     "Facility",
     "Investment",
     "JointBuildRequest",

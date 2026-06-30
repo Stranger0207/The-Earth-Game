@@ -183,6 +183,17 @@ class JointFacilityForm(StatesGroup):
     entering_location = State()   # محل احداث
 
 
+class DeploymentForm(StatesGroup):
+    """فرم استقرار نیرو (v1.11) — فقط کشورهای VIP."""
+
+    choosing_branch = State()    # نوع کلان: زمینی/دریایی/هوایی
+    choosing_asset = State()     # قلم تجهیزات از آن دسته
+    entering_count = State()     # تعداد نیروی اعزامی
+    entering_region = State()    # منطقه‌ی هدف
+    confirming = State()         # تأیید نهایی (هزینه‌ی نفت)
+    updating_region = State()    # آپدیت مکان یک گروه مستقر
+
+
 class MaintenanceForm(StatesGroup):
     """فرم تنظیم بازه‌ی خاموشی روزانه‌ی ربات (v1.10.5)."""
 

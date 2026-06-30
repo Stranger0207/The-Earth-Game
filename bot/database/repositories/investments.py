@@ -44,3 +44,18 @@ async def all_active(session: AsyncSession) -> list[Investment]:
         select(Investment).where(Investment.active.is_(True))
     )
     return list(result.scalars().all())
+
+
+async def count_by_investor_since(
+    session: AsyncSession, investor_id: int, since
+) -> int:
+    """تعداد سرمایه‌گذاری‌های ثبت‌شده توسط یک کشور از زمان `since` (محدودیت v1.11)."""
+    from sqlalchemy import func
+
+    res = await session.execute(
+        select(func.count()).select_from(Investment).where(
+            Investment.investor_country == investor_id,
+            Investment.created_at >= since,
+        )
+    )
+    return res.scalar() or 0

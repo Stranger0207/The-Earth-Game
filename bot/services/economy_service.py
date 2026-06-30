@@ -57,6 +57,13 @@ def _facility_yield(facility_type: FacilityType, resource: str | None) -> tuple[
     return 0.0, None, 0.0
 
 
+def facility_yield_for(
+    facility_type: FacilityType, resource: str | None
+) -> tuple[float, str | None, float]:
+    """نسخه‌ی عمومیِ `_facility_yield` برای پنل گاد (افزودن تأسیسات بدون کسر بودجه)."""
+    return _facility_yield(facility_type, resource)
+
+
 def _required_resource_for_facility(
     facility_type: FacilityType, resource: str | None
 ) -> ResourceType | None:

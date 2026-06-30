@@ -11,8 +11,15 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from datetime import datetime, timedelta, timezone
+
 from ..config import get_settings
-from ..constants import FOREIGN_INVEST_NEWS_MIN_USD, INVESTMENT_CATEGORIES
+from ..constants import (
+    BUILD_LIMIT_WINDOW_HOURS,
+    FOREIGN_INVEST_NEWS_MIN_USD,
+    INVESTMENT_CATEGORIES,
+    INVESTMENT_LIMIT,
+)
 from ..database.models import Investment, User
 from ..database.repositories import countries as countries_repo
 from ..database.repositories import investments as inv_repo
@@ -40,6 +47,19 @@ def _cat_fa_pct(key: str) -> tuple[str, float]:
     return fa, pct
 
 
+async def _invest_limit_exceeded(session: AsyncSession, country_id: int) -> bool:
+    """آیا کشور به سقف سرمایه‌گذاری در پنجره‌ی ۱۲ ساعته رسیده است؟ (v1.11)"""
+    since = datetime.now(timezone.utc) - timedelta(hours=BUILD_LIMIT_WINDOW_HOURS)
+    recent = await inv_repo.count_by_investor_since(session, country_id, since)
+    return recent >= INVESTMENT_LIMIT
+
+
+_INVEST_LIMIT_TEXT = (
+    f"⏳ شما در هر {BUILD_LIMIT_WINDOW_HOURS} ساعت حداکثر {INVESTMENT_LIMIT} "
+    "سرمایه‌گذاری می‌توانید ثبت کنید. لطفاً بعداً تلاش کنید."
+)
+
+
 # ============================================================
 #  منوی سرمایه‌گذاری
 # ============================================================
@@ -62,6 +82,9 @@ async def cb_invest_internal(call: CallbackQuery, state: FSMContext, session: As
     country = await get_player_country(session, db_user)
     if country is None:
         await call.message.edit_text(NO_COUNTRY_TEXT)
+        return
+    if await _invest_limit_exceeded(session, country.id):
+        await call.message.edit_text(_INVEST_LIMIT_TEXT, reply_markup=invest_menu_kb())
         return
     await state.set_state(InvestForm.choosing_category)
     await state.update_data(scope="self", target_id=country.id)
@@ -130,6 +153,9 @@ async def cb_invest_new_foreign(call: CallbackQuery, state: FSMContext, session:
     country = await get_player_country(session, db_user)
     if country is None:
         await call.message.edit_text(NO_COUNTRY_TEXT)
+        return
+    if await _invest_limit_exceeded(session, country.id):
+        await call.message.edit_text(_INVEST_LIMIT_TEXT, reply_markup=invest_foreign_kb())
         return
     await state.set_state(InvestForm.choosing_target)
     await state.update_data(scope="foreign")
@@ -227,6 +253,10 @@ async def cb_invest_confirm(call: CallbackQuery, state: FSMContext, session: Asy
     target_id = data.get("target_id") or country.id
     if amount <= 0 or key not in INVESTMENT_CATEGORIES or country.budget < amount:
         await call.message.edit_text("⛔️ سرمایه‌گذاری انجام نشد (بودجه‌ی ناکافی).", reply_markup=_back_invest_kb())
+        return
+    # چک نهاییِ محدودیت پیش از کسر بودجه (v1.11)
+    if await _invest_limit_exceeded(session, country.id):
+        await call.message.edit_text(_INVEST_LIMIT_TEXT, reply_markup=_back_invest_kb())
         return
     fa, pct = _cat_fa_pct(key)
     # کسر اصل سرمایه از بودجه

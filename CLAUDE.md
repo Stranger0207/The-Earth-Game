@@ -180,6 +180,13 @@ GROQ_API_KEY="gsk_test" OWNER_IDS="111" ADMIN_IDS="111" PYTHONUTF8="1" python -c
 - **صندوق پستی (پاسخ):** در صندوق پستی برای هر نامه‌ی بی‌پاسخ دکمه‌ی «📩 پاسخ» جدا نمایش داده می‌شود؛ پس از پاسخ (`replied=True`) دکمه حذف می‌شود.
 - **مدیریت اعضای اتحاد:** در «اتحاد من» برای مالک دکمه‌های «➕ افزودن کشور» (ارسال درخواست با پذیرش/رد: `alli_add_to`/`alli_join_ok`/`alli_join_no`) و «➖ حذف کشور» (`alli:remove`/`alli_rm`) اضافه شد. رعایت `ALLIANCE_MAX_MEMBERS` و عضویت یکتا.
 
+## ویژگی‌های v1.11
+
+- **محدودیت تأسیسات مشترک:** هر کشور در هر ۱۲ ساعت حداکثر `JOINT_BUILD_LIMIT=3` تأسیسات مشترک می‌سازد (چک در `joint.py:cb_joint_start` با `facilities.count_joint_requests_since` که درخواست‌های pending/done را در پنجره می‌شمارد).
+- **محدودیت سرمایه‌گذاری:** هر کشور در هر ۱۲ ساعت حداکثر `INVESTMENT_LIMIT=2` سرمایه‌گذاری ثبت می‌کند (helper `_invest_limit_exceeded` با `investments.count_by_investor_since`؛ چک fail-fast در ورود به داخلی/خارجی و چک نهایی در `cb_invest_confirm`).
+- **استقرار نیرو (فقط VIP):** بخش نظامی → «🪖 استقرار نیرو». فقط کشورهای `is_vip`. منو: «استقرار نیروی جدید» (انتخاب نوع کلان زمینی/دریایی/هوایی → قلم تجهیزات از آن دسته → تعداد → منطقه → تأیید) و «نیروهای مستقر» (آپدیت مکان / حذف گروه). هزینه‌ی **تصادفی نفت** بین ۱ تا ۱۰ میلیون بشکه وابسته به حجم نیرو (`_compute_oil_cost`، ثابت‌های `DEPLOY_OIL_*`)؛ فقط نفت کسر می‌شود (تجهیزات در موجودی می‌مانند). نگاشت سه دسته‌ی کلان به branchهای واقعی در `DEPLOY_BRANCHES`. با تأیید: خبر فوری با عکس مخصوص (`ground/navy/air` از `D:\PictureDB\Military`، کش‌شده در `File.md`) در **کانال نظامی** + لاگ. مدل `Deployment`؛ repo `deployments`؛ handler `deployment.py`؛ فرم `DeploymentForm`.
+- **توسعه‌ی پنل `/god`:** افزوده شد «🚫 تحریم‌ها» (فهرست/لغو/افزودن)، «📈 سرمایه‌گذاری‌ها» (فهرست/حذف/افزودن)، «💥 سیستم تلفات» (کشور→نوع نیرو→قلم→عدد تلفات→کسر با `mil_repo.reduce_count`). در «🏭 تأسیسات و کارخانه‌ها» دکمه‌ی حذف هر تأسیسات/کارخانه + «افزودن تأسیسات»/«افزودن کارخانه» (god mode رایگان، بازدهی تأسیسات از `economy_service.facility_yield_for`). ورودی‌های متنی/عددی از طریق `GodForm.entering_value` با `god_kind`های جدید (`casualty`, `facadd_loc`, `mfadd_name`, `mfadd_loc`, `invadd_amount`).
+
 ## قواعد ظاهری UI (v1.8)
 
 - رنگ دکمه‌ها از طریق فیلد `style` در `InlineKeyboardButton` (Bot API 9.4+) اعمال می‌شود.

@@ -8,6 +8,7 @@ from . import (
     alliance,
     bank,
     claim,
+    deployment,
     diplomacy,
     economy,
     godmode,
@@ -40,4 +41,5 @@ def register_all_routers(dp: Dispatcher) -> None:
     dp.include_router(mail.router)
     dp.include_router(alliance.router)
     dp.include_router(military.router)
+    dp.include_router(deployment.router)
     dp.include_router(advisor.router)

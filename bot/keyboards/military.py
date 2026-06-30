@@ -16,8 +16,42 @@ def military_menu_kb() -> InlineKeyboardMarkup:
     builder.button(text="💥 حمله", callback_data="mil:attack", style=STYLE_NO)
     builder.button(text="🏭 کارخانه نظامی", callback_data="mil:factory", style=STYLE_MAIN)
     builder.button(text="💰 فروش تجهیزات", callback_data="mil:sell", style=STYLE_OK)
+    builder.button(text="🪖 استقرار نیرو", callback_data="mil:deploy", style=STYLE_MAIN)
     builder.button(text="🔙 بازگشت", callback_data="menu:main", style=STYLE_MAIN)
-    builder.adjust(2, 2, 1)
+    builder.adjust(2, 2, 1, 1)
+    return builder.as_markup()
+
+
+def deploy_menu_kb() -> InlineKeyboardMarkup:
+    """منوی استقرار نیرو (v1.11)."""
+    builder = InlineKeyboardBuilder()
+    builder.button(text="➕ استقرار نیروی جدید", callback_data="dep:new", style=STYLE_OK)
+    builder.button(text="📋 نیروهای مستقر", callback_data="dep:list", style=STYLE_MAIN)
+    builder.button(text="🔙 بازگشت", callback_data="menu:military", style=STYLE_MAIN)
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def deployed_actions_kb() -> InlineKeyboardMarkup:
+    """منوی مدیریت نیروهای مستقر (v1.11)."""
+    builder = InlineKeyboardBuilder()
+    builder.button(text="📍 آپدیت مکان نیروها", callback_data="dep:upd", style=STYLE_MAIN)
+    builder.button(text="🗑 حذف گروه نیروها", callback_data="dep:rm", style=STYLE_NO)
+    builder.button(text="🔙 بازگشت", callback_data="mil:deploy", style=STYLE_MAIN)
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def deploy_branch_kb() -> InlineKeyboardMarkup:
+    """انتخاب نوع کلان نیرو برای اعزام (زمینی/دریایی/هوایی) — v1.11."""
+    from ..constants import DEPLOY_BRANCHES
+
+    icons = {"ground": "🪖", "navy": "🚢", "air": "✈️"}
+    builder = InlineKeyboardBuilder()
+    for key, (fa, _stem, _branches) in DEPLOY_BRANCHES.items():
+        builder.button(text=f"{icons.get(key, '')} {fa}", callback_data=f"dep_branch:{key}", style=STYLE_OK)
+    builder.button(text="🔙 بازگشت", callback_data="mil:deploy", style=STYLE_MAIN)
+    builder.adjust(1)
     return builder.as_markup()
 
 

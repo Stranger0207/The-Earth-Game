@@ -11,9 +11,12 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..constants import FACILITY_COST_USD
+from datetime import datetime, timedelta, timezone
+
+from ..constants import BUILD_LIMIT_WINDOW_HOURS, FACILITY_COST_USD, JOINT_BUILD_LIMIT
 from ..database.models import JointBuildRequest, User
 from ..database.repositories import countries as countries_repo
+from ..database.repositories import facilities as fac_repo
 from ..enums import FACILITY_FA, RESOURCE_FA, FacilityType, ResourceType
 from ..keyboards.common import countries_kb
 from ..keyboards.economy import (
@@ -45,6 +48,18 @@ async def cb_joint_start(call: CallbackQuery, state: FSMContext, session: AsyncS
     if country is None:
         await call.message.edit_text(NO_COUNTRY_TEXT)
         return
+
+    # محدودیت ساخت تأسیسات مشترک: هر ۱۲ ساعت ۳ تا (v1.11)
+    since = datetime.now(timezone.utc) - timedelta(hours=BUILD_LIMIT_WINDOW_HOURS)
+    recent = await fac_repo.count_joint_requests_since(session, country.id, since)
+    if recent >= JOINT_BUILD_LIMIT:
+        await call.message.edit_text(
+            f"⏳ شما در هر {fa_number(BUILD_LIMIT_WINDOW_HOURS)} ساعت حداکثر "
+            f"{fa_number(JOINT_BUILD_LIMIT)} تأسیسات مشترک می‌توانید بسازید. لطفاً بعداً تلاش کنید.",
+            reply_markup=_back_build_kb(),
+        )
+        return
+
     await state.set_state(JointFacilityForm.choosing_partner)
     countries = await countries_repo.list_countries(session)
     others = [c for c in countries if c.id != country.id and c.owner_user_id is not None]

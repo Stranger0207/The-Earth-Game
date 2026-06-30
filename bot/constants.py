@@ -84,6 +84,12 @@ def build_limit_group_for(ftype: FacilityType) -> tuple[str, frozenset[FacilityT
 # کارخانه‌ی نظامی: هر ۱۲ ساعت ۲ تا (v1.9)
 MIL_FACTORY_BUILD_LIMIT = 2
 
+# تأسیسات مشترک: هر ۱۲ ساعت ۳ تا (v1.11) — از همان پنجره‌ی BUILD_LIMIT_WINDOW_HOURS استفاده می‌کند
+JOINT_BUILD_LIMIT = 3
+
+# سرمایه‌گذاری: هر ۱۲ ساعت ۲ تا (v1.11)
+INVESTMENT_LIMIT = 2
+
 # سیستم اتحاد (v1.9): حداکثر تعداد کشورهایی که سازنده می‌تواند به اتحاد بیاورد (به‌جز خودش)
 ALLIANCE_MAX_MEMBERS = 6
 
@@ -227,4 +233,22 @@ MIL_FACTORY_YIELD: dict[MilitaryFactoryType, tuple[int, int]] = {
     MilitaryFactoryType.DESTROYER: (2, 144),
     MilitaryFactoryType.BALLISTIC_MISSILE: (3, 24),
     MilitaryFactoryType.CRUISE_MISSILE: (5, 24),
+}
+
+# ============================================================
+#  🪖 استقرار نیرو (v1.11) — فقط برای کشورهای VIP
+# ============================================================
+# هزینه‌ی نفت استقرار: بین ۱ تا ۱۰ میلیون بشکه (وابسته به حجم نیروی اعزامی)
+DEPLOY_OIL_COST_MIN = 1.0   # میلیون بشکه
+DEPLOY_OIL_COST_MAX = 10.0  # میلیون بشکه
+# ضریب تصادفی هزینه به ازای هر واحد تجهیزات (قبل از clamp به بازه‌ی بالا)
+DEPLOY_OIL_PER_UNIT_MIN = 0.15
+DEPLOY_OIL_PER_UNIT_MAX = 0.35
+
+# نگاشت سه دسته‌ی کلانِ نیرو (زمینی/دریایی/هوایی) به مقادیر واقعی branch در countries.json.
+# هر مقدار: (نام فارسی برای خبر، نام پایه‌ی عکس در D:\PictureDB\Military، مجموعه‌ی branchها).
+DEPLOY_BRANCHES: dict[str, tuple[str, str, frozenset[str]]] = {
+    "ground": ("زمینی", "ground", frozenset({"نیروی زمینی", "خودروهای زمینی", "سامانه‌های دفاعی"})),
+    "navy": ("دریایی", "navy", frozenset({"نیروی دریایی"})),
+    "air": ("هوایی", "air", frozenset({"نیروی هوایی", "سامانه‌های حمله هوایی"})),
 }

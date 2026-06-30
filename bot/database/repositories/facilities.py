@@ -83,6 +83,24 @@ async def count_mil_factories_since(
     return res.scalar() or 0
 
 
+async def count_joint_requests_since(
+    session: AsyncSession, initiator_id: int, since: datetime
+) -> int:
+    """تعداد درخواست‌های تأسیسات مشترکِ فعالِ (در انتظار/انجام‌شده) یک کشور از زمان `since` (v1.11)."""
+    from sqlalchemy import func
+
+    from ..models import JointBuildRequest
+
+    res = await session.execute(
+        select(func.count()).select_from(JointBuildRequest).where(
+            JointBuildRequest.initiator_country == initiator_id,
+            JointBuildRequest.created_at >= since,
+            JointBuildRequest.status.in_(["pending", "done"]),
+        )
+    )
+    return res.scalar() or 0
+
+
 async def all_active_facilities(session: AsyncSession) -> list[Facility]:
     """همه‌ی تأسیسات فعال (برای پردازش بازدهی توسط زمان‌بند)."""
     result = await session.execute(

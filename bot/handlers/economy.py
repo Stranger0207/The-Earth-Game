@@ -49,6 +49,7 @@ from ..services.news_service import publish_news, send_log
 from ..states import FacilityForm, SaleForm, TariffForm
 from ..utils.formatting import render_economy_panel, render_reserves_panel
 from ..utils.numbers import fa_money, fa_number, parse_amount
+from ..utils.screens import safe_edit
 from ..utils.ui import STYLE_MAIN, STYLE_NO, STYLE_OK
 from .deps import NO_COUNTRY_TEXT, get_player_country
 
@@ -73,9 +74,9 @@ async def cb_report(call: CallbackQuery, session: AsyncSession, db_user: User) -
     await call.answer()
     country = await get_player_country(session, db_user)
     if country is None:
-        await call.message.edit_text(NO_COUNTRY_TEXT)
+        await safe_edit(call,NO_COUNTRY_TEXT)
         return
-    await call.message.edit_text(
+    await safe_edit(call,
         render_economy_panel(country), reply_markup=economy_menu_kb()
     )
 
@@ -85,10 +86,10 @@ async def cb_reserves(call: CallbackQuery, session: AsyncSession, db_user: User)
     await call.answer()
     country = await get_player_country(session, db_user)
     if country is None:
-        await call.message.edit_text(NO_COUNTRY_TEXT)
+        await safe_edit(call,NO_COUNTRY_TEXT)
         return
     reserves = await reserves_repo.list_reserves(session, country.id)
-    await call.message.edit_text(
+    await safe_edit(call,
         render_reserves_panel(country, reserves), reply_markup=economy_menu_kb()
     )
 
@@ -100,7 +101,7 @@ async def cb_reserves(call: CallbackQuery, session: AsyncSession, db_user: User)
 async def cb_build(call: CallbackQuery, state: FSMContext) -> None:
     await call.answer()
     await state.set_state(FacilityForm.choosing_type)
-    await call.message.edit_text(
+    await safe_edit(call,
         "🏗 نوع تأسیساتی که می‌خواهید احداث کنید را انتخاب کنید:",
         reply_markup=facility_types_kb(),
     )
@@ -112,11 +113,11 @@ async def cb_my_facilities(call: CallbackQuery, session: AsyncSession, db_user: 
     await call.answer()
     country = await get_player_country(session, db_user)
     if country is None:
-        await call.message.edit_text(NO_COUNTRY_TEXT)
+        await safe_edit(call,NO_COUNTRY_TEXT)
         return
     facilities = await fac_repo.list_facilities(session, country.id)
     if not facilities:
-        await call.message.edit_text(
+        await safe_edit(call,
             "🏭 هنوز تأسیساتی احداث نکرده‌اید.", reply_markup=facility_types_kb()
         )
         return
@@ -136,7 +137,7 @@ async def cb_my_facilities(call: CallbackQuery, session: AsyncSession, db_user: 
             f"• {fa} — 📍 {f.location or '—'}\n"
             f"   🏗 بازدهی: {fa_number(f.yield_amount)} {unit}/۲۴ساعت | 💰 {fa_money(f.budget)}"
         )
-    await call.message.edit_text("\n".join(lines), reply_markup=facility_types_kb())
+    await safe_edit(call,"\n".join(lines), reply_markup=facility_types_kb())
 
 
 @router.callback_query(FacilityForm.choosing_type, F.data.startswith("build_type:"))
@@ -149,7 +150,7 @@ async def cb_build_type(call: CallbackQuery, state: FSMContext) -> None:
     if ftype == FacilityType.MINE:
         # برای معدن باید نوع منبع انتخاب شود
         await state.set_state(FacilityForm.choosing_resource)
-        await call.message.edit_text(
+        await safe_edit(call,
             f"⛏ معدن چه منبعی را می‌خواهید احداث کنید؟\n"
             f"💰 هزینه: {fa_money(cost)}",
             reply_markup=mine_resources_kb(),
@@ -158,7 +159,7 @@ async def cb_build_type(call: CallbackQuery, state: FSMContext) -> None:
         # سایر تأسیسات مستقیم به مرحله‌ی محل می‌روند
         await state.update_data(resource=None)
         await state.set_state(FacilityForm.entering_location)
-        await call.message.edit_text(
+        await safe_edit(call,
             f"🏭 احداث {FACILITY_FA[ftype]}\n"
             f"💰 هزینه: {fa_money(cost)}\n\n"
             "📍 محل احداث را وارد کنید:",
@@ -171,7 +172,7 @@ async def cb_facility_back_type(call: CallbackQuery, state: FSMContext) -> None:
     """بازگشت به انتخاب نوع تأسیسات."""
     await call.answer()
     await state.set_state(FacilityForm.choosing_type)
-    await call.message.edit_text(
+    await safe_edit(call,
         "🏗 نوع تأسیساتی که می‌خواهید احداث کنید را انتخاب کنید:",
         reply_markup=facility_types_kb(),
     )
@@ -183,7 +184,7 @@ async def cb_mine_resource(call: CallbackQuery, state: FSMContext) -> None:
     resource = call.data.split(":")[1]
     await state.update_data(resource=resource)
     await state.set_state(FacilityForm.entering_location)
-    await call.message.edit_text(
+    await safe_edit(call,
         f"⛏ معدن {RESOURCE_FA[ResourceType(resource)]}\n\n📍 محل احداث را وارد کنید:",
         reply_markup=_back_kb("mine_back"),
     )
@@ -194,7 +195,7 @@ async def cb_mine_back(call: CallbackQuery, state: FSMContext) -> None:
     """بازگشت به انتخاب منبع معدن."""
     await call.answer()
     await state.set_state(FacilityForm.choosing_resource)
-    await call.message.edit_text(
+    await safe_edit(call,
         "⛏ معدن چه منبعی را می‌خواهید احداث کنید؟",
         reply_markup=mine_resources_kb(),
     )
@@ -279,7 +280,7 @@ async def cb_sell(
     await call.answer()
     country = await get_player_country(session, db_user)
     if country is None:
-        await call.message.edit_text(NO_COUNTRY_TEXT)
+        await safe_edit(call,NO_COUNTRY_TEXT)
         return
 
     # بررسی کول‌داون فروش
@@ -288,7 +289,7 @@ async def cb_sell(
     )
     if remaining > 0:
         mins = int(remaining // 60)
-        await call.message.edit_text(
+        await safe_edit(call,
             f"⏳ هر کشور هر {RESOURCE_SALE_COOLDOWN_HOURS} ساعت یک‌بار می‌تواند منبع بفروشد.\n"
             f"زمان باقی‌مانده: حدود {fa_number(mins)} دقیقه.",
             reply_markup=economy_menu_kb(),
@@ -296,7 +297,7 @@ async def cb_sell(
         return
 
     await state.set_state(SaleForm.choosing_resource)
-    await call.message.edit_text(
+    await safe_edit(call,
         "💱 کدام منبع را می‌خواهید بفروشید؟", reply_markup=sell_resources_kb()
     )
 
@@ -336,7 +337,7 @@ async def cb_sale_back_resource(call: CallbackQuery, state: FSMContext) -> None:
     """بازگشت به انتخاب منبع فروش."""
     await call.answer()
     await state.set_state(SaleForm.choosing_resource)
-    await call.message.edit_text(
+    await safe_edit(call,
         "💱 کدام منبع را می‌خواهید بفروشید؟", reply_markup=sell_resources_kb()
     )
 
@@ -392,7 +393,7 @@ async def cb_sell_buyer(call: CallbackQuery, state: FSMContext) -> None:
     buyer_id = int(call.data.split(":")[1])
     await state.update_data(buyer_id=buyer_id)
     await state.set_state(SaleForm.entering_price)
-    await call.message.edit_text(
+    await safe_edit(call,
         "مبلغ فروش را به دلار وارد کنید (مثلاً 500m برای ۵۰۰ میلیون):",
         reply_markup=_back_kb("sback:buyer"),
     )
@@ -406,7 +407,7 @@ async def cb_sale_back_buyer(
     await call.answer()
     country = await get_player_country(session, db_user)
     if country is None:
-        await call.message.edit_text(NO_COUNTRY_TEXT)
+        await safe_edit(call,NO_COUNTRY_TEXT)
         return
     await _show_sale_buyers(call, state, session, country.id)
 
@@ -523,7 +524,7 @@ async def cb_sale_accept(
     await cd_repo.touch(session, sale.seller_country, "resource_sale")
 
     await call.answer("خرید تأیید شد ✅")
-    await call.message.edit_text(
+    await safe_edit(call,
         call.message.html_text
         + f"\n\n✅ <b>تأیید شد</b> — زمان رسیدن: حدود {fa_number(minutes)} دقیقه"
     )
@@ -603,7 +604,7 @@ async def cb_sale_reject(
         return
     sale.status = TradeStatus.REJECTED
     await call.answer("رد شد")
-    await call.message.edit_text(call.message.html_text + "\n\n❌ <b>رد شد</b>")
+    await safe_edit(call,call.message.html_text + "\n\n❌ <b>رد شد</b>")
 
     seller = await countries_repo.get_country(session, sale.seller_country)
     if seller and seller.owner_user_id:
@@ -631,7 +632,7 @@ async def cb_tariffs(call: CallbackQuery, session: AsyncSession, db_user: User) 
     await call.answer()
     country = await get_player_country(session, db_user)
     if not _is_usa(country):
-        await call.message.edit_text(
+        await safe_edit(call,
             "⛔️ وضع تعرفه یک قابلیت انحصاری است و فقط آمریکا می‌تواند از آن استفاده کند.",
             reply_markup=economy_menu_kb(),
         )
@@ -651,7 +652,7 @@ async def cb_tariffs(call: CallbackQuery, session: AsyncSession, db_user: User) 
                 lines.append(f"• {tc.flag} {tc.name_fa}: {fa_number(t.percent)}٪")
     else:
         lines.append("هیچ تعرفه‌ی فعالی وجود ندارد.")
-    await call.message.edit_text("\n".join(lines), reply_markup=_tariff_menu_kb())
+    await safe_edit(call,"\n".join(lines), reply_markup=_tariff_menu_kb())
 
 
 @router.callback_query(F.data == "tariff:add")
@@ -664,7 +665,7 @@ async def cb_tariff_add(call: CallbackQuery, session: AsyncSession, db_user: Use
         return
     countries = await countries_repo.list_countries(session)
     others = [c for c in countries if c.id != country.id]
-    await call.message.edit_text(
+    await safe_edit(call,
         "کدام کشور را تعرفه‌گذاری می‌کنید؟",
         reply_markup=countries_kb(others, prefix="tariff_pick", columns=2, back_data="econ:tariffs"),
     )
@@ -682,7 +683,7 @@ async def cb_tariff_pick(call: CallbackQuery, state: FSMContext, session: AsyncS
     target = await countries_repo.get_country(session, target_id)
     await state.update_data(target_id=target_id)
     await state.set_state(TariffForm.entering_percent)
-    await call.message.edit_text(
+    await safe_edit(call,
         f"درصد تعرفه برای {target.flag} {target.name_fa} را وارد کنید (۰ تا ۱۰۰).\n"
         "عدد ۰ یعنی حذف تعرفه.",
         reply_markup=_back_kb("econ:tariffs"),

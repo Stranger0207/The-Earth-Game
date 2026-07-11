@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..database.models import User
 from ..keyboards.menu import main_menu_kb
 from ..states import SpeechForm
+from ..utils.screens import show_menu
 from .deps import get_player_country
 
 router = Router(name="start")
@@ -75,10 +76,12 @@ async def cmd_start(
 
     country = await get_player_country(session, db_user)
     if country is not None:
-        await message.answer(
+        await show_menu(
+            message,
             f"👑 خوش آمدید، رهبر {country.flag} <b>{country.name_fa}</b>!\n\n"
             "پنل مدیریت کشور:",
-            reply_markup=main_menu_kb(),
+            main_menu_kb(),
+            image_key="main",
         )
     else:
         await message.answer(WELCOME_TEXT, reply_markup=_claim_kb())
@@ -95,4 +98,4 @@ async def cmd_menu(
     if country is None:
         await message.answer("ابتدا باید کشوری بگیرید. /claim", reply_markup=_claim_kb())
         return
-    await message.answer("پنل مدیریت کشور:", reply_markup=main_menu_kb())
+    await show_menu(message, "پنل مدیریت کشور:", main_menu_kb(), image_key="main")

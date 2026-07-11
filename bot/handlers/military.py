@@ -61,6 +61,7 @@ from ..utils.formatting import render_military_panel
 from ..utils.numbers import fa_money, fa_number, parse_amount
 from ..utils.ui import STYLE_NO, STYLE_OK, header
 from aiogram.utils.keyboard import InlineKeyboardBuilder
+from ..utils.screens import safe_edit
 from .deps import NO_COUNTRY_TEXT, get_player_country
 
 router = Router(name="military")
@@ -100,14 +101,14 @@ async def cb_report(call: CallbackQuery, session: AsyncSession, db_user: User) -
     await call.answer()
     country = await get_player_country(session, db_user)
     if country is None:
-        await call.message.edit_text(NO_COUNTRY_TEXT)
+        await safe_edit(call,NO_COUNTRY_TEXT)
         return
     assets = await mil_repo.list_assets(session, country.id)
     text = render_military_panel(country, assets)
     # تلگرام محدودیت طول پیام دارد؛ در صورت نیاز کوتاه می‌شود
     if len(text) > 3900:
         text = text[:3900] + "\n..."
-    await call.message.edit_text(text, reply_markup=military_menu_kb())
+    await safe_edit(call,text, reply_markup=military_menu_kb())
 
 
 @router.callback_query(F.data == "mil:attack")
@@ -115,10 +116,10 @@ async def cb_attack(call: CallbackQuery, state: FSMContext, session: AsyncSessio
     await call.answer()
     country = await get_player_country(session, db_user)
     if country is None:
-        await call.message.edit_text(NO_COUNTRY_TEXT)
+        await safe_edit(call,NO_COUNTRY_TEXT)
         return
     await state.set_state(AttackForm.choosing_type)
-    await call.message.edit_text("💥 نوع حمله را انتخاب کنید:", reply_markup=attack_types_kb())
+    await safe_edit(call,"💥 نوع حمله را انتخاب کنید:", reply_markup=attack_types_kb())
 
 
 @router.callback_query(AttackForm.choosing_type, F.data.startswith("atk_type:"))
@@ -130,7 +131,7 @@ async def cb_attack_type(call: CallbackQuery, state: FSMContext, session: AsyncS
     country = await get_player_country(session, db_user)
     countries = await countries_repo.list_countries(session)
     others = [c for c in countries if c.id != country.id]
-    await call.message.edit_text(
+    await safe_edit(call,
         f"🎯 هدف {ATTACK_FA[atype]} را انتخاب کنید:",
         reply_markup=countries_kb(others, prefix="atk_target", columns=2, back_data="menu:military"),
     )
@@ -141,7 +142,7 @@ async def cb_attack_target(call: CallbackQuery, state: FSMContext) -> None:
     await call.answer()
     await state.update_data(target_id=int(call.data.split(":")[1]))
     await state.set_state(AttackForm.describing)
-    await call.message.edit_text(
+    await safe_edit(call,
         "📝 تجهیزات و هدف حمله را شرح دهید (متن آزاد):\n"
         "مثال: «حمله با ۲۰ جنگنده F-16 به پایگاه هوایی دشمن»",
         reply_markup=_back_kb("atkback:target"),
@@ -156,14 +157,14 @@ async def cb_attack_back_target(
     await call.answer()
     country = await get_player_country(session, db_user)
     if country is None:
-        await call.message.edit_text(NO_COUNTRY_TEXT)
+        await safe_edit(call,NO_COUNTRY_TEXT)
         return
     data = await state.get_data()
     atype = AttackType(data["attack_type"])
     await state.set_state(AttackForm.choosing_target)
     countries = await countries_repo.list_countries(session)
     others = [c for c in countries if c.id != country.id]
-    await call.message.edit_text(
+    await safe_edit(call,
         f"🎯 هدف {ATTACK_FA[atype]} را انتخاب کنید:",
         reply_markup=countries_kb(others, prefix="atk_target", columns=2, back_data="menu:military"),
     )
@@ -222,7 +223,7 @@ async def cb_factory_menu(call: CallbackQuery, state: FSMContext) -> None:
     """منوی کارخانه‌ی نظامی."""
     await call.answer()
     await state.clear()
-    await call.message.edit_text(
+    await safe_edit(call,
         header("کارخانه نظامی", "🏭") + "\n\nبا احداث کارخانه می‌توانید تجهیزات موجود کشورتان را بازتولید کنید.",
         reply_markup=military_factory_menu_kb(),
     )
@@ -233,7 +234,7 @@ async def cb_factory_build(call: CallbackQuery, state: FSMContext) -> None:
     """انتخاب نوع کارخانه برای احداث."""
     await call.answer()
     await state.set_state(MilitaryFactoryForm.choosing_type)
-    await call.message.edit_text(
+    await safe_edit(call,
         "🏗 نوع کارخانه‌ای که می‌خواهید احداث کنید را انتخاب کنید:",
         reply_markup=military_factory_types_kb(),
     )
@@ -247,13 +248,13 @@ async def cb_factory_type(call: CallbackQuery, state: FSMContext, session: Async
     category = MIL_FACTORY_CATEGORY[ftype]
     country = await get_player_country(session, db_user)
     if country is None:
-        await call.message.edit_text(NO_COUNTRY_TEXT)
+        await safe_edit(call,NO_COUNTRY_TEXT)
         return
 
     assets = await mil_repo.list_assets(session, country.id)
     matching = [a for a in assets if a.category == category]
     if not matching:
-        await call.message.edit_text(
+        await safe_edit(call,
             f"⚠️ کشور شما در دسته‌ی «{category}» تجهیزاتی برای بازتولید ندارد.",
             reply_markup=military_factory_menu_kb(),
         )
@@ -270,7 +271,7 @@ async def cb_factory_type(call: CallbackQuery, state: FSMContext, session: Async
         builder.button(text=a.name, callback_data=f"milfac_asset:{idx}", style=STYLE_OK)
     builder.button(text="🔙 بازگشت", callback_data="milfac:build", style="primary")
     builder.adjust(1)
-    await call.message.edit_text(
+    await safe_edit(call,
         f"کدام قلم از «{category}» را بازتولید می‌کنید؟",
         reply_markup=builder.as_markup(),
     )
@@ -288,7 +289,7 @@ async def cb_factory_asset(call: CallbackQuery, state: FSMContext) -> None:
         return
     await state.update_data(asset_name=assets[idx]["name"], asset_unit=assets[idx]["unit"])
     await state.set_state(MilitaryFactoryForm.entering_location)
-    await call.message.edit_text(
+    await safe_edit(call,
         f"🏭 کارخانه‌ی بازتولید <b>{assets[idx]['name']}</b>\n\n📍 محل احداث را وارد کنید:",
         reply_markup=_back_kb("mfback:asset"),
     )
@@ -311,7 +312,7 @@ async def cb_factory_back_asset(call: CallbackQuery, state: FSMContext) -> None:
         builder.button(text=a["name"], callback_data=f"milfac_asset:{idx}", style=STYLE_OK)
     builder.button(text="🔙 بازگشت", callback_data="milfac:build", style="primary")
     builder.adjust(1)
-    await call.message.edit_text(
+    await safe_edit(call,
         f"کدام قلم از «{category}» را بازتولید می‌کنید؟",
         reply_markup=builder.as_markup(),
     )
@@ -353,14 +354,14 @@ async def cb_factory_confirm(call: CallbackQuery, state: FSMContext, session: As
     await state.clear()
     country = await get_player_country(session, db_user)
     if country is None:
-        await call.message.edit_text(NO_COUNTRY_TEXT)
+        await safe_edit(call,NO_COUNTRY_TEXT)
         return
 
     # محدودیت ساخت کارخانه نظامی: هر ۱۲ ساعت ۲ کارخانه (v1.9)
     since = _utcnow() - timedelta(hours=BUILD_LIMIT_WINDOW_HOURS)
     recent = await fac_repo.count_mil_factories_since(session, country.id, since)
     if recent >= MIL_FACTORY_BUILD_LIMIT:
-        await call.message.edit_text(
+        await safe_edit(call,
             f"⏳ شما در هر {fa_number(BUILD_LIMIT_WINDOW_HOURS)} ساعت حداکثر "
             f"{fa_number(MIL_FACTORY_BUILD_LIMIT)} کارخانه نظامی می‌توانید بسازید. لطفاً بعداً تلاش کنید.",
             reply_markup=military_factory_menu_kb(),
@@ -373,7 +374,7 @@ async def cb_factory_confirm(call: CallbackQuery, state: FSMContext, session: As
     yield_amount, interval_h = MIL_FACTORY_YIELD[ftype]
 
     if country.budget < cost:
-        await call.message.edit_text(
+        await safe_edit(call,
             f"⛔️ بودجه‌ی کافی ندارید. هزینه‌ی این کارخانه {fa_money(cost)} است.",
             reply_markup=military_factory_menu_kb(),
         )
@@ -383,7 +384,7 @@ async def cb_factory_confirm(call: CallbackQuery, state: FSMContext, session: As
     for key, amount in build_res.items():
         if not await reserves_repo.has_enough(session, country.id, key, amount):
             rname = RESOURCE_FA.get(ResourceType(key), key) if key in [r.value for r in ResourceType] else key
-            await call.message.edit_text(
+            await safe_edit(call,
                 f"⛔️ منابع کافی برای ساخت ندارید. کمبود در: {rname}.",
                 reply_markup=military_factory_menu_kb(),
             )
@@ -410,7 +411,7 @@ async def cb_factory_confirm(call: CallbackQuery, state: FSMContext, session: As
     await milfac_repo.add_factory(session, factory)
 
     interval_fa = "۲۴ ساعت" if interval_h == 24 else f"{fa_number(interval_h // 24)} روز"
-    await call.message.edit_text(
+    await safe_edit(call,
         f"✅ {MIL_FACTORY_FA[ftype]} برای بازتولید «{data['asset_name']}» در «{data.get('location','')}» احداث شد.\n"
         f"🏭 بازدهی: {fa_number(yield_amount)} {factory.unit} در هر {interval_fa}\n"
         f"💰 بودجه‌ی باقی‌مانده: {fa_money(country.budget)}",
@@ -435,11 +436,11 @@ async def cb_factory_mine(call: CallbackQuery, session: AsyncSession, db_user: U
     await call.answer()
     country = await get_player_country(session, db_user)
     if country is None:
-        await call.message.edit_text(NO_COUNTRY_TEXT)
+        await safe_edit(call,NO_COUNTRY_TEXT)
         return
     factories = await milfac_repo.list_factories(session, country.id)
     if not factories:
-        await call.message.edit_text(
+        await safe_edit(call,
             "🏭 هنوز کارخانه‌ی نظامی‌ای احداث نکرده‌اید.",
             reply_markup=military_factory_menu_kb(),
         )
@@ -455,7 +456,7 @@ async def cb_factory_mine(call: CallbackQuery, session: AsyncSession, db_user: U
             f"• {fa} — بازتولید {f.asset_name}\n"
             f"   📍 {f.location} | 🏭 {fa_number(f.yield_amount)} {f.unit}/{interval_fa} | 💰 {fa_money(f.cost)}"
         )
-    await call.message.edit_text("\n".join(lines), reply_markup=military_factory_menu_kb())
+    await safe_edit(call,"\n".join(lines), reply_markup=military_factory_menu_kb())
 
 
 # ============================================================
@@ -467,12 +468,12 @@ async def cb_sell(call: CallbackQuery, state: FSMContext, session: AsyncSession,
     await call.answer()
     country = await get_player_country(session, db_user)
     if country is None:
-        await call.message.edit_text(NO_COUNTRY_TEXT)
+        await safe_edit(call,NO_COUNTRY_TEXT)
         return
     assets = await mil_repo.list_assets(session, country.id)
     assets = [a for a in assets if a.count > 0]
     if not assets:
-        await call.message.edit_text("⚠️ تجهیزاتی برای فروش ندارید.", reply_markup=military_menu_kb())
+        await safe_edit(call,"⚠️ تجهیزاتی برای فروش ندارید.", reply_markup=military_menu_kb())
         return
 
     # دسته‌های موجود (یکتا، با حفظ ترتیب)
@@ -491,7 +492,7 @@ async def cb_sell(call: CallbackQuery, state: FSMContext, session: AsyncSession,
     builder.button(text="🔙 بازگشت", callback_data="menu:military", style="primary")
     builder.adjust(2)
     await state.update_data(sell_categories=categories)
-    await call.message.edit_text("💰 قصد فروش کدام دسته از تجهیزات را دارید؟", reply_markup=builder.as_markup())
+    await safe_edit(call,"💰 قصد فروش کدام دسته از تجهیزات را دارید؟", reply_markup=builder.as_markup())
 
 
 @router.callback_query(MilitarySaleForm.choosing_category, F.data.startswith("milsell_cat:"))
@@ -521,7 +522,7 @@ async def _show_sell_assets(call: CallbackQuery, state: FSMContext) -> None:
         builder.button(text=f"{a['name']} ({fa_number(a['count'])})", callback_data=f"milsell_asset:{i}", style=STYLE_OK)
     builder.button(text="🔙 بازگشت", callback_data="mil:sell", style="primary")
     builder.adjust(1)
-    await call.message.edit_text(f"کدام قلم از «{category}» را می‌فروشید؟", reply_markup=builder.as_markup())
+    await safe_edit(call,f"کدام قلم از «{category}» را می‌فروشید؟", reply_markup=builder.as_markup())
 
 
 @router.callback_query(StateFilter(MilitarySaleForm), F.data == "msback:asset")
@@ -543,7 +544,7 @@ async def cb_sell_asset(call: CallbackQuery, state: FSMContext) -> None:
         return
     await state.update_data(sell_pick=assets[i])
     await state.set_state(MilitarySaleForm.entering_count)
-    await call.message.edit_text(
+    await safe_edit(call,
         f"تعداد {assets[i]['name']} برای فروش را وارد کنید (موجودی: {fa_number(assets[i]['count'])} {assets[i]['unit']}):",
         reply_markup=_back_kb("msback:asset"),
     )
@@ -580,7 +581,7 @@ async def cb_milsell_back_count(call: CallbackQuery, state: FSMContext) -> None:
         await _show_sell_assets(call, state)
         return
     await state.set_state(MilitarySaleForm.entering_count)
-    await call.message.edit_text(
+    await safe_edit(call,
         f"تعداد {pick['name']} برای فروش را وارد کنید (موجودی: {fa_number(pick['count'])} {pick['unit']}):",
         reply_markup=_back_kb("msback:asset"),
     )
@@ -613,7 +614,7 @@ async def cb_milsell_back_price(call: CallbackQuery, state: FSMContext) -> None:
     """بازگشت به وارد کردن قیمت فروش تجهیزات."""
     await call.answer()
     await state.set_state(MilitarySaleForm.entering_price)
-    await call.message.edit_text(
+    await safe_edit(call,
         "مبلغ فروش را به دلار وارد کنید (مثلاً 5b برای ۵ میلیارد):",
         reply_markup=_back_kb("msback:count"),
     )
@@ -631,17 +632,17 @@ async def cb_sell_buyer(call: CallbackQuery, state: FSMContext, session: AsyncSe
     country = await get_player_country(session, db_user)
     await state.clear()
     if country is None or pick is None:
-        await call.message.edit_text("خطا در فروش.")
+        await safe_edit(call,"خطا در فروش.")
         return
     buyer = await countries_repo.get_country(session, buyer_id)
     if buyer is None:
-        await call.message.edit_text("کشور خریدار یافت نشد.")
+        await safe_edit(call,"کشور خریدار یافت نشد.")
         return
 
     # اطمینان از موجودی فعلی فروشنده
     asset = await mil_repo.get_asset_by_name(session, country.id, pick["name"])
     if asset is None or asset.count < count:
-        await call.message.edit_text("موجودی شما برای این تعداد کافی نیست.", reply_markup=military_menu_kb())
+        await safe_edit(call,"موجودی شما برای این تعداد کافی نیست.", reply_markup=military_menu_kb())
         return
 
     sale = MilitarySale(
@@ -658,7 +659,7 @@ async def cb_sell_buyer(call: CallbackQuery, state: FSMContext, session: AsyncSe
     await milsale_repo.add_sale(session, sale)
     await session.flush()
 
-    await call.message.edit_text(
+    await safe_edit(call,
         f"📨 پیشنهاد فروش نظامی برای {buyer.flag} {buyer.name_fa} ارسال شد:\n"
         f"{fa_number(count)} {pick['unit']} {pick['name']} به مبلغ {fa_money(price)}\n\n"
         "پس از تأیید خریدار، محموله توسط WTO ارسال می‌شود."
@@ -721,7 +722,7 @@ async def cb_milsale_ok(call: CallbackQuery, session: AsyncSession, db_user: Use
     sale.status = TradeStatus.IN_TRANSIT
 
     await call.answer("خرید تأیید شد ✅")
-    await call.message.edit_text(
+    await safe_edit(call,
         call.message.html_text + f"\n\n✅ <b>تأیید شد</b> — زمان رسیدن: حدود {fa_number(minutes)} دقیقه"
     )
 
@@ -771,7 +772,7 @@ async def cb_milsale_no(call: CallbackQuery, session: AsyncSession, db_user: Use
         return
     sale.status = TradeStatus.REJECTED
     await call.answer("رد شد")
-    await call.message.edit_text(call.message.html_text + "\n\n❌ <b>رد شد</b>")
+    await safe_edit(call,call.message.html_text + "\n\n❌ <b>رد شد</b>")
     seller = await countries_repo.get_country(session, sale.seller_country)
     if seller and seller.owner_user_id:
         try:

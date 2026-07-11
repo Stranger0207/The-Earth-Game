@@ -14,6 +14,7 @@ from ..keyboards.economy import economy_menu_kb
 from ..keyboards.menu import main_menu_kb
 from ..keyboards.military import military_menu_kb
 from ..utils.formatting import render_economy_panel
+from ..utils.screens import safe_edit, show_menu
 from ..utils.ui import header
 from .deps import NO_COUNTRY_TEXT, get_player_country
 
@@ -28,7 +29,7 @@ async def cb_main(call: CallbackQuery, state: FSMContext) -> None:
     """بازگشت به پنل اصلی."""
     await state.clear()
     await call.answer()
-    await call.message.edit_text(PANEL_TITLE, reply_markup=main_menu_kb())
+    await show_menu(call, PANEL_TITLE, main_menu_kb(), image_key="main")
 
 
 @router.callback_query(F.data == "menu:economy")
@@ -36,21 +37,21 @@ async def cb_economy(call: CallbackQuery, session: AsyncSession, db_user: User) 
     await call.answer()
     country = await get_player_country(session, db_user)
     is_usa = country is not None and country.name_en == "USA"
-    await call.message.edit_text(
-        header("بخش اقتصاد", "💰"), reply_markup=economy_menu_kb(is_usa=is_usa)
+    await show_menu(
+        call, header("بخش اقتصاد", "💰"), economy_menu_kb(is_usa=is_usa), image_key="economy"
     )
 
 
 @router.callback_query(F.data == "menu:diplomacy")
 async def cb_diplomacy(call: CallbackQuery) -> None:
     await call.answer()
-    await call.message.edit_text(header("بخش دیپلماسی", "🤝"), reply_markup=diplomacy_menu_kb())
+    await show_menu(call, header("بخش دیپلماسی", "🤝"), diplomacy_menu_kb(), image_key="diplomacy")
 
 
 @router.callback_query(F.data == "menu:military")
 async def cb_military(call: CallbackQuery) -> None:
     await call.answer()
-    await call.message.edit_text(header("بخش نظامی", "⚔️"), reply_markup=military_menu_kb())
+    await show_menu(call, header("بخش نظامی", "⚔️"), military_menu_kb(), image_key="military")
 
 
 @router.callback_query(F.data == "menu:status")
@@ -61,11 +62,9 @@ async def cb_status(
     await call.answer()
     country = await get_player_country(session, db_user)
     if country is None:
-        await call.message.edit_text(NO_COUNTRY_TEXT)
+        await safe_edit(call, NO_COUNTRY_TEXT)
         return
-    await call.message.edit_text(
-        render_economy_panel(country), reply_markup=main_menu_kb()
-    )
+    await show_menu(call, render_economy_panel(country), main_menu_kb(), image_key="status")
 
 
 @router.callback_query(F.data == "cancel")
@@ -73,4 +72,4 @@ async def cb_cancel(call: CallbackQuery, state: FSMContext) -> None:
     """لغو فرایند جاری و بازگشت به پنل."""
     await state.clear()
     await call.answer("لغو شد")
-    await call.message.edit_text(PANEL_TITLE, reply_markup=main_menu_kb())
+    await show_menu(call, PANEL_TITLE, main_menu_kb(), image_key="main")

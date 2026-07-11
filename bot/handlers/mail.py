@@ -18,6 +18,7 @@ from ..loader import bot
 from ..services.news_service import send_log
 from ..states import MailForm
 from ..utils.numbers import fa_number
+from ..utils.screens import safe_edit
 from ..utils.ui import PICK_OFF, PICK_ON, STYLE_MAIN, STYLE_OK
 from .deps import NO_COUNTRY_TEXT, get_player_country
 
@@ -69,7 +70,7 @@ def _multi_select_kb(others, selected: set[int]) -> InlineKeyboardMarkup:
 async def cb_mail(call: CallbackQuery, state: FSMContext) -> None:
     await state.clear()
     await call.answer()
-    await call.message.edit_text("✉️ <b>سیستم نامه‌رسان</b>\n\nیک گزینه را انتخاب کنید:", reply_markup=_mail_menu_kb())
+    await safe_edit(call,"✉️ <b>سیستم نامه‌رسان</b>\n\nیک گزینه را انتخاب کنید:", reply_markup=_mail_menu_kb())
 
 
 # ----- نامه به یک کشور -----
@@ -78,13 +79,13 @@ async def cb_mail_single(call: CallbackQuery, state: FSMContext, session: AsyncS
     await call.answer()
     country = await get_player_country(session, db_user)
     if country is None:
-        await call.message.edit_text(NO_COUNTRY_TEXT)
+        await safe_edit(call,NO_COUNTRY_TEXT)
         return
     await state.set_state(MailForm.single_target)
     countries = await countries_repo.list_countries(session)
     others = [c for c in countries if c.id != country.id]
     from ..keyboards.common import countries_kb
-    await call.message.edit_text(
+    await safe_edit(call,
         "✉️ نامه را به کدام کشور می‌فرستید؟",
         reply_markup=countries_kb(others, prefix="mail_to", columns=2, back_data="dip:letter"),
     )
@@ -95,7 +96,7 @@ async def cb_mail_to(call: CallbackQuery, state: FSMContext) -> None:
     await call.answer()
     await state.update_data(recipients=[int(call.data.split(":")[1])])
     await state.set_state(MailForm.writing_body)
-    await call.message.edit_text("📝 متن نامه را بنویسید:", reply_markup=_back_mail_kb())
+    await safe_edit(call,"📝 متن نامه را بنویسید:", reply_markup=_back_mail_kb())
 
 
 # ----- نامه به چند کشور -----
@@ -104,13 +105,13 @@ async def cb_mail_multi(call: CallbackQuery, state: FSMContext, session: AsyncSe
     await call.answer()
     country = await get_player_country(session, db_user)
     if country is None:
-        await call.message.edit_text(NO_COUNTRY_TEXT)
+        await safe_edit(call,NO_COUNTRY_TEXT)
         return
     await state.set_state(MailForm.multi_select)
     await state.update_data(selected=[])
     countries = await countries_repo.list_countries(session)
     others = [c for c in countries if c.id != country.id]
-    await call.message.edit_text(
+    await safe_edit(call,
         "📨 کشورهای گیرنده را انتخاب کنید:", reply_markup=_multi_select_kb(others, set())
     )
 
@@ -139,7 +140,7 @@ async def cb_mail_multi_next(call: CallbackQuery, state: FSMContext) -> None:
         return
     await state.update_data(recipients=selected)
     await state.set_state(MailForm.writing_body)
-    await call.message.edit_text(
+    await safe_edit(call,
         f"📝 متن نامه به {fa_number(len(selected))} کشور را بنویسید:", reply_markup=_back_mail_kb()
     )
 
@@ -233,11 +234,11 @@ async def cb_mail_inbox(call: CallbackQuery, session: AsyncSession, db_user: Use
     await call.answer()
     country = await get_player_country(session, db_user)
     if country is None:
-        await call.message.edit_text(NO_COUNTRY_TEXT)
+        await safe_edit(call,NO_COUNTRY_TEXT)
         return
     inbox = await letters_repo.list_inbox(session, country.id)
     if not inbox:
-        await call.message.edit_text("📭 صندوق پستی شما خالی است.", reply_markup=_back_mail_kb())
+        await safe_edit(call,"📭 صندوق پستی شما خالی است.", reply_markup=_back_mail_kb())
         return
     lines = ["📬 <b>صندوق پستی</b>", ""]
     builder = InlineKeyboardBuilder()
@@ -256,4 +257,4 @@ async def cb_mail_inbox(call: CallbackQuery, session: AsyncSession, db_user: Use
             )
     builder.button(text="🔙 بازگشت", callback_data="dip:letter", style=STYLE_MAIN)
     builder.adjust(1)
-    await call.message.edit_text("\n".join(lines), reply_markup=builder.as_markup())
+    await safe_edit(call,"\n".join(lines), reply_markup=builder.as_markup())

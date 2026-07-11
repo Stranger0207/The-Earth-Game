@@ -19,6 +19,7 @@ from ..loader import bot
 from ..services.news_service import send_log
 from ..states import BankTransferForm, DebtPayForm
 from ..utils.numbers import fa_money, parse_amount
+from ..utils.screens import safe_edit, show_menu
 from ..utils.ui import STYLE_MAIN
 from .deps import NO_COUNTRY_TEXT, get_player_country
 
@@ -39,9 +40,11 @@ def _back_bank_kb() -> InlineKeyboardMarkup:
 async def cb_bank(call: CallbackQuery, state: FSMContext) -> None:
     await state.clear()
     await call.answer()
-    await call.message.edit_text(
+    await show_menu(
+        call,
         "🏦 <b>بانک مرکزی</b>\n\nیکی از خدمات بانکی را انتخاب کنید:",
-        reply_markup=bank_menu_kb(),
+        bank_menu_kb(),
+        image_key="bank",
     )
 
 
@@ -50,9 +53,10 @@ async def cb_bank_balance(call: CallbackQuery, session: AsyncSession, db_user: U
     await call.answer()
     country = await get_player_country(session, db_user)
     if country is None:
-        await call.message.edit_text(NO_COUNTRY_TEXT)
+        await safe_edit(call, NO_COUNTRY_TEXT)
         return
-    await call.message.edit_text(
+    await safe_edit(
+        call,
         f"💰 <b>موجودی خزانه‌ی {country.flag} {country.name_fa}</b>\n\n"
         f"بودجه‌ی فعلی: {fa_money(country.budget)}",
         reply_markup=_back_bank_kb(),
@@ -67,7 +71,7 @@ async def cb_bank_debt(call: CallbackQuery, session: AsyncSession, db_user: User
     await call.answer()
     country = await get_player_country(session, db_user)
     if country is None:
-        await call.message.edit_text(NO_COUNTRY_TEXT)
+        await safe_edit(call, NO_COUNTRY_TEXT)
         return
     debt = country.govt_debt or 0.0
     lines = [
@@ -82,7 +86,7 @@ async def cb_bank_debt(call: CallbackQuery, session: AsyncSession, db_user: User
             text="💸 پرداخت بدهی", callback_data="bank:debt_pay", style=STYLE_MAIN
         )])
     kb_rows.append([InlineKeyboardButton(text="🔙 بازگشت", callback_data="econ:bank", style=STYLE_MAIN)])
-    await call.message.edit_text("\n".join(lines), reply_markup=InlineKeyboardMarkup(inline_keyboard=kb_rows))
+    await safe_edit(call, "\n".join(lines), reply_markup=InlineKeyboardMarkup(inline_keyboard=kb_rows))
 
 
 @router.callback_query(F.data == "bank:debt_pay")
@@ -170,15 +174,16 @@ async def cb_bank_transfer(call: CallbackQuery, state: FSMContext, session: Asyn
     await call.answer()
     country = await get_player_country(session, db_user)
     if country is None:
-        await call.message.edit_text(NO_COUNTRY_TEXT)
+        await safe_edit(call, NO_COUNTRY_TEXT)
         return
     await state.set_state(BankTransferForm.choosing_target)
     countries = await countries_repo.list_countries(session)
     others = [c for c in countries if c.id != country.id and c.owner_user_id is not None]
     if not others:
-        await call.message.edit_text("کشوری برای انتقال وجه وجود ندارد.", reply_markup=_back_bank_kb())
+        await safe_edit(call, "کشوری برای انتقال وجه وجود ندارد.", reply_markup=_back_bank_kb())
         return
-    await call.message.edit_text(
+    await safe_edit(
+        call,
         "🔁 وجه را به کدام کشور منتقل می‌کنید؟",
         reply_markup=countries_kb(others, prefix="bank_to", columns=2, back_data="econ:bank"),
     )

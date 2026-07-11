@@ -29,6 +29,7 @@ from ..loader import bot
 from ..services.news_service import send_log
 from ..states import InvestForm
 from ..utils.numbers import fa_money, parse_amount
+from ..utils.screens import safe_edit
 from ..utils.ui import STYLE_MAIN
 from .deps import NO_COUNTRY_TEXT, get_player_country
 
@@ -67,7 +68,7 @@ _INVEST_LIMIT_TEXT = (
 async def cb_invest(call: CallbackQuery, state: FSMContext) -> None:
     await state.clear()
     await call.answer()
-    await call.message.edit_text(
+    await safe_edit(call,
         "📈 <b>سرمایه‌گذاری</b>\n\n"
         "می‌توانید روی توسعه‌ی کشور خودتان یا یک کشور خارجی سرمایه‌گذاری کنید.\n"
         "سود سرمایه هر ۲۴ ساعت به خزانه‌ی شما واریز می‌شود.",
@@ -81,14 +82,14 @@ async def cb_invest_internal(call: CallbackQuery, state: FSMContext, session: As
     await call.answer()
     country = await get_player_country(session, db_user)
     if country is None:
-        await call.message.edit_text(NO_COUNTRY_TEXT)
+        await safe_edit(call,NO_COUNTRY_TEXT)
         return
     if await _invest_limit_exceeded(session, country.id):
-        await call.message.edit_text(_INVEST_LIMIT_TEXT, reply_markup=invest_menu_kb())
+        await safe_edit(call,_INVEST_LIMIT_TEXT, reply_markup=invest_menu_kb())
         return
     await state.set_state(InvestForm.choosing_category)
     await state.update_data(scope="self", target_id=country.id)
-    await call.message.edit_text(
+    await safe_edit(call,
         "🏠 <b>سرمایه‌گذاری داخلی</b>\n\nدسته‌ی موردنظر را انتخاب کنید "
         "(درصد جلوی هر مورد = سود ۲۴ساعته):",
         reply_markup=invest_category_kb(back_data="econ:invest"),
@@ -100,7 +101,7 @@ async def cb_invest_internal(call: CallbackQuery, state: FSMContext, session: As
 async def cb_invest_foreign(call: CallbackQuery, state: FSMContext) -> None:
     await state.clear()
     await call.answer()
-    await call.message.edit_text(
+    await safe_edit(call,
         "🌍 <b>سرمایه‌گذاری خارجی</b>\n\nیک گزینه را انتخاب کنید:",
         reply_markup=invest_foreign_kb(),
     )
@@ -111,11 +112,11 @@ async def cb_invest_mine(call: CallbackQuery, session: AsyncSession, db_user: Us
     await call.answer()
     country = await get_player_country(session, db_user)
     if country is None:
-        await call.message.edit_text(NO_COUNTRY_TEXT)
+        await safe_edit(call,NO_COUNTRY_TEXT)
         return
     items = await inv_repo.list_by_investor(session, country.id)
     if not items:
-        await call.message.edit_text("شما هنوز سرمایه‌گذاری‌ای انجام نداده‌اید.", reply_markup=_back_invest_kb())
+        await safe_edit(call,"شما هنوز سرمایه‌گذاری‌ای انجام نداده‌اید.", reply_markup=_back_invest_kb())
         return
     lines = ["📋 <b>سرمایه‌گذاری‌های من</b>", ""]
     for inv in items:
@@ -124,7 +125,7 @@ async def cb_invest_mine(call: CallbackQuery, session: AsyncSession, db_user: Us
         where = "داخلی" if not inv.is_foreign else f"{tgt.flag} {tgt.name_fa}" if tgt else "?"
         profit = inv.amount * inv.profit_pct / 100.0
         lines.append(f"• {fa} — {where}\n   اصل: {fa_money(inv.amount)} | سود ۲۴ساعته: {fa_money(profit)}")
-    await call.message.edit_text("\n".join(lines), reply_markup=_back_invest_kb())
+    await safe_edit(call,"\n".join(lines), reply_markup=_back_invest_kb())
 
 
 @router.callback_query(F.data == "inv:on_me")
@@ -132,11 +133,11 @@ async def cb_invest_on_me(call: CallbackQuery, session: AsyncSession, db_user: U
     await call.answer()
     country = await get_player_country(session, db_user)
     if country is None:
-        await call.message.edit_text(NO_COUNTRY_TEXT)
+        await safe_edit(call,NO_COUNTRY_TEXT)
         return
     items = await inv_repo.list_on_target(session, country.id)
     if not items:
-        await call.message.edit_text("هیچ کشوری روی کشور شما سرمایه‌گذاری نکرده است.", reply_markup=_back_invest_kb())
+        await safe_edit(call,"هیچ کشوری روی کشور شما سرمایه‌گذاری نکرده است.", reply_markup=_back_invest_kb())
         return
     lines = ["📥 <b>سرمایه‌گذاری‌ها روی کشور من</b>", ""]
     for inv in items:
@@ -144,7 +145,7 @@ async def cb_invest_on_me(call: CallbackQuery, session: AsyncSession, db_user: U
         investor = await countries_repo.get_country(session, inv.investor_country)
         who = f"{investor.flag} {investor.name_fa}" if investor else "?"
         lines.append(f"• {fa} — سرمایه‌گذار: {who} | مبلغ: {fa_money(inv.amount)}")
-    await call.message.edit_text("\n".join(lines), reply_markup=_back_invest_kb())
+    await safe_edit(call,"\n".join(lines), reply_markup=_back_invest_kb())
 
 
 @router.callback_query(F.data == "inv:new_foreign")
@@ -152,16 +153,16 @@ async def cb_invest_new_foreign(call: CallbackQuery, state: FSMContext, session:
     await call.answer()
     country = await get_player_country(session, db_user)
     if country is None:
-        await call.message.edit_text(NO_COUNTRY_TEXT)
+        await safe_edit(call,NO_COUNTRY_TEXT)
         return
     if await _invest_limit_exceeded(session, country.id):
-        await call.message.edit_text(_INVEST_LIMIT_TEXT, reply_markup=invest_foreign_kb())
+        await safe_edit(call,_INVEST_LIMIT_TEXT, reply_markup=invest_foreign_kb())
         return
     await state.set_state(InvestForm.choosing_target)
     await state.update_data(scope="foreign")
     countries = await countries_repo.list_countries(session)
     others = [c for c in countries if c.id != country.id]
-    await call.message.edit_text(
+    await safe_edit(call,
         "💸 روی کدام کشور می‌خواهید سرمایه‌گذاری کنید؟",
         reply_markup=countries_kb(others, prefix="inv_target", columns=2, back_data="inv:foreign"),
     )
@@ -172,11 +173,11 @@ async def cb_invest_target(call: CallbackQuery, state: FSMContext, session: Asyn
     await call.answer()
     target = await countries_repo.get_country(session, int(call.data.split(":")[1]))
     if target is None:
-        await call.message.edit_text("کشور یافت نشد.", reply_markup=_back_invest_kb())
+        await safe_edit(call,"کشور یافت نشد.", reply_markup=_back_invest_kb())
         return
     await state.update_data(target_id=target.id)
     await state.set_state(InvestForm.choosing_category)
-    await call.message.edit_text(
+    await safe_edit(call,
         f"💸 سرمایه‌گذاری روی {target.flag} {target.name_fa}\n\nدسته‌ی موردنظر را انتخاب کنید:",
         reply_markup=invest_category_kb(back_data="inv:new_foreign"),
     )
@@ -194,7 +195,7 @@ async def cb_invest_category(call: CallbackQuery, state: FSMContext) -> None:
     await state.update_data(category=key)
     await state.set_state(InvestForm.entering_amount)
     pct_txt = int(pct) if float(pct).is_integer() else pct
-    await call.message.edit_text(
+    await safe_edit(call,
         f"📈 دسته: <b>{fa}</b> (سود ۲۴ساعته: {pct_txt}٪)\n\n"
         "مبلغ سرمایه‌گذاری را وارد کنید (به دلار، مثلاً 1b):",
         reply_markup=_back_invest_kb(),
@@ -246,17 +247,17 @@ async def cb_invest_confirm(call: CallbackQuery, state: FSMContext, session: Asy
     await state.clear()
     country = await get_player_country(session, db_user)
     if country is None:
-        await call.message.edit_text(NO_COUNTRY_TEXT)
+        await safe_edit(call,NO_COUNTRY_TEXT)
         return
     amount = float(data.get("amount", 0))
     key = data.get("category")
     target_id = data.get("target_id") or country.id
     if amount <= 0 or key not in INVESTMENT_CATEGORIES or country.budget < amount:
-        await call.message.edit_text("⛔️ سرمایه‌گذاری انجام نشد (بودجه‌ی ناکافی).", reply_markup=_back_invest_kb())
+        await safe_edit(call,"⛔️ سرمایه‌گذاری انجام نشد (بودجه‌ی ناکافی).", reply_markup=_back_invest_kb())
         return
     # چک نهاییِ محدودیت پیش از کسر بودجه (v1.11)
     if await _invest_limit_exceeded(session, country.id):
-        await call.message.edit_text(_INVEST_LIMIT_TEXT, reply_markup=_back_invest_kb())
+        await safe_edit(call,_INVEST_LIMIT_TEXT, reply_markup=_back_invest_kb())
         return
     fa, pct = _cat_fa_pct(key)
     # کسر اصل سرمایه از بودجه
@@ -273,7 +274,7 @@ async def cb_invest_confirm(call: CallbackQuery, state: FSMContext, session: Asy
     target = await countries_repo.get_country(session, target_id)
     is_foreign = target_id != country.id
     profit = amount * pct / 100.0
-    await call.message.edit_text(
+    await safe_edit(call,
         f"✅ سرمایه‌گذاری {fa_money(amount)} در «{fa}» ثبت شد.\n"
         f"سود ۲۴ساعته: {fa_money(profit)}\n"
         f"موجودی خزانه: {fa_money(country.budget)}",

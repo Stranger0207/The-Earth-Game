@@ -23,6 +23,7 @@ from ..database.repositories import users as users_repo
 from ..enums import ClaimStatus
 from ..keyboards.menu import main_menu_kb
 from ..loader import bot
+from ..services import media
 from ..services.news_service import send_log
 from ..services.season_service import reset_season
 from ..states import AnnounceForm
@@ -69,10 +70,12 @@ async def cb_approve(
         call.message.html_text + "\n\n✅ <b>تأیید شد</b>"
     )
 
-    # اطلاع به بازیکن
+    # اطلاع به بازیکن (پنل اصلی با عکس تصادفی؛ در نبود عکس فقط متن)
     try:
-        await bot.send_message(
+        await media.send_photo_news(
+            bot,
             claim.user_id,
+            "ui_main",
             f"🎉 تبریک! درخواست شما تأیید شد.\n"
             f"شما اکنون رهبر {country.flag} <b>{country.name_fa}</b> هستید.\n\n"
             "پنل مدیریت کشور:",

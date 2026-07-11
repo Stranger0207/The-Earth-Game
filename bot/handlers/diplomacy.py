@@ -43,6 +43,7 @@ from ..services.sanction_service import apply_sanction_effects
 from ..database.repositories import users as users_repo
 from ..states import CallForm, ContractForm, MeetingForm, SanctionForm, SpeechForm
 from ..utils.numbers import fa_number
+from ..utils.screens import safe_edit
 from ..utils.ui import STYLE_MAIN, STYLE_NO, STYLE_OK, header
 from .deps import NO_COUNTRY_TEXT, get_player_country
 
@@ -155,21 +156,21 @@ async def cb_call(call: CallbackQuery, state: FSMContext, session: AsyncSession,
     await call.answer()
     country = await get_player_country(session, db_user)
     if country is None:
-        await call.message.edit_text(NO_COUNTRY_TEXT)
+        await safe_edit(call,NO_COUNTRY_TEXT)
         return
     # کول‌داون تماس: هر ۳۰ دقیقه ۱ تماس (v1.9)
     mins = await _cooldown_remaining_min(
         session, country.id, "phone_call", PHONE_CALL_COOLDOWN_MINUTES / 60
     )
     if mins > 0:
-        await call.message.edit_text(
+        await safe_edit(call,
             _cooldown_text("تماس تلفنی", f"{fa_number(PHONE_CALL_COOLDOWN_MINUTES)} دقیقه", mins),
             reply_markup=diplomacy_menu_kb(),
         )
         return
     await state.set_state(CallForm.choosing_target)
     others = await _other_countries(session, country.id)
-    await call.message.edit_text(
+    await safe_edit(call,
         "📞 با کدام کشور می‌خواهید تماس بگیرید؟",
         reply_markup=countries_kb(others, prefix="call_to", columns=2, back_data="menu:diplomacy"),
     )
@@ -182,13 +183,13 @@ async def cb_call_to(call: CallbackQuery, state: FSMContext, session: AsyncSessi
     country = await get_player_country(session, db_user)
     target = await countries_repo.get_country(session, int(call.data.split(":")[1]))
     if country is None or target is None or target.owner_user_id is None:
-        await call.message.edit_text("امکان تماس با این کشور وجود ندارد (بدون رهبر).")
+        await safe_edit(call,"امکان تماس با این کشور وجود ندارد (بدون رهبر).")
         return
 
     # سیستم انحصار: تا وقتی نشست/تماس فعالی داری نمی‌توانی تماس جدید آغاز کنی (v1.10)
     label = await dip_repo.get_active_engagement_label(session, country.id)
     if label is not None:
-        await call.message.edit_text(
+        await safe_edit(call,
             f"⛔ شما هم‌اکنون {label} دارید.\n"
             "ابتدا نشست فعلی را پایان دهید، سپس دوباره برای تماس اقدام کنید.",
             reply_markup=diplomacy_menu_kb(),
@@ -198,7 +199,7 @@ async def cb_call_to(call: CallbackQuery, state: FSMContext, session: AsyncSessi
     # (v1.10.1) اگر طرف مقابل در نشست/تماس/پرواز باشد، اصلاً نمی‌توان برایش درخواست فرستاد
     target_label = await dip_repo.get_active_engagement_label(session, target.id)
     if target_label is not None:
-        await call.message.edit_text(
+        await safe_edit(call,
             f"⛔ کشور {target.flag} {target.name_fa} هم‌اکنون {target_label} دارد.\n"
             "تا پایان آن نمی‌توانید با این کشور تماس بگیرید.",
             reply_markup=diplomacy_menu_kb(),
@@ -210,7 +211,7 @@ async def cb_call_to(call: CallbackQuery, state: FSMContext, session: AsyncSessi
         session, country.id, "phone_call", PHONE_CALL_COOLDOWN_MINUTES / 60
     )
     if mins > 0:
-        await call.message.edit_text(
+        await safe_edit(call,
             _cooldown_text("تماس تلفنی", f"{fa_number(PHONE_CALL_COOLDOWN_MINUTES)} دقیقه", mins),
             reply_markup=diplomacy_menu_kb(),
         )
@@ -238,7 +239,7 @@ async def cb_call_to(call: CallbackQuery, state: FSMContext, session: AsyncSessi
         )
     except Exception:  # noqa: BLE001
         pass
-    await call.message.edit_text("📞 درخواست تماس ارسال شد. منتظر پاسخ طرف مقابل بمانید.")
+    await safe_edit(call,"📞 درخواست تماس ارسال شد. منتظر پاسخ طرف مقابل بمانید.")
 
 
 @router.callback_query(F.data.startswith("call_accept:"))
@@ -441,7 +442,7 @@ async def _render_recent_meetings(call: CallbackQuery, session: AsyncSession, co
 
     builder.button(text="🔙 بازگشت", callback_data="dip:meeting", style=STYLE_MAIN)
     builder.adjust(1)
-    await call.message.edit_text("\n".join(lines).strip(), reply_markup=builder.as_markup())
+    await safe_edit(call,"\n".join(lines).strip(), reply_markup=builder.as_markup())
 
 
 @router.callback_query(F.data == "dip:meetings_recent")
@@ -449,7 +450,7 @@ async def cb_meetings_recent(call: CallbackQuery, session: AsyncSession, db_user
     await call.answer()
     country = await get_player_country(session, db_user)
     if country is None:
-        await call.message.edit_text(NO_COUNTRY_TEXT)
+        await safe_edit(call,NO_COUNTRY_TEXT)
         return
     await _render_recent_meetings(call, session, country)
 
@@ -523,7 +524,7 @@ async def cb_meeting(call: CallbackQuery, state: FSMContext, session: AsyncSessi
     await call.answer()
     country = await get_player_country(session, db_user)
     if country is None:
-        await call.message.edit_text(NO_COUNTRY_TEXT)
+        await safe_edit(call,NO_COUNTRY_TEXT)
         return
     # نکته (v1.10.1): کول‌داون اینجا چک نمی‌شود تا کاربر همیشه به «نشست‌های اخیر» دسترسی
     # داشته باشد و بتواند نشست گیرکرده را پایان دهد. کول‌داون در مرحله‌ی ساخت نشست اعمال می‌شود.
@@ -533,7 +534,7 @@ async def cb_meeting(call: CallbackQuery, state: FSMContext, session: AsyncSessi
         [InlineKeyboardButton(text="🕘 نشست‌های اخیر", callback_data="dip:meetings_recent", style=STYLE_MAIN)],
         [InlineKeyboardButton(text="🔙 بازگشت", callback_data="menu:diplomacy", style=STYLE_MAIN)],
     ])
-    await call.message.edit_text(
+    await safe_edit(call,
         "🤝 <b>دیدار حضوری</b>\n\nنوع دیدار را انتخاب کنید:", reply_markup=kb
     )
 
@@ -544,11 +545,11 @@ async def cb_meeting_bi(call: CallbackQuery, state: FSMContext, session: AsyncSe
     await call.answer()
     country = await get_player_country(session, db_user)
     if country is None:
-        await call.message.edit_text(NO_COUNTRY_TEXT)
+        await safe_edit(call,NO_COUNTRY_TEXT)
         return
     await state.set_state(MeetingForm.choosing_target)
     others = await _other_countries(session, country.id)
-    await call.message.edit_text(
+    await safe_edit(call,
         "🤝 به کدام کشور سفر می‌کنید؟",
         reply_markup=countries_kb(others, prefix="meet_to", columns=2, back_data="menu:diplomacy"),
     )
@@ -585,12 +586,12 @@ async def cb_meeting_multi(call: CallbackQuery, state: FSMContext, session: Asyn
     await call.answer()
     country = await get_player_country(session, db_user)
     if country is None:
-        await call.message.edit_text(NO_COUNTRY_TEXT)
+        await safe_edit(call,NO_COUNTRY_TEXT)
         return
     await state.set_state(MeetingForm.selecting_members)
     await state.update_data(selected=[])
     others = await _other_countries(session, country.id)
-    await call.message.edit_text(
+    await safe_edit(call,
         "👥 کشورهای شرکت‌کننده در نشست را انتخاب کنید (می‌توانید چند کشور را تیک بزنید):",
         reply_markup=_group_select_kb(others, set()),
     )
@@ -602,7 +603,7 @@ async def cb_meeting_toggle(call: CallbackQuery, state: FSMContext, session: Asy
     await call.answer()
     country = await get_player_country(session, db_user)
     if country is None:
-        await call.message.edit_text(NO_COUNTRY_TEXT)
+        await safe_edit(call,NO_COUNTRY_TEXT)
         return
     cid = int(call.data.split(":")[1])
     data = await state.get_data()
@@ -626,7 +627,7 @@ async def cb_meeting_multi_next(call: CallbackQuery, state: FSMContext) -> None:
         await call.answer("حداقل یک کشور انتخاب کنید.", show_alert=True)
         return
     await state.set_state(MeetingForm.entering_group_title)
-    await call.message.edit_text(
+    await safe_edit(call,
         f"👥 {fa_number(len(selected))} کشور انتخاب شد.\n\n"
         "عنوان نشست چندجانبه را وارد کنید (مثلاً «نشست امنیت منطقه‌ای»):",
         reply_markup=_back_kb("meetback:members"),
@@ -641,13 +642,13 @@ async def cb_meeting_back_members(
     await call.answer()
     country = await get_player_country(session, db_user)
     if country is None:
-        await call.message.edit_text(NO_COUNTRY_TEXT)
+        await safe_edit(call,NO_COUNTRY_TEXT)
         return
     data = await state.get_data()
     selected = set(data.get("selected", []))
     await state.set_state(MeetingForm.selecting_members)
     others = await _other_countries(session, country.id)
-    await call.message.edit_text(
+    await safe_edit(call,
         "👥 کشورهای شرکت‌کننده در نشست را انتخاب کنید (می‌توانید چند کشور را تیک بزنید):",
         reply_markup=_group_select_kb(others, selected),
     )
@@ -830,7 +831,7 @@ async def cb_gmeet_accept(call: CallbackQuery, session: AsyncSession, db_user: U
     participant.response = DiplomacyStatus.ACTIVE
     participant.travel_eta = _utcnow() + timedelta(minutes=minutes)
 
-    await call.message.edit_text(
+    await safe_edit(call,
         call.message.html_text
         + f"\n\n✈️ <b>پذیرفتید</b> — پرواز به میزبان آغاز شد (زمان رسیدن حدود {fa_number(minutes)} دقیقه)"
     )
@@ -871,7 +872,7 @@ async def cb_gmeet_reject(call: CallbackQuery, session: AsyncSession, db_user: U
         return
     participant.response = DiplomacyStatus.REJECTED
     await call.answer("رد شد")
-    await call.message.edit_text(call.message.html_text + "\n\n❌ <b>رد کردید</b>")
+    await safe_edit(call,call.message.html_text + "\n\n❌ <b>رد کردید</b>")
     await _maybe_schedule_group_meeting(session, meeting)
 
 
@@ -882,13 +883,13 @@ async def cb_meet_to(call: CallbackQuery, state: FSMContext, session: AsyncSessi
     country = await get_player_country(session, db_user)
     target = await countries_repo.get_country(session, int(call.data.split(":")[1]))
     if country is None or target is None or target.owner_user_id is None:
-        await call.message.edit_text("امکان دیدار با این کشور وجود ندارد (بدون رهبر).")
+        await safe_edit(call,"امکان دیدار با این کشور وجود ندارد (بدون رهبر).")
         return
 
     # سیستم انحصار: تا وقتی نشست/تماس فعالی داری نمی‌توانی سفر/دیدار جدید آغاز کنی (v1.10)
     label = await dip_repo.get_active_engagement_label(session, country.id)
     if label is not None:
-        await call.message.edit_text(
+        await safe_edit(call,
             f"⛔ شما هم‌اکنون {label} دارید.\n"
             "ابتدا نشست فعلی را پایان دهید، سپس دوباره برای دیدار اقدام کنید.",
             reply_markup=diplomacy_menu_kb(),
@@ -898,7 +899,7 @@ async def cb_meet_to(call: CallbackQuery, state: FSMContext, session: AsyncSessi
     # (v1.10.1) اگر طرف مقابل مشغول نشست/تماس/پرواز باشد، اصلاً نمی‌توان برایش درخواست فرستاد
     target_label = await dip_repo.get_active_engagement_label(session, target.id)
     if target_label is not None:
-        await call.message.edit_text(
+        await safe_edit(call,
             f"⛔ کشور {target.flag} {target.name_fa} هم‌اکنون {target_label} دارد.\n"
             "تا پایان آن نمی‌توانید با این کشور دیدار داشته باشید.",
             reply_markup=diplomacy_menu_kb(),
@@ -908,7 +909,7 @@ async def cb_meet_to(call: CallbackQuery, state: FSMContext, session: AsyncSessi
     # کول‌داون دیدار حضوری: هر ۳ ساعت ۱ نشست (v1.9)
     mins = await _cooldown_remaining_min(session, country.id, "meeting", MEETING_COOLDOWN_HOURS)
     if mins > 0:
-        await call.message.edit_text(
+        await safe_edit(call,
             _cooldown_text("دیدار حضوری", f"{fa_number(MEETING_COOLDOWN_HOURS)} ساعت", mins),
             reply_markup=diplomacy_menu_kb(),
         )
@@ -936,7 +937,7 @@ async def cb_meet_to(call: CallbackQuery, state: FSMContext, session: AsyncSessi
         )
     except Exception:  # noqa: BLE001
         pass
-    await call.message.edit_text("🤝 درخواست سفر ارسال شد. منتظر پذیرش طرف مقابل بمانید.")
+    await safe_edit(call,"🤝 درخواست سفر ارسال شد. منتظر پذیرش طرف مقابل بمانید.")
 
 
 @router.callback_query(F.data.startswith("meet_accept:"))
@@ -1081,7 +1082,7 @@ async def cb_contract_with(call: CallbackQuery, state: FSMContext) -> None:
     other_id = int(call.data.split(":")[1])
     await state.update_data(other_id=other_id)
     await state.set_state(ContractForm.entering_title)
-    await call.message.edit_text("📜 عنوان قرارداد را وارد کنید:")
+    await safe_edit(call,"📜 عنوان قرارداد را وارد کنید:")
 
 
 @router.message(ContractForm.entering_title, F.text)
@@ -1099,7 +1100,7 @@ async def cb_contract_back_title(call: CallbackQuery, state: FSMContext) -> None
     """بازگشت به وارد کردن عنوان قرارداد."""
     await call.answer()
     await state.set_state(ContractForm.entering_title)
-    await call.message.edit_text("📜 عنوان قرارداد را وارد کنید:")
+    await safe_edit(call,"📜 عنوان قرارداد را وارد کنید:")
 
 
 @router.message(ContractForm.entering_body, F.text)
@@ -1153,7 +1154,7 @@ async def cb_sign_contract(call: CallbackQuery, session: AsyncSession, db_user: 
     contract.signed_b = True
     contract.status = DiplomacyStatus.ACTIVE
     await call.answer("امضا شد ✅")
-    await call.message.edit_text(call.message.html_text + "\n\n✅ <b>قرارداد امضا و فعال شد</b>")
+    await safe_edit(call,call.message.html_text + "\n\n✅ <b>قرارداد امضا و فعال شد</b>")
 
     a = await countries_repo.get_country(session, contract.country_a)
     b = await countries_repo.get_country(session, contract.country_b)
@@ -1185,7 +1186,7 @@ async def cb_reject_contract(call: CallbackQuery, session: AsyncSession) -> None
         return
     contract.status = DiplomacyStatus.REJECTED
     await call.answer("رد شد")
-    await call.message.edit_text(call.message.html_text + "\n\n❌ <b>رد شد</b>")
+    await safe_edit(call,call.message.html_text + "\n\n❌ <b>رد شد</b>")
 
 
 @router.callback_query(F.data == "dip:contracts")
@@ -1193,18 +1194,18 @@ async def cb_contracts(call: CallbackQuery, session: AsyncSession, db_user: User
     await call.answer()
     country = await get_player_country(session, db_user)
     if country is None:
-        await call.message.edit_text(NO_COUNTRY_TEXT)
+        await safe_edit(call,NO_COUNTRY_TEXT)
         return
     contracts = await dip_repo.list_contracts_for_country(session, country.id, only_active=True)
     if not contracts:
-        await call.message.edit_text("📜 قرارداد فعالی ندارید.", reply_markup=diplomacy_menu_kb())
+        await safe_edit(call,"📜 قرارداد فعالی ندارید.", reply_markup=diplomacy_menu_kb())
         return
     lines = ["📜 <b>قراردادهای فعال:</b>", ""]
     for c in contracts:
         a = await countries_repo.get_country(session, c.country_a)
         b = await countries_repo.get_country(session, c.country_b)
         lines.append(f"• «{c.title}» — {a.name_fa if a else '?'} ↔ {b.name_fa if b else '?'}")
-    await call.message.edit_text("\n".join(lines), reply_markup=diplomacy_menu_kb())
+    await safe_edit(call,"\n".join(lines), reply_markup=diplomacy_menu_kb())
 
 
 # ============================================================
@@ -1228,7 +1229,7 @@ async def cb_sanction(call: CallbackQuery, state: FSMContext) -> None:
     """منوی تحریم (v1.7)."""
     await call.answer()
     await state.clear()
-    await call.message.edit_text(
+    await safe_edit(call,
         header("تحریم", "🚫") + "\n\nیک گزینه را انتخاب کنید:", reply_markup=sanction_menu_kb()
     )
 
@@ -1239,10 +1240,10 @@ async def cb_sanction_impose(call: CallbackQuery, session: AsyncSession, db_user
     await call.answer()
     country = await get_player_country(session, db_user)
     if country is None:
-        await call.message.edit_text(NO_COUNTRY_TEXT)
+        await safe_edit(call,NO_COUNTRY_TEXT)
         return
     others = await _other_countries(session, country.id)
-    await call.message.edit_text(
+    await safe_edit(call,
         "🚫 کدام کشور را تحریم می‌کنید؟",
         reply_markup=countries_kb(others, prefix="sanction_to", columns=2, back_data="dip:sanction"),
     )
@@ -1254,11 +1255,11 @@ async def cb_sanction_imposed(call: CallbackQuery, session: AsyncSession, db_use
     await call.answer()
     country = await get_player_country(session, db_user)
     if country is None:
-        await call.message.edit_text(NO_COUNTRY_TEXT)
+        await safe_edit(call,NO_COUNTRY_TEXT)
         return
     sanctions = await dip_repo.list_sanctions_by(session, country.id)
     if not sanctions:
-        await call.message.edit_text("📋 شما هیچ تحریمی وضع نکرده‌اید.", reply_markup=sanction_menu_kb())
+        await safe_edit(call,"📋 شما هیچ تحریمی وضع نکرده‌اید.", reply_markup=sanction_menu_kb())
         return
     lines = ["📋 <b>تحریم‌های وضع‌شده توسط شما</b>", ""]
     for s in sanctions:
@@ -1268,7 +1269,7 @@ async def cb_sanction_imposed(call: CallbackQuery, session: AsyncSession, db_use
         except (ValueError, KeyError):
             stype_fa = s.sanction_type
         lines.append(f"• {target.flag if target else ''} {target.name_fa if target else '?'} — {stype_fa}")
-    await call.message.edit_text("\n".join(lines), reply_markup=sanction_menu_kb())
+    await safe_edit(call,"\n".join(lines), reply_markup=sanction_menu_kb())
 
 
 @router.callback_query(F.data == "sanc:mine")
@@ -1277,11 +1278,11 @@ async def cb_sanction_mine(call: CallbackQuery, session: AsyncSession, db_user: 
     await call.answer()
     country = await get_player_country(session, db_user)
     if country is None:
-        await call.message.edit_text(NO_COUNTRY_TEXT)
+        await safe_edit(call,NO_COUNTRY_TEXT)
         return
     sanctions = await dip_repo.list_sanctions_against(session, country.id)
     if not sanctions:
-        await call.message.edit_text("🎯 هیچ کشوری شما را تحریم نکرده است.", reply_markup=sanction_menu_kb())
+        await safe_edit(call,"🎯 هیچ کشوری شما را تحریم نکرده است.", reply_markup=sanction_menu_kb())
         return
     lines = ["🎯 <b>تحریم‌های علیه کشور شما</b>", ""]
     for s in sanctions:
@@ -1291,7 +1292,7 @@ async def cb_sanction_mine(call: CallbackQuery, session: AsyncSession, db_user: 
         except (ValueError, KeyError):
             stype_fa = s.sanction_type
         lines.append(f"• {src.flag if src else ''} {src.name_fa if src else '?'} — {stype_fa}")
-    await call.message.edit_text("\n".join(lines), reply_markup=sanction_menu_kb())
+    await safe_edit(call,"\n".join(lines), reply_markup=sanction_menu_kb())
 
 
 @router.callback_query(F.data == "sanc:cancel")
@@ -1300,11 +1301,11 @@ async def cb_sanction_cancel_list(call: CallbackQuery, session: AsyncSession, db
     await call.answer()
     country = await get_player_country(session, db_user)
     if country is None:
-        await call.message.edit_text(NO_COUNTRY_TEXT)
+        await safe_edit(call,NO_COUNTRY_TEXT)
         return
     sanctions = await dip_repo.list_sanctions_by(session, country.id)
     if not sanctions:
-        await call.message.edit_text("♻️ تحریمی برای لغو ندارید.", reply_markup=sanction_menu_kb())
+        await safe_edit(call,"♻️ تحریمی برای لغو ندارید.", reply_markup=sanction_menu_kb())
         return
     builder = InlineKeyboardBuilder()
     for s in sanctions:
@@ -1320,7 +1321,7 @@ async def cb_sanction_cancel_list(call: CallbackQuery, session: AsyncSession, db
         )
     builder.button(text="🔙 بازگشت", callback_data="dip:sanction", style=STYLE_MAIN)
     builder.adjust(1)
-    await call.message.edit_text("♻️ کدام تحریم را لغو می‌کنید؟", reply_markup=builder.as_markup())
+    await safe_edit(call,"♻️ کدام تحریم را لغو می‌کنید؟", reply_markup=builder.as_markup())
 
 
 @router.callback_query(F.data.startswith("sanc_cancel:"))
@@ -1334,7 +1335,7 @@ async def cb_sanction_do_cancel(call: CallbackQuery, session: AsyncSession, db_u
         return
     await dip_repo.deactivate_sanction(session, sanction.id)
     target = await countries_repo.get_country(session, sanction.to_country)
-    await call.message.edit_text(
+    await safe_edit(call,
         f"✅ تحریم علیه {target.flag if target else ''} {target.name_fa if target else '?'} لغو شد.",
         reply_markup=sanction_menu_kb(),
     )
@@ -1385,7 +1386,7 @@ async def cb_sanction_to(call: CallbackQuery, state: FSMContext, session: AsyncS
     await state.update_data(sanction_target=target_id)
     await state.set_state(SanctionForm.choosing_type)
     target = await countries_repo.get_country(session, target_id)
-    await call.message.edit_text(
+    await safe_edit(call,
         f"نوع تحریم علیه {target.flag} {target.name_fa} را انتخاب کنید:",
         reply_markup=sanction_types_kb(),
     )
@@ -1404,14 +1405,14 @@ async def cb_sanction_type(call: CallbackQuery, state: FSMContext, session: Asyn
     target = await countries_repo.get_country(session, data["sanction_target"])
     await state.clear()
     if country is None or target is None:
-        await call.message.edit_text("خطا.")
+        await safe_edit(call,"خطا.")
         return
 
     x = f"{country.flag} {country.name_fa}"
     y = f"{target.flag} {target.name_fa}"
 
     if settings.log_group_id is None:
-        await call.message.edit_text(
+        await safe_edit(call,
             "⛔️ امکان ثبت درخواست تحریم نیست (گروه لاگ تنظیم نشده). با مدیریت تماس بگیرید.",
             reply_markup=diplomacy_menu_kb(),
         )
@@ -1436,7 +1437,7 @@ async def cb_sanction_type(call: CallbackQuery, state: FSMContext, session: Asyn
         reply_markup=builder.as_markup(),
     )
 
-    await call.message.edit_text(
+    await safe_edit(call,
         "✅ درخواست تحریم شما برای بررسی و تأیید مدیریت بازی ارسال شد. "
         "نتیجه پس از تصمیم مدیریت اعلام می‌شود.",
         reply_markup=sanction_menu_kb(),
@@ -1469,7 +1470,7 @@ async def cb_sanction_approve(call: CallbackQuery, session: AsyncSession) -> Non
     await apply_sanction_effects(session, target, stype, sev)
 
     await call.answer("تحریم تأیید و اعمال شد ✅")
-    await call.message.edit_text(
+    await safe_edit(call,
         call.message.html_text + f"\n\n✅ <b>تأیید شد</b> (شدت: {sev_fa})"
     )
 
@@ -1524,7 +1525,7 @@ async def cb_sanction_reject(call: CallbackQuery, session: AsyncSession) -> None
     target = await countries_repo.get_country(session, int(to_id))
 
     await call.answer("درخواست رد شد ❌")
-    await call.message.edit_text(call.message.html_text + "\n\n❌ <b>رد شد</b>")
+    await safe_edit(call,call.message.html_text + "\n\n❌ <b>رد شد</b>")
 
     if country and country.owner_user_id:
         y = f"{target.flag} {target.name_fa}" if target else "کشور هدف"
@@ -1547,20 +1548,20 @@ async def cb_speech(call: CallbackQuery, state: FSMContext, session: AsyncSessio
     await call.answer()
     country = await get_player_country(session, db_user)
     if country is None:
-        await call.message.edit_text(NO_COUNTRY_TEXT)
+        await safe_edit(call,NO_COUNTRY_TEXT)
         return
     # کول‌داون بیانیه: هر ۱۰ دقیقه ۱ بیانیه (v1.9)
     mins = await _cooldown_remaining_min(
         session, country.id, "speech", SPEECH_COOLDOWN_MINUTES / 60
     )
     if mins > 0:
-        await call.message.edit_text(
+        await safe_edit(call,
             _cooldown_text("ارسال بیانیه", f"{fa_number(SPEECH_COOLDOWN_MINUTES)} دقیقه", mins),
             reply_markup=diplomacy_menu_kb(),
         )
         return
     await state.set_state(SpeechForm.entering_text)
-    await call.message.edit_text(
+    await safe_edit(call,
         "🎤 متن سخنرانی/بیانیه‌ی خود را وارد کنید:",
         reply_markup=_back_kb("menu:diplomacy"),
     )
@@ -1582,7 +1583,7 @@ async def cb_speech_back_text(call: CallbackQuery, state: FSMContext) -> None:
     """بازگشت به وارد کردن متن سخنرانی."""
     await call.answer()
     await state.set_state(SpeechForm.entering_text)
-    await call.message.edit_text(
+    await safe_edit(call,
         "🎤 متن سخنرانی/بیانیه‌ی خود را وارد کنید:",
         reply_markup=_back_kb("menu:diplomacy"),
     )

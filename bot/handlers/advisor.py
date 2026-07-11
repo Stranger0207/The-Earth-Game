@@ -16,7 +16,15 @@ from ..keyboards.menu import main_menu_kb
 from ..services.ai import evaluators
 from ..states import AdvisorForm
 from ..utils.numbers import fa_number
+from ..utils.screens import safe_edit, show_menu
 from .deps import NO_COUNTRY_TEXT, get_player_country
+
+# متن منوی انتخاب دامنه‌ی مشاوره (در دو نقطه استفاده می‌شود)
+_ADVISOR_MENU_TEXT = (
+    "🧠 <b>مشاور هوشمند</b>\n\n"
+    f"در هر دامنه هر {ADVISOR_COOLDOWN_HOURS} ساعت یک‌بار می‌توانید مشاوره بگیرید.\n"
+    "دامنه‌ی موردنظر را انتخاب کنید:"
+)
 
 router = Router(name="advisor")
 
@@ -44,12 +52,7 @@ def _domain_kb():
 async def cb_advisor(call: CallbackQuery, state: FSMContext) -> None:
     await call.answer()
     await state.set_state(AdvisorForm.choosing_domain)
-    await call.message.edit_text(
-        "🧠 <b>مشاور هوشمند</b>\n\n"
-        f"در هر دامنه هر {ADVISOR_COOLDOWN_HOURS} ساعت یک‌بار می‌توانید مشاوره بگیرید.\n"
-        "دامنه‌ی موردنظر را انتخاب کنید:",
-        reply_markup=_domain_kb(),
-    )
+    await show_menu(call, _ADVISOR_MENU_TEXT, _domain_kb(), image_key="advisor")
 
 
 @router.callback_query(AdvisorForm.choosing_domain, F.data.startswith("adv:"))
@@ -60,7 +63,7 @@ async def cb_advisor_domain(
     domain = AdvisorDomain(call.data.split(":")[1])
     country = await get_player_country(session, db_user)
     if country is None:
-        await call.message.edit_text(NO_COUNTRY_TEXT)
+        await safe_edit(call, NO_COUNTRY_TEXT)
         await state.clear()
         return
 
@@ -72,7 +75,8 @@ async def cb_advisor_domain(
     if remaining > 0:
         hours = int(remaining // 3600)
         mins = int((remaining % 3600) // 60)
-        await call.message.edit_text(
+        await safe_edit(
+            call,
             f"⏳ شما اخیراً از مشاور «{_DOMAIN_FA[domain]}» استفاده کرده‌اید.\n"
             f"زمان باقی‌مانده: {fa_number(hours)} ساعت و {fa_number(mins)} دقیقه.",
             reply_markup=main_menu_kb(),
@@ -88,7 +92,8 @@ async def cb_advisor_domain(
     back_kb = InlineKeyboardMarkup(inline_keyboard=[[
         InlineKeyboardButton(text="🔙 بازگشت", callback_data="advback:domain", style=STYLE_MAIN)
     ]])
-    await call.message.edit_text(
+    await safe_edit(
+        call,
         f"🧠 پرسش خود را از مشاور «{_DOMAIN_FA[domain]}» بنویسید:",
         reply_markup=back_kb,
     )
@@ -99,12 +104,7 @@ async def cb_advisor_back_domain(call: CallbackQuery, state: FSMContext) -> None
     """بازگشت به انتخاب دامنه‌ی مشاوره."""
     await call.answer()
     await state.set_state(AdvisorForm.choosing_domain)
-    await call.message.edit_text(
-        "🧠 <b>مشاور هوشمند</b>\n\n"
-        f"در هر دامنه هر {ADVISOR_COOLDOWN_HOURS} ساعت یک‌بار می‌توانید مشاوره بگیرید.\n"
-        "دامنه‌ی موردنظر را انتخاب کنید:",
-        reply_markup=_domain_kb(),
-    )
+    await show_menu(call, _ADVISOR_MENU_TEXT, _domain_kb(), image_key="advisor")
 
 
 @router.message(AdvisorForm.asking, F.text)

@@ -32,7 +32,26 @@ MEDIA_DIRS: dict[str, str] = {
     "meeting": r"D:\PictureDB\Didar",
     "embargo": r"D:\PictureDB\Embargo",
     "military": r"D:\PictureDB\Military",
+    # عکس‌های منوهای اصلی (سیستم تصویری UI) — هر منو یک فولدر با چند عکس تصادفی
+    "ui_main": r"D:\PictureDB\UI\main",
+    "ui_economy": r"D:\PictureDB\UI\economy",
+    "ui_diplomacy": r"D:\PictureDB\UI\diplomacy",
+    "ui_military": r"D:\PictureDB\UI\military",
+    "ui_advisor": r"D:\PictureDB\UI\advisor",
+    "ui_status": r"D:\PictureDB\UI\status",
+    "ui_bank": r"D:\PictureDB\UI\bank",
 }
+
+# دسته‌های UI (منوهای اصلی) — برای پیش‌کش‌کردن در scripts/cache_media.py
+UI_CATEGORIES: tuple[str, ...] = (
+    "ui_main",
+    "ui_economy",
+    "ui_diplomacy",
+    "ui_military",
+    "ui_advisor",
+    "ui_status",
+    "ui_bank",
+)
 
 _IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp"}
 
@@ -166,6 +185,33 @@ def _local_images(category: str) -> list[Path]:
     ]
 
 
+def _resolve_random_photo(category: str) -> tuple[object | None, Path | None]:
+    """یک عکس تصادفی برای یک دسته انتخاب می‌کند (بدون ارسال).
+
+    خروجی: (photo, upload_path)
+    - photo: یک file_id کش‌شده (str) یا FSInputFile برای آپلود، یا None اگر عکسی نبود.
+    - upload_path: اگر از فایل محلی آپلود می‌شود، مسیر فایل (برای کش‌کردن file_id پس از ارسال).
+
+    اولویت‌ها (v1.10.5): ابتدا فایل‌های محلیِ هنوز کش‌نشده (تا به‌مرور همه کش شوند)،
+    سپس file_idهای کش‌شده‌ی تصادفی (روی VPS بدون فولدر)، در نهایت هر فایل محلی.
+    """
+    cache = _load_cache()
+    cached_ids = cache.get(category, [])
+    local = _local_images(category)
+    cached_names = _cached_filenames(category)
+
+    uncached = [p for p in local if p.name not in cached_names]
+    if uncached:
+        path = uncached[0]
+        return FSInputFile(str(path)), path
+    if cached_ids:
+        return random.choice(cached_ids), None
+    if local:
+        path = random.choice(local)
+        return FSInputFile(str(path)), path
+    return None, None
+
+
 async def send_photo_news(
     bot: Bot,
     chat_id: int,
@@ -179,25 +225,7 @@ async def send_photo_news(
     از فولدر محلی آپلود و file_id حاصل در File.md ذخیره می‌شود.
     در صورت نبود عکس، فقط متن ارسال می‌شود. خروجی: آیا عکس فرستاده شد؟
     """
-    cache = _load_cache()
-    cached_ids = cache.get(category, [])
-    local = _local_images(category)
-    cached_names = _cached_filenames(category)
-
-    # v1.10.5: اگر فولدر محلی در دسترس است، فایل‌هایی که هنوز با «نام» کش نشده‌اند را
-    # به‌صورت قطعی آپلود می‌کنیم تا کل عکس‌ها به‌مرور کش شوند؛ روی VPS (بدون فولدر)
-    # از file_idهای کش‌شده به‌صورت تصادفی استفاده می‌شود (تنوع کامل).
-    uncached = [p for p in local if p.name not in cached_names]
-    photo = None
-    upload_path: Path | None = None
-    if uncached:
-        upload_path = uncached[0]
-        photo = FSInputFile(str(upload_path))
-    elif cached_ids:
-        photo = random.choice(cached_ids)
-    elif local:
-        upload_path = random.choice(local)
-        photo = FSInputFile(str(upload_path))
+    photo, upload_path = _resolve_random_photo(category)
 
     if photo is None:
         # هیچ عکسی در دسترس نیست → فقط متن

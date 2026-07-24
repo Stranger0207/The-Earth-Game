@@ -198,8 +198,11 @@ async def approve_battle_by_owner(session: AsyncSession, battle_id: int) -> Batt
 async def process_battle_phases(session: AsyncSession, bot: Bot) -> None:
     """
     پردازش فازهای چندمرحله‌ای خبری برای نبردهای در حال اجرا (توسط زمان‌بند).
-    فاز ۱: فلش فوری -> فاز ۲: درگیری اولیه -> فاز ۳: گزارش خسارات -> فاز ۴: نتیجه نهایی + اعمال تلفات.
-    اخبار با عکس‌های پویا به کانال اخبار نظامی متصل و ارسال می‌شوند.
+    هر دقیقه فقط ۱ پیام خبری ارسال می‌شود (۱ فاز در هر تیک).
+    حداکثر ۵ فاز = ۵ دقیقه اخبار نبرد:
+      فاز ۱: فلش فوری  |  فاز ۲: درگیری دفاعی  |  فاز ۳: گزارش خسارات
+      فاز ۴: نتیجه نهایی  |  فاز ۵: جمع‌بندی کامل + اعمال تلفات
+    اخبار با عکس‌های پویا به کانال اخبار نظامی ارسال می‌شوند.
     """
     battles = await battle_repo.list_in_progress_battles(session)
     now = _utcnow()
@@ -222,50 +225,34 @@ async def process_battle_phases(session: AsyncSession, bot: Bot) -> None:
             except Exception:
                 pass
 
-        if b.current_phase == 1:
-            # فاز ۱: فلش فوری (خبر لحظه شلیک/حمله)
+        # هر فاز: فقط یک خبر تولید و ارسال شود، سپس شماره فاز بعدی ست شود
+        phase = b.current_phase
+
+        if phase == 1:
             facts = phase_facts_dict.get("phase1_flash") or f"حمله {b.attack_type} توسط {attacker.name_fa} به {defender.name_fa}"
             news_text = await evaluators.write_war_phase_news("فاز ۱: فلش فوری خبر", facts)
-            if settings.news_military_channel_id:
-                await send_photo_news(bot, settings.news_military_channel_id, "military", news_text)
-            else:
-                await publish_news(bot, NewsCategory.MILITARY, news_text)
 
-            b.current_phase = 2
-            b.next_phase_at = now + timedelta(minutes=2)
-
-        elif b.current_phase == 2:
-            # فاز ۲: درگیری پدافند و خطوط دفاعی
+        elif phase == 2:
             facts = phase_facts_dict.get("phase2_clash") or f"درگیری سامانه‌های دفاعی در محور نبرد بین {attacker.name_fa} و {defender.name_fa}"
             news_text = await evaluators.write_war_phase_news("فاز ۲: درگیری دفاعی و هوایی", facts)
-            if settings.news_military_channel_id:
-                await send_photo_news(bot, settings.news_military_channel_id, "military", news_text)
-            else:
-                await publish_news(bot, NewsCategory.MILITARY, news_text)
 
-            b.current_phase = 3
-            b.next_phase_at = now + timedelta(minutes=3)
-
-        elif b.current_phase == 3:
-            # فاز ۳: گزارش خسارات اولیه
-            facts = phase_facts_dict.get("phase3_damage") or f"گزارش‌های خسارت به پایگاه‌ها و خطوط پشتیبانی"
+        elif phase == 3:
+            facts = phase_facts_dict.get("phase3_damage") or "گزارش‌های خسارت به پایگاه‌ها و خطوط پشتیبانی"
             news_text = await evaluators.write_war_phase_news("فاز ۳: گزارش اولیه خسارات نبرد", facts)
-            if settings.news_military_channel_id:
-                await send_photo_news(bot, settings.news_military_channel_id, "military", news_text)
-            else:
-                await publish_news(bot, NewsCategory.MILITARY, news_text)
 
-            b.current_phase = 4
-            b.next_phase_at = now + timedelta(minutes=3)
-
-        elif b.current_phase == 4:
-            # فاز ۴: نتیجه نهایی + اعمال تلفات و اثرات اقتصادی
+        elif phase == 4:
             facts = phase_facts_dict.get("phase4_result") or f"پایان درگیری با {b.outcome}"
             news_text = await evaluators.write_war_phase_news("فاز ۴: خلاصه نهایی و جمع‌بندی نبرد", facts)
-            if settings.news_military_channel_id:
-                await send_photo_news(bot, settings.news_military_channel_id, "military", news_text)
-            else:
-                await publish_news(bot, NewsCategory.MILITARY, news_text)
+
+        elif phase == 5:
+            # فاز ۵: بسته‌شدن نبرد + اعمال تلفات و اثرات اقتصادی
+            outcome_text = b.outcome or "نتیجه نامشخص"
+            news_text = (
+                f"🏁 **پایان عملیات نظامی**\n\n"
+                f"عملیات {b.attack_type} کشور {attacker.flag} {attacker.name_fa} علیه "
+                f"{defender.flag} {defender.name_fa} به پایان رسید.\n\n"
+                f"🏆 **نتیجه نهایی:** {outcome_text}"
+            )
 
             # کسر خودکار تلفات تجهیزات
             try:
@@ -287,6 +274,25 @@ async def process_battle_phases(session: AsyncSession, bot: Bot) -> None:
             except Exception as exc:
                 logger.exception("Failed to apply econ effects: %s", exc)
 
+        else:
+            # فاز نامعتبر: نبرد را ببند
+            b.status = "resolved"
+            b.resolved_at = now
+            await session.commit()
+            continue
+
+        # ارسال یک خبر با عکس به کانال نظامی
+        if settings.news_military_channel_id:
+            await send_photo_news(bot, settings.news_military_channel_id, "military", news_text)
+        else:
+            await publish_news(bot, NewsCategory.MILITARY, news_text)
+
+        # انتقال به فاز بعدی یا بسته‌شدن نبرد
+        if phase < 5:
+            b.current_phase = phase + 1
+            b.next_phase_at = now + timedelta(minutes=1)
+        else:
+            # فاز ۵: نبرد تمام شد
             b.status = "resolved"
             b.resolved_at = now
 
@@ -303,4 +309,6 @@ async def process_battle_phases(session: AsyncSession, bot: Bot) -> None:
                     except Exception:
                         pass
 
-    await session.flush()
+        # commit بعد از هر فاز تا تغییرات ذخیره شود و دفعه بعد تکرار نشود
+        await session.commit()
+

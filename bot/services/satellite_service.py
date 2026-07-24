@@ -164,7 +164,7 @@ async def process_satellite_launches(session: AsyncSession) -> None:
                     )
                 except Exception:
                     pass
-    await session.flush()
+    await session.commit()
 
 
 async def spy_scan_target_country(

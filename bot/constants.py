@@ -252,3 +252,28 @@ DEPLOY_BRANCHES: dict[str, tuple[str, str, frozenset[str]]] = {
     "navy": ("دریایی", "navy", frozenset({"نیروی دریایی"})),
     "air": ("هوایی", "air", frozenset({"نیروی هوایی", "سامانه‌های حمله هوایی"})),
 }
+
+# ============================================================
+#  🏗 پایگاه‌های نظامی (v2.0) — فقط کشورهای VIP
+# ============================================================
+MILITARY_BASE_TYPES: dict[str, tuple[str, float, int]] = {
+    "air_base": ("پایگاه هوایی", 20_000_000_000, 200),     # 20B$, capacity 200
+    "ground_base": ("پایگاه زمینی", 15_000_000_000, 500),  # 15B$, capacity 500
+    "naval_base": ("پایگاه دریایی", 25_000_000_000, 100),   # 25B$, capacity 100
+}
+
+MAX_FOREIGN_BASES_PER_OWNER = 5  # حداکثر پایگاه‌های خارجی یک کشور VIP
+MAX_FOREIGN_BASES_PER_HOST = 3   # حداکثر پایگاه‌های خارجی مستقر در یک کشور میزبان
+
+# ============================================================
+#  🛰 ماهواره‌های جاسوسی فضایی (v2.0) — فقط برای کشورهای VIP
+# ============================================================
+SPY_SATELLITE_COST_USD = 15_000_000_000.0  # 15 Billion USD
+SPY_SATELLITE_OIL_COST = 2.0               # 2 Million Barrels
+SPY_SATELLITE_STEEL_COST = 500_000.0        # 500k Tons
+SPY_SATELLITE_ALUMINUM_COST = 800_000.0     # 800k Tons
+
+SPY_SATELLITE_LIFESPAN_DAYS = 7            # ۷ روز عمر مفید در مدار
+SATELLITE_ORBIT_TIME_MINUTES = 30          # ۳۰ دقیقه زمان رسیدن به مدار
+
+

@@ -5,6 +5,7 @@
 
 from .alliance import Alliance, AllianceMember
 from .attack import Attack
+from .battle import Battle, WarDeclaration
 from .bot_state import BotState
 from .claim import ClaimRequest
 from .cooldown import Cooldown
@@ -25,9 +26,11 @@ from .investment import Investment
 from .joint_request import JointBuildRequest
 from .letter import Letter
 from .military import MilitaryAsset
+from .military_base import BaseEquipment, MilitaryBase
 from .military_factory import MilitaryFactory
 from .military_sale import MilitarySale
 from .reserves import Reserve
+from .satellite import Satellite
 from .tariff import TariffRate
 from .trade import ResourceSale
 from .user import User
@@ -36,6 +39,8 @@ __all__ = [
     "Alliance",
     "AllianceMember",
     "Attack",
+    "BaseEquipment",
+    "Battle",
     "BotState",
     "ClaimRequest",
     "Contract",
@@ -50,6 +55,7 @@ __all__ = [
     "GroupMeetingParticipant",
     "Meeting",
     "MilitaryAsset",
+    "MilitaryBase",
     "MilitaryFactory",
     "MilitarySale",
     "PhoneCall",
@@ -57,7 +63,9 @@ __all__ = [
     "Reserve",
     "ResourceSale",
     "Sanction",
+    "Satellite",
     "Speech",
     "TariffRate",
     "User",
+    "WarDeclaration",
 ]

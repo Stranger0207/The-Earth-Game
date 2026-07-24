@@ -7,6 +7,7 @@ from . import (
     advisor,
     alliance,
     bank,
+    battle,
     claim,
     deployment,
     diplomacy,
@@ -18,6 +19,8 @@ from . import (
     maintenance,
     menu,
     military,
+    military_base,
+    satellite,
     start,
 )
 
@@ -41,5 +44,8 @@ def register_all_routers(dp: Dispatcher) -> None:
     dp.include_router(mail.router)
     dp.include_router(alliance.router)
     dp.include_router(military.router)
+    dp.include_router(military_base.router)
+    dp.include_router(satellite.router)
+    dp.include_router(battle.router)
     dp.include_router(deployment.router)
     dp.include_router(advisor.router)

@@ -1,5 +1,4 @@
-"""وضعیت‌های FSM برای فرم‌های چندمرحله‌ای."""
-
+from .battle import BattleForm
 from .forms import (
     AdvisorForm,
     AllianceForm,
@@ -26,6 +25,8 @@ from .forms import (
     SpeechForm,
     TariffForm,
 )
+from .military_base import MilitaryBaseForm
+from .satellite import SatelliteForm
 
 __all__ = [
     "AdvisorForm",
@@ -33,6 +34,7 @@ __all__ = [
     "AnnounceForm",
     "AttackForm",
     "BankTransferForm",
+    "BattleForm",
     "CallForm",
     "ClaimForm",
     "ContractForm",
@@ -46,10 +48,12 @@ __all__ = [
     "MaintenanceForm",
     "MailForm",
     "MeetingForm",
+    "MilitaryBaseForm",
     "MilitaryFactoryForm",
     "MilitarySaleForm",
     "SaleForm",
     "SanctionForm",
+    "SatelliteForm",
     "SpeechForm",
     "TariffForm",
 ]

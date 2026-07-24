@@ -14,11 +14,13 @@ def military_menu_kb() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.button(text="⚔️ گزارش تجهیزات", callback_data="mil:report", style=STYLE_MAIN)
     builder.button(text="💥 حمله", callback_data="mil:attack", style=STYLE_NO)
+    builder.button(text="🏗 پایگاه‌های نظامی", callback_data="mil:base", style=STYLE_MAIN)
+    builder.button(text="📡 ماهواره فضایی", callback_data="mil:sat", style=STYLE_MAIN)
     builder.button(text="🏭 کارخانه نظامی", callback_data="mil:factory", style=STYLE_MAIN)
     builder.button(text="💰 فروش تجهیزات", callback_data="mil:sell", style=STYLE_OK)
     builder.button(text="🪖 استقرار نیرو", callback_data="mil:deploy", style=STYLE_MAIN)
     builder.button(text="🔙 بازگشت", callback_data="menu:main", style=STYLE_MAIN)
-    builder.adjust(2, 2, 1, 1)
+    builder.adjust(2, 2, 2, 1, 1)
     return builder.as_markup()
 
 

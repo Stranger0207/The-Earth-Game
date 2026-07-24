@@ -689,6 +689,18 @@ async def process_military_shipments(bot: Bot) -> None:
         await send_log(bot, text)
 
 
+async def process_satellites() -> None:
+    from ..services import satellite_service
+    async with async_session_factory() as session:
+        await satellite_service.process_satellite_launches(session)
+
+
+async def process_battle_phases_job(bot: Bot) -> None:
+    from ..services import battle_service
+    async with async_session_factory() as session:
+        await battle_service.process_battle_phases(session, bot)
+
+
 async def _tick(bot: Bot) -> None:
     """جاب اصلی که هر دقیقه همه‌ی پردازش‌های زمان‌دار را اجرا می‌کند.
 
@@ -705,6 +717,8 @@ async def _tick(bot: Bot) -> None:
         ("process_group_meetings", lambda: process_group_meetings(bot)),
         ("process_calls", lambda: process_calls()),
         ("process_investments", lambda: process_investments(bot)),
+        ("process_satellites", lambda: process_satellites()),
+        ("process_battle_phases", lambda: process_battle_phases_job(bot)),
     )
     for name, run in jobs:
         try:

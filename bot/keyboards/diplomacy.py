@@ -18,8 +18,9 @@ def diplomacy_menu_kb() -> InlineKeyboardMarkup:
     builder.button(text="🎤 سخنرانی", callback_data="dip:speech", style=STYLE_MAIN)
     builder.button(text="🚫 تحریم", callback_data="dip:sanction", style=STYLE_NO)
     builder.button(text="🤝 اتحاد", callback_data="dip:alliance", style=STYLE_MAIN)
+    builder.button(text="🚨 اعلام جنگ", callback_data="dip:declare_war", style=STYLE_NO)
     builder.button(text="🔙 بازگشت", callback_data="menu:main", style=STYLE_MAIN)
-    builder.adjust(2, 2, 2, 1, 1)
+    builder.adjust(2, 2, 2, 2, 1)
     return builder.as_markup()
 
 

@@ -104,3 +104,30 @@ async def write_news(
     if president_name:
         user_prompt += f"\n\nنام رئیس‌جمهور مرتبط: {president_name}"
     return await ask_ai(prompts.news_writer_prompt(category_fa), user_prompt, temperature=0.8)
+
+
+async def evaluate_battle(
+    session: AsyncSession,
+    attacker_id: int,
+    defender_id: int,
+    attack_type_fa: str,
+    target_info: str,
+    payload_text: str,
+) -> dict:
+    """سنجش و داوری خودکار نبرد نظامی با AI (v2.0)."""
+    attacker_ctx = await build_country_context(session, attacker_id)
+    defender_ctx = await build_country_context(session, defender_id)
+    user_prompt = (
+        f"نوع حمله: {attack_type_fa}\n"
+        f"هدف حمله: {target_info}\n\n"
+        f"اطلاعات کشور مهاجم:\n{json.dumps(attacker_ctx, ensure_ascii=False)}\n\n"
+        f"اطلاعات کشور مدافع:\n{json.dumps(defender_ctx, ensure_ascii=False)}\n\n"
+        f"شرح و نقشه حمله بازیکن:\n{payload_text}"
+    )
+    return await ask_ai_json(prompts.battle_evaluator_prompt(), user_prompt)
+
+
+async def write_war_phase_news(phase_name: str, phase_facts: str) -> str:
+    """تولید متن خبر جنگی پویا برای یک فاز نبرد (v2.0)."""
+    user_prompt = f"واقعیت‌ها و گزارش‌های این فاز درگیری:\n{phase_facts}"
+    return await ask_ai(prompts.war_multi_phase_news_prompt(phase_name), user_prompt, temperature=0.9)

@@ -18,6 +18,7 @@ from ..database.repositories import reserves as reserves_repo
 from ..enums import AttackType, NewsCategory, ResourceType
 from ..loader import bot
 from ..services.ai import evaluators
+from ..services.media import send_photo_news
 from ..services.news_service import publish_news, send_log
 from ..utils.numbers import fa_number
 from ..utils.ui import STYLE_NO, STYLE_OK
@@ -198,6 +199,7 @@ async def process_battle_phases(session: AsyncSession, bot: Bot) -> None:
     """
     پردازش فازهای چندمرحله‌ای خبری برای نبردهای در حال اجرا (توسط زمان‌بند).
     فاز ۱: فلش فوری -> فاز ۲: درگیری اولیه -> فاز ۳: گزارش خسارات -> فاز ۴: نتیجه نهایی + اعمال تلفات.
+    اخبار با عکس‌های پویا به کانال اخبار نظامی متصل و ارسال می‌شوند.
     """
     battles = await battle_repo.list_in_progress_battles(session)
     now = _utcnow()
@@ -224,7 +226,10 @@ async def process_battle_phases(session: AsyncSession, bot: Bot) -> None:
             # فاز ۱: فلش فوری (خبر لحظه شلیک/حمله)
             facts = phase_facts_dict.get("phase1_flash") or f"حمله {b.attack_type} توسط {attacker.name_fa} به {defender.name_fa}"
             news_text = await evaluators.write_war_phase_news("فاز ۱: فلش فوری خبر", facts)
-            await publish_news(bot, NewsCategory.MILITARY, news_text)
+            if settings.news_military_channel_id:
+                await send_photo_news(bot, settings.news_military_channel_id, "military", news_text)
+            else:
+                await publish_news(bot, NewsCategory.MILITARY, news_text)
 
             b.current_phase = 2
             b.next_phase_at = now + timedelta(minutes=2)
@@ -233,16 +238,22 @@ async def process_battle_phases(session: AsyncSession, bot: Bot) -> None:
             # فاز ۲: درگیری پدافند و خطوط دفاعی
             facts = phase_facts_dict.get("phase2_clash") or f"درگیری سامانه‌های دفاعی در محور نبرد بین {attacker.name_fa} و {defender.name_fa}"
             news_text = await evaluators.write_war_phase_news("فاز ۲: درگیری دفاعی و هوایی", facts)
-            await publish_news(bot, NewsCategory.MILITARY, news_text)
+            if settings.news_military_channel_id:
+                await send_photo_news(bot, settings.news_military_channel_id, "military", news_text)
+            else:
+                await publish_news(bot, NewsCategory.MILITARY, news_text)
 
             b.current_phase = 3
             b.next_phase_at = now + timedelta(minutes=3)
 
         elif b.current_phase == 3:
-            # فاز ۳: گزارش خسارات اولیه‌
+            # فاز ۳: گزارش خسارات اولیه
             facts = phase_facts_dict.get("phase3_damage") or f"گزارش‌های خسارت به پایگاه‌ها و خطوط پشتیبانی"
             news_text = await evaluators.write_war_phase_news("فاز ۳: گزارش اولیه خسارات نبرد", facts)
-            await publish_news(bot, NewsCategory.MILITARY, news_text)
+            if settings.news_military_channel_id:
+                await send_photo_news(bot, settings.news_military_channel_id, "military", news_text)
+            else:
+                await publish_news(bot, NewsCategory.MILITARY, news_text)
 
             b.current_phase = 4
             b.next_phase_at = now + timedelta(minutes=3)
@@ -251,7 +262,10 @@ async def process_battle_phases(session: AsyncSession, bot: Bot) -> None:
             # فاز ۴: نتیجه نهایی + اعمال تلفات و اثرات اقتصادی
             facts = phase_facts_dict.get("phase4_result") or f"پایان درگیری با {b.outcome}"
             news_text = await evaluators.write_war_phase_news("فاز ۴: خلاصه نهایی و جمع‌بندی نبرد", facts)
-            await publish_news(bot, NewsCategory.MILITARY, news_text)
+            if settings.news_military_channel_id:
+                await send_photo_news(bot, settings.news_military_channel_id, "military", news_text)
+            else:
+                await publish_news(bot, NewsCategory.MILITARY, news_text)
 
             # کسر خودکار تلفات تجهیزات
             try:
@@ -284,7 +298,7 @@ async def process_battle_phases(session: AsyncSession, bot: Bot) -> None:
                             c.owner_user_id,
                             f"🏁 **نتیجه نهایی نبرد بین {attacker.flag} {attacker.name_fa} و {defender.flag} {defender.name_fa}:**\n\n"
                             f"🏆 **نتیجه:** {b.outcome}\n"
-                            "مشروح اخبار نبرد در کانال رسمی اخبار نظامی منتشر شد.",
+                            "مشروح اخبار عکس‌دار نبرد در کانال رسمی اخبار نظامی منتشر شد.",
                         )
                     except Exception:
                         pass

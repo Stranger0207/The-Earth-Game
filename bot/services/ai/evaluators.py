@@ -128,6 +128,7 @@ async def evaluate_battle(
 
 
 async def write_war_phase_news(phase_name: str, phase_facts: str) -> str:
-    """تولید متن خبر جنگی پویا برای یک فاز نبرد (v2.0)."""
+    """تولید متن خبر جنگی پویا برای یک فاز نبرد (v2.0) — حداکثر ۳-۴ خط."""
     user_prompt = f"واقعیت‌ها و گزارش‌های این فاز درگیری:\n{phase_facts}"
-    return await ask_ai(prompts.war_multi_phase_news_prompt(phase_name), user_prompt, temperature=0.9)
+    return await ask_ai(prompts.war_multi_phase_news_prompt(phase_name), user_prompt, temperature=0.9, max_tokens=300)
+

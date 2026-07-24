@@ -152,3 +152,56 @@ async def msg_set_window(message: Message, state: FSMContext, session: AsyncSess
         message.bot,
         f"⏰ <b>بازه‌ی خاموشی روزانه تنظیم شد</b>: {start_s} تا {end_s} (وقت تهران) — مالک.",
     )
+
+
+# ---------------------------------------------------------------------------
+# /killall — لغو فوری تمام عملیات‌های فعال (حملات + ماهواره‌ها) — فقط مالک
+# ---------------------------------------------------------------------------
+
+@router.message(Command("killall"))
+async def cmd_killall(message: Message, session: AsyncSession) -> None:
+    """لغو فوری تمام حملات در حال اجرا و ماهواره‌های در حال پرتاب (فقط مالک)."""
+    if not _is_owner(message.from_user.id):
+        return
+
+    from sqlalchemy import select, update
+
+    from ..database.models import Battle
+    from ..database.models.satellite import Satellite
+
+    # ۱. لغو تمام نبردهای فعال (pending_owner + in_progress)
+    battle_result = await session.execute(
+        select(Battle).where(Battle.status.in_(["pending_owner", "in_progress"]))
+    )
+    active_battles = list(battle_result.scalars().all())
+    killed_battles = len(active_battles)
+    for b in active_battles:
+        b.status = "rejected"
+
+    # ۲. لغو تمام ماهواره‌های در حال پرتاب
+    sat_result = await session.execute(
+        select(Satellite).where(Satellite.status == "launching")
+    )
+    active_sats = list(sat_result.scalars().all())
+    killed_sats = len(active_sats)
+    for s in active_sats:
+        s.status = "failed"
+
+    await session.commit()
+
+    # گزارش به مالک
+    if killed_battles == 0 and killed_sats == 0:
+        await message.answer(
+            "✅ هیچ عملیات فعالی وجود نداشت. همه‌چیز آرام است!"
+        )
+        return
+
+    report = (
+        "🛑 <b>تمام عملیات‌های فعال لغو شدند!</b>\n\n"
+        f"⚔️ نبردهای لغو‌شده: <b>{killed_battles}</b>\n"
+        f"📡 ماهواره‌های لغو‌شده: <b>{killed_sats}</b>\n\n"
+        "دیگر هیچ خبری از این عملیات‌ها منتشر نخواهد شد."
+    )
+    await message.answer(report)
+    await send_log(message.bot, report + "\n\n👤 <b>توسط مالک بازی</b>")
+

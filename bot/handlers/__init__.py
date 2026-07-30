@@ -13,6 +13,7 @@ from . import (
     diplomacy,
     economy,
     godmode,
+    governance,
     investment,
     joint,
     mail,
@@ -40,6 +41,7 @@ def register_all_routers(dp: Dispatcher) -> None:
     dp.include_router(bank.router)
     dp.include_router(investment.router)
     dp.include_router(joint.router)
+    dp.include_router(governance.router)
     dp.include_router(diplomacy.router)
     dp.include_router(mail.router)
     dp.include_router(alliance.router)

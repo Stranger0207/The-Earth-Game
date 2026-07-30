@@ -60,6 +60,12 @@ _COLUMN_MIGRATIONS = [
     ("group_meetings", "last_msg_at", "TIMESTAMP WITH TIME ZONE"),
     # v1.10.5 — تعلیق پلیر
     ("users", "is_suspended", "BOOLEAN NOT NULL DEFAULT FALSE"),
+    # v1.10.2 — حاکمیت
+    ("countries", "government_type", "VARCHAR(24) NOT NULL DEFAULT ''"),
+    ("countries", "govt_changes_left", "INTEGER NOT NULL DEFAULT 2"),
+    ("countries", "tax_rate", "DOUBLE PRECISION NOT NULL DEFAULT 10.0"),
+    ("countries", "last_tax_collected_at", "TIMESTAMP WITH TIME ZONE"),
+    ("countries", "last_protest_check_at", "TIMESTAMP WITH TIME ZONE"),
 ]
 
 

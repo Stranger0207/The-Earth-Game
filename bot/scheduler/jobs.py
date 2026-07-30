@@ -695,6 +695,99 @@ async def process_satellites() -> None:
         await satellite_service.process_satellite_launches(session)
 
 
+async def process_taxes(bot: Bot) -> None:
+    from sqlalchemy import select
+    from ..constants import TAX_YIELD_INTERVAL_H
+    from ..database.models import Country
+    from ..services.governance_service import compute_tax_revenue, tax_satisfaction_delta
+    from ..utils.numbers import fa_money, fa_number
+
+    pings: list[tuple[int, str]] = []
+
+    async with async_session_factory() as session:
+        result = await session.execute(select(Country).where(Country.is_claimed == True))
+        countries = list(result.scalars().all())
+        now = _utcnow()
+        for c in countries:
+            last = _aware(c.last_tax_collected_at)
+            if last is not None and (now - last).total_seconds() / 3600 < TAX_YIELD_INTERVAL_H:
+                continue
+
+            revenue = compute_tax_revenue(c)
+            sat_delta = tax_satisfaction_delta(c.tax_rate)
+
+            c.budget = (c.budget or 0.0) + revenue
+            c.public_satisfaction = max(0.0, min(100.0, (c.public_satisfaction or 0.0) + sat_delta))
+            c.last_tax_collected_at = now
+
+            if c.owner_user_id and revenue > 0:
+                sat_sign = "+" if sat_delta >= 0 else ""
+                pings.append((
+                    c.owner_user_id,
+                    f"💰 درآمد مالیاتی دریافت شد: {fa_money(revenue)}\n"
+                    f"تأثیر بر رضایت عمومی: {sat_sign}{fa_number(sat_delta, 1)}\n"
+                    f"⏳ زمان جمع‌آوری بعدی: {fa_number(TAX_YIELD_INTERVAL_H)} ساعت"
+                ))
+        await session.commit()
+
+    for owner_id, text in pings:
+        try:
+            await bot.send_message(owner_id, text)
+        except Exception:
+            pass
+
+
+async def process_protests(bot: Bot) -> None:
+    from sqlalchemy import select
+    from ..database.models import Country
+    from ..database.repositories import governance as gov_repo
+    from ..services.governance_service import maybe_generate_protest, apply_active_protest_effects
+    from ..enums import PROTEST_FA
+
+    pings: list[tuple[int, str]] = []
+    
+    PROTEST_CHECK_INTERVAL_H = 24
+
+    async with async_session_factory() as session:
+        result = await session.execute(select(Country).where(Country.is_claimed == True))
+        countries = list(result.scalars().all())
+        now = _utcnow()
+
+        for c in countries:
+            last_check = _aware(c.last_protest_check_at)
+            if last_check is None or (now - last_check).total_seconds() / 3600 >= PROTEST_CHECK_INTERVAL_H:
+                active_protests = await gov_repo.get_active_protests(session, c.id)
+                if active_protests:
+                    apply_active_protest_effects(c, len(active_protests))
+                    if c.owner_user_id:
+                        pings.append((
+                            c.owner_user_id,
+                            f"⚠️ به دلیل وجود {len(active_protests)} اعتراض فعال، ثبات و رضایت عمومی کشور شما کاهش یافت!"
+                        ))
+
+                new_protest = maybe_generate_protest(c)
+                if new_protest:
+                    ptype, title, desc, severity = new_protest
+                    await gov_repo.create_protest(session, c.id, ptype.value, title, severity, desc)
+                    fa = PROTEST_FA.get(ptype, ptype.value)
+                    if c.owner_user_id:
+                        pings.append((
+                            c.owner_user_id,
+                            f"🚨 <b>اعتراض جدید شکل گرفت!</b>\n"
+                            f"عنوان: {title}\nنوع: {fa}\n\nبرای رسیدگی به بخش حاکمیت > اعتراضات مراجعه کنید."
+                        ))
+
+                c.last_protest_check_at = now
+
+        await session.commit()
+
+    for owner_id, text in pings:
+        try:
+            await bot.send_message(owner_id, text)
+        except Exception:
+            pass
+
+
 async def process_battle_phases_job(bot: Bot) -> None:
     from ..services import battle_service
     async with async_session_factory() as session:
@@ -719,6 +812,8 @@ async def _tick(bot: Bot) -> None:
         ("process_investments", lambda: process_investments(bot)),
         ("process_satellites", lambda: process_satellites()),
         ("process_battle_phases", lambda: process_battle_phases_job(bot)),
+        ("process_taxes", lambda: process_taxes(bot)),
+        ("process_protests", lambda: process_protests(bot)),
     )
     for name, run in jobs:
         try:

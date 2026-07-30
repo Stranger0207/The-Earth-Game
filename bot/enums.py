@@ -243,3 +243,101 @@ SANCTION_FA: dict[SanctionType, str] = {
     SanctionType.DIPLOMATIC: "تحریم دیپلماتیک",
     SanctionType.INDIVIDUAL: "تحریم فردی",
 }
+
+
+class GovernmentType(str, enum.Enum):
+    """انواع نظام حاکمیتی کشورها (v1.10.2)."""
+
+    REPUBLIC = "republic"                        # جمهوری
+    DEMOCRACY = "democracy"                      # دموکراسی
+    MONARCHY = "monarchy"                        # پادشاهی
+    CONSTITUTIONAL_MONARCHY = "const_monarchy"   # پادشاهی مشروطه
+    COMMUNISM = "communism"                      # کمونیسم
+    THEOCRACY = "theocracy"                      # تئوکراسی (حکومت دینی)
+    DICTATORSHIP = "dictatorship"                # دیکتاتوری
+    FEDERAL = "federal"                          # فدرال
+
+
+# نام فارسی هر نظام
+GOVERNMENT_FA: dict[GovernmentType, str] = {
+    GovernmentType.REPUBLIC: "جمهوری",
+    GovernmentType.DEMOCRACY: "دموکراسی",
+    GovernmentType.MONARCHY: "پادشاهی",
+    GovernmentType.CONSTITUTIONAL_MONARCHY: "پادشاهی مشروطه",
+    GovernmentType.COMMUNISM: "کمونیسم",
+    GovernmentType.THEOCRACY: "تئوکراسی",
+    GovernmentType.DICTATORSHIP: "دیکتاتوری",
+    GovernmentType.FEDERAL: "فدرال",
+}
+
+# ایموجی نظام‌ها
+GOVERNMENT_EMOJI: dict[GovernmentType, str] = {
+    GovernmentType.REPUBLIC: "🏛",
+    GovernmentType.DEMOCRACY: "🗳",
+    GovernmentType.MONARCHY: "👑",
+    GovernmentType.CONSTITUTIONAL_MONARCHY: "👑",
+    GovernmentType.COMMUNISM: "☭",
+    GovernmentType.THEOCRACY: "🕌",
+    GovernmentType.DICTATORSHIP: "🦅",
+    GovernmentType.FEDERAL: "🏢",
+}
+
+
+class ProtestType(str, enum.Enum):
+    """انواع اعتراضات داخلی (v1.10.2)."""
+
+    ECONOMIC = "economic"      # اعتراض اقتصادی
+    POLITICAL = "political"    # اعتراض سیاسی
+    SOCIAL = "social"          # اعتراض اجتماعی
+    LABOR = "labor"            # اعتراض کارگری
+
+
+PROTEST_FA: dict[ProtestType, str] = {
+    ProtestType.ECONOMIC: "اعتراض اقتصادی",
+    ProtestType.POLITICAL: "اعتراض سیاسی",
+    ProtestType.SOCIAL: "اعتراض اجتماعی",
+    ProtestType.LABOR: "اعتراض کارگری",
+}
+
+PROTEST_EMOJI: dict[ProtestType, str] = {
+    ProtestType.ECONOMIC: "📉",
+    ProtestType.POLITICAL: "✊",
+    ProtestType.SOCIAL: "📢",
+    ProtestType.LABOR: "🔧",
+}
+
+
+class ProtestStatus(str, enum.Enum):
+    """وضعیت یک اعتراض (v1.10.2)."""
+
+    ACTIVE = "active"                  # فعال — در جریان
+    SUPPRESSED = "suppressed"          # سرکوب‌شده
+    IN_PARLIAMENT = "in_parliament"    # ارجاع به مجلس
+    REFERENDUM = "referendum"          # در حال رفراندوم (منتظر رأی ادمین)
+    RESOLVED = "resolved"              # حل‌شده
+
+
+PROTEST_STATUS_FA: dict[ProtestStatus, str] = {
+    ProtestStatus.ACTIVE: "🔴 فعال",
+    ProtestStatus.SUPPRESSED: "🟤 سرکوب‌شده",
+    ProtestStatus.IN_PARLIAMENT: "🟡 در مجلس",
+    ProtestStatus.REFERENDUM: "🟠 رفراندوم",
+    ProtestStatus.RESOLVED: "🟢 حل‌شده",
+}
+
+
+class LawStatus(str, enum.Enum):
+    """وضعیت لایحه‌ی پیشنهادی به مجلس (v1.10.2)."""
+
+    DRAFT = "draft"                # پیش‌نویس (ارسال‌نشده)
+    IN_PARLIAMENT = "in_parliament"  # در حال بررسی مجلس
+    APPROVED = "approved"          # تصویب‌شده
+    REJECTED = "rejected"          # ردشده
+
+
+LAW_STATUS_FA: dict[LawStatus, str] = {
+    LawStatus.DRAFT: "📝 پیش‌نویس",
+    LawStatus.IN_PARLIAMENT: "🏛 در مجلس",
+    LawStatus.APPROVED: "✅ تصویب‌شده",
+    LawStatus.REJECTED: "❌ ردشده",
+}

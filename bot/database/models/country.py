@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
+from datetime import datetime
 
 from sqlalchemy import (
     BigInteger,
@@ -11,6 +12,7 @@ from sqlalchemy import (
     ForeignKey,
     Integer,
     String,
+    DateTime,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -60,6 +62,13 @@ class Country(Base):
     # --- سیاست داخلی ---
     public_satisfaction: Mapped[float] = mapped_column(Float, default=60.0)  # رضایت عمومی (۰ تا ۱۰۰)
     stability: Mapped[float] = mapped_column(Float, default=60.0)            # ثبات داخلی (۰ تا ۱۰۰)
+
+    # --- حاکمیت (v1.10.2) ---
+    government_type: Mapped[str] = mapped_column(String(24), default="", nullable=False)  # نوع نظام (خالی = انتخاب نشده)
+    govt_changes_left: Mapped[int] = mapped_column(Integer, default=2, nullable=False)    # تعداد تغییرات مجاز (پیش‌فرض ۲)
+    tax_rate: Mapped[float] = mapped_column(Float, default=10.0, nullable=False)          # نرخ مالیات (درصد)
+    last_tax_collected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True) # آخرین زمان جمع‌آوری مالیات
+    last_protest_check_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True) # آخرین بررسی اعتراضات
 
     # --- عوارض بین‌المللی (v1.5) — فقط برای آمریکا معنا دارد: مجموع تعرفه‌های جمع‌آوری‌شده ---
     international_duties: Mapped[float] = mapped_column(Float, default=0.0)

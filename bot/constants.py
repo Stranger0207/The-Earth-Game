@@ -6,7 +6,13 @@
 
 from __future__ import annotations
 
-from .enums import FACILITY_FA, FacilityType, MilitaryFactoryType, ResourceType
+from .enums import (
+    FACILITY_FA,
+    FacilityType,
+    GovernmentType,
+    MilitaryFactoryType,
+    ResourceType,
+)
 
 # ============================================================
 #  بازدهی پیش‌فرض ذخایر طبیعی (پلی‌بوک: بازدهی ۷۲ ساعته‌ی اولیه)
@@ -275,5 +281,58 @@ SPY_SATELLITE_ALUMINUM_COST = 800_000.0     # 800k Tons
 
 SPY_SATELLITE_LIFESPAN_DAYS = 7            # ۷ روز عمر مفید در مدار
 SATELLITE_ORBIT_TIME_MINUTES = 30          # ۳۰ دقیقه زمان رسیدن به مدار
+
+# ============================================================
+#  🏛 سیستم حاکمیت (v1.10.2)
+# ============================================================
+
+# تعداد دفعات مجاز تغییر نظام حاکمیتی (یکی در بدو ورود، یکی در طول بازی)
+GOVT_MAX_CHANGES = 2
+
+# بونوس‌های هر نظام حاکمیتی — هنگام انتخاب/تغییر نظام اعمال می‌شوند
+# کلیدها: satisfaction, stability, unemployment, inflation, economic_power
+GOVERNMENT_BONUSES: dict[GovernmentType, dict[str, float]] = {
+    GovernmentType.REPUBLIC:                  {"satisfaction": 3, "stability": 2, "unemployment": -1},
+    GovernmentType.DEMOCRACY:                 {"satisfaction": 5, "stability": 1, "unemployment": -0.5},
+    GovernmentType.MONARCHY:                  {"stability": 5, "economic_power": 2, "satisfaction": -2},
+    GovernmentType.CONSTITUTIONAL_MONARCHY:   {"stability": 3, "satisfaction": 2, "economic_power": 1},
+    GovernmentType.COMMUNISM:                 {"unemployment": -3, "inflation": -2, "satisfaction": -3, "stability": 3},
+    GovernmentType.THEOCRACY:                 {"stability": 5, "satisfaction": -2, "economic_power": -1},
+    GovernmentType.DICTATORSHIP:              {"stability": 8, "satisfaction": -5, "economic_power": 2},
+    GovernmentType.FEDERAL:                   {"satisfaction": 2, "economic_power": 2, "stability": -1},
+}
+
+# ---------- مالیات ----------
+# درآمد مالیاتی هر ۲۴ ساعت = tax_rate/100 × جمعیت × TAX_REVENUE_PER_CAPITA
+TAX_REVENUE_PER_CAPITA = 50.0          # دلار به ازای هر نفر در نرخ ۱۰۰٪
+TAX_YIELD_INTERVAL_H = 24             # بازه‌ی جمع‌آوری مالیات (ساعت)
+TAX_DEFAULT_RATE = 10.0                # نرخ پیش‌فرض مالیات (درصد)
+TAX_MIN_RATE = 0.0
+TAX_MAX_RATE = 50.0
+# تأثیر مالیات بر رضایت عمومی هر ۲۴ ساعت
+TAX_SATISFACTION_THRESHOLDS: list[tuple[float, float]] = [
+    # (حداکثر نرخ، تغییر رضایت)
+    (10.0,  1.0),    # نرخ ≤ ۱۰٪: +۱ رضایت
+    (15.0,  0.0),    # ≤ ۱۵٪: بدون تغییر
+    (20.0, -1.0),    # ≤ ۲۰٪: -۱
+    (30.0, -3.0),    # ≤ ۳۰٪: -۳
+    (50.0, -5.0),    # ≤ ۵۰٪: -۵
+]
+
+# ---------- اعتراضات ----------
+PROTEST_SATISFACTION_THRESHOLD = 30.0  # رضایت کمتر از این → شانس تولید اعتراض
+PROTEST_TAX_THRESHOLD = 25.0          # مالیات بالاتر از این → شانس اعتراض اقتصادی
+PROTEST_CHANCE_PER_TICK = 0.25         # احتمال تولید اعتراض در هر تیک (۰ تا ۱)
+PROTEST_ACTIVE_STABILITY_DROP = 1.5    # کاهش ثبات هر ۲۴ ساعت به ازای هر اعتراض فعال
+PROTEST_ACTIVE_SATISFACTION_DROP = 1.0 # کاهش رضایت هر ۲۴ ساعت
+# اثر سرکوب اعتراض
+SUPPRESS_STABILITY_GAIN = 2.0         # افزایش ثبات (موقت)
+SUPPRESS_SATISFACTION_DROP = 3.0      # کاهش رضایت (مردم ناراضی‌ترند)
+# اثر ارجاع به مجلس
+PARLIAMENT_REFERRAL_STABILITY_GAIN = 1.0
+PARLIAMENT_REFERRAL_SATISFACTION_GAIN = 1.5
+
+# ---------- ویزا ----------
+VISA_SATISFACTION_PENALTY = 0.5       # کاهش رضایت کشور هدف به ازای هر ویزای اجباری
 
 

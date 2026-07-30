@@ -198,3 +198,16 @@ class MaintenanceForm(StatesGroup):
     """فرم تنظیم بازه‌ی خاموشی روزانه‌ی ربات (v1.10.5)."""
 
     entering_window = State()    # ورود بازه به‌صورت "HH:MM HH:MM"
+
+
+class GovernanceForm(StatesGroup):
+    """فرم‌های بخش حاکمیت (v1.10.2)."""
+
+    entering_tax_rate = State()     # ورود نرخ مالیات
+
+
+class LawForm(StatesGroup):
+    """فرم ارائه‌ی لایحه به مجلس (v1.10.2)."""
+
+    entering_title = State()        # عنوان لایحه
+    entering_body = State()         # متن لایحه

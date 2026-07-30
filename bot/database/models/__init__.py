@@ -22,6 +22,7 @@ from .diplomacy import (
     Speech,
 )
 from .facility import Facility
+from .governance import Law, Protest, VisaRequirement
 from .investment import Investment
 from .joint_request import JointBuildRequest
 from .letter import Letter
@@ -50,6 +51,7 @@ __all__ = [
     "Facility",
     "Investment",
     "JointBuildRequest",
+    "Law",
     "Letter",
     "GroupMeeting",
     "GroupMeetingParticipant",
@@ -60,6 +62,7 @@ __all__ = [
     "MilitarySale",
     "PhoneCall",
     "PhoneCallMessage",
+    "Protest",
     "Reserve",
     "ResourceSale",
     "Sanction",
@@ -67,5 +70,6 @@ __all__ = [
     "Speech",
     "TariffRate",
     "User",
+    "VisaRequirement",
     "WarDeclaration",
 ]

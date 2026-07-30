@@ -37,6 +37,22 @@ from ..database.models import (
     Reserve,
     ResourceSale,
     Sanction,
+    Alliance,
+    AllianceMember,
+    Battle,
+    WarDeclaration,
+    Deployment,
+    Speech,
+    Law,
+    Protest,
+    VisaRequirement,
+    Investment,
+    JointBuildRequest,
+    Letter,
+    BaseEquipment,
+    MilitaryBase,
+    Satellite,
+    TariffRate,
 )
 from ..database.repositories import countries as countries_repo
 
@@ -86,6 +102,24 @@ async def reset_season(session: AsyncSession) -> dict[str, int]:
     await session.execute(delete(Cooldown))
     await session.execute(delete(ClaimRequest))
 
+    # --- پاک کردن مدل‌های جدید (v1.9 تا v2.0) ---
+    await session.execute(delete(AllianceMember))
+    await session.execute(delete(Alliance))
+    await session.execute(delete(Battle))
+    await session.execute(delete(WarDeclaration))
+    await session.execute(delete(Deployment))
+    await session.execute(delete(Speech))
+    await session.execute(delete(Law))
+    await session.execute(delete(Protest))
+    await session.execute(delete(VisaRequirement))
+    await session.execute(delete(Investment))
+    await session.execute(delete(JointBuildRequest))
+    await session.execute(delete(Letter))
+    await session.execute(delete(BaseEquipment))
+    await session.execute(delete(MilitaryBase))
+    await session.execute(delete(Satellite))
+    await session.execute(delete(TariffRate))
+
     # --- ۲) آزادسازی مالکیت همه‌ی کشورها ---
     await session.execute(
         update(Country).values(owner_user_id=None, is_claimed=False)
@@ -111,6 +145,13 @@ async def reset_season(session: AsyncSession) -> dict[str, int]:
         country.govt_debt = econ.get("govt_debt", 0.0)
         country.public_satisfaction = econ.get("public_satisfaction", 60.0)
         country.stability = econ.get("stability", 60.0)
+
+        # ریست فیلدهای حاکمیت (v1.10.2)
+        country.government_type = ""
+        country.govt_changes_left = 2
+        country.tax_rate = 10.0
+        country.last_tax_collected_at = None
+        country.last_protest_check_at = None
 
         # بازنشانی ذخایر این کشور (حذف و درج دوباره از روی داده‌ی اولیه)
         await session.execute(

@@ -32,6 +32,8 @@ MEDIA_DIRS: dict[str, str] = {
     "meeting": r"D:\PictureDB\Didar",
     "embargo": r"D:\PictureDB\Embargo",
     "military": r"D:\PictureDB\Military",
+    # عکس‌های برنامه‌ی هسته‌ای (v1.10.4) — کشف برنامه، آزمایش هسته‌ای
+    "nuclear": r"D:\PictureDB\Nuclear",
     # عکس‌های منوهای اصلی (سیستم تصویری UI) — هر منو یک فولدر با چند عکس تصادفی
     "ui_main": r"D:\PictureDB\UI\main",
     "ui_economy": r"D:\PictureDB\UI\economy",

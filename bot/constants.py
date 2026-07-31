@@ -11,6 +11,8 @@ from .enums import (
     FacilityType,
     GovernmentType,
     MilitaryFactoryType,
+    NuclearFacilityType,
+    NuclearTechType,
     ResourceType,
 )
 
@@ -28,6 +30,7 @@ MINE_YIELD_PER_24H: dict[ResourceType, float] = {
     ResourceType.ALUMINUM: 17_000,  # تن
     ResourceType.IRON: 27_000,      # تن
     ResourceType.GOLD: 0.7,         # تن ≈ ۷۰۰ کیلوگرم → در واحد کیلوگرم: 700
+    ResourceType.URANIUM: 12,       # تن سنگ اورانیوم در ۲۴ ساعت (v1.10.4)
 }
 # طلا در دیتابیس با واحد کیلوگرم نگه داشته می‌شود
 GOLD_MINE_YIELD_KG_PER_24H = 700
@@ -334,5 +337,129 @@ PARLIAMENT_REFERRAL_SATISFACTION_GAIN = 1.5
 
 # ---------- ویزا ----------
 VISA_SATISFACTION_PENALTY = 0.5       # کاهش رضایت کشور هدف به ازای هر ویزای اجباری
+
+# ============================================================
+#  ☢️ برنامه‌ی توسعه‌ی هسته‌ای (v1.10.4) — فقط کشورهای VIP
+# ============================================================
+# مقیاس زمانی: هر «روز» سند اسپک = ۱۲ ساعت واقعیِ بازی (مقیاس نیم‌روز).
+# کل مسیر فاز ۱ تا ۵ حدود ۶ روز واقعی طول می‌کشد.
+NUCLEAR_DAY_HOURS = 12.0
+
+# ---------- تحقیقات و فناوری ----------
+# هر فناوری: (نام فارسی، هزینه‌ی دلاری، زمان تحقیق بر حسب «روزِ اسپک»، پیش‌نیاز)
+NUCLEAR_TECHS: dict[NuclearTechType, tuple[str, float, float, NuclearTechType | None]] = {
+    NuclearTechType.GEOLOGY_2: ("زمین‌شناسی سطح ۲ و نقشه‌ی منابع", 3_000_000_000.0, 0.5, None),
+    NuclearTechType.IND_CHEMISTRY: ("شیمی صنعتی", 5_000_000_000.0, 1.0, NuclearTechType.GEOLOGY_2),
+    NuclearTechType.CENTRIFUGE: ("متالورژی و فناوری سانتریفیوژ", 12_000_000_000.0, 1.5, NuclearTechType.IND_CHEMISTRY),
+    NuclearTechType.COMP_PHYSICS: ("فیزیک محاسباتی و طراحی کلاهک", 20_000_000_000.0, 2.0, NuclearTechType.CENTRIFUGE),
+    NuclearTechType.DELIVERY_SYS: ("سامانه‌ی حمل کلاهک", 15_000_000_000.0, 1.0, NuclearTechType.COMP_PHYSICS),
+}
+
+# ---------- تأسیسات هسته‌ای ----------
+# هر تأسیسات: (نام فارسی، هزینه‌ی دلاری، زمان ساخت بر حسب «روزِ اسپک»، فناوری پیش‌نیاز، سقف تعداد)
+NUCLEAR_FACILITIES: dict[NuclearFacilityType, tuple[str, float, float, NuclearTechType, int]] = {
+    NuclearFacilityType.MILL: (
+        "آسیاب کیک زرد", 8_000_000_000.0, 2.0, NuclearTechType.GEOLOGY_2, 3),
+    NuclearFacilityType.CONVERSION: (
+        "کارخانه‌ی تبدیل UF6", 14_000_000_000.0, 3.0, NuclearTechType.IND_CHEMISTRY, 2),
+    NuclearFacilityType.CENTRIFUGE_PLANT: (
+        "کارخانه‌ی سانتریفیوژ", 18_000_000_000.0, 2.0, NuclearTechType.CENTRIFUGE, 2),
+    NuclearFacilityType.ENRICHMENT_HALL: (
+        "سالن غنی‌سازی", 25_000_000_000.0, 3.0, NuclearTechType.CENTRIFUGE, 3),
+    NuclearFacilityType.WEAPONS_LAB: (
+        "آزمایشگاه تسلیحاتی", 30_000_000_000.0, 2.0, NuclearTechType.COMP_PHYSICS, 1),
+    NuclearFacilityType.TEST_SITE: (
+        "سایت آزمایش هسته‌ای", 10_000_000_000.0, 1.0, NuclearTechType.COMP_PHYSICS, 1),
+}
+
+# منابع لازم برای ساخت هر تأسیسات (به‌جز بودجه): {منبع: مقدار}
+NUCLEAR_FACILITY_RESOURCES: dict[NuclearFacilityType, dict[ResourceType, float]] = {
+    NuclearFacilityType.MILL: {ResourceType.STEEL: 200_000, ResourceType.COAL: 300_000},
+    NuclearFacilityType.CONVERSION: {ResourceType.STEEL: 400_000, ResourceType.ALUMINUM: 150_000},
+    NuclearFacilityType.CENTRIFUGE_PLANT: {ResourceType.STEEL: 350_000, ResourceType.ALUMINUM: 250_000},
+    NuclearFacilityType.ENRICHMENT_HALL: {ResourceType.STEEL: 600_000, ResourceType.ALUMINUM: 300_000},
+    NuclearFacilityType.WEAPONS_LAB: {ResourceType.STEEL: 500_000, ResourceType.GOLD: 500},
+    NuclearFacilityType.TEST_SITE: {ResourceType.STEEL: 150_000, ResourceType.COAL: 200_000},
+}
+
+# هزینه‌ی اضافی ساخت زیرزمینی (ضریب هزینه و زمان) در عوض کاهش ریسک افشا
+NUCLEAR_UNDERGROUND_COST_MULT = 2.2
+NUCLEAR_UNDERGROUND_TIME_MULT = 1.6
+NUCLEAR_UNDERGROUND_EXPOSURE_CUT = 0.45   # ضریب کاهش افشا برای تأسیسات زیرزمینی
+
+# محدودیت ساخت تأسیسات هسته‌ای: حداکثر ۲ تأسیسات در هر پنجره‌ی ۱۲ ساعته
+NUCLEAR_BUILD_LIMIT = 2
+
+# ---------- فاز ۱: آسیاب کیک زرد ----------
+# هر آسیاب در هر ۲۴ ساعت این مقدار سنگ اورانیوم مصرف و کیک زرد تولید می‌کند
+MILL_URANIUM_INTAKE_PER_24H = 10.0    # تن سنگ اورانیوم
+MILL_YELLOWCAKE_PER_24H = 6.0         # تن کیک زرد (U3O8)
+
+# ---------- فاز ۲: تبدیل به UF6 ----------
+CONVERSION_YELLOWCAKE_INTAKE_PER_24H = 5.0   # تن کیک زرد مصرفی
+CONVERSION_UF6_PER_24H = 4.0                 # تن UF6 تولیدی
+
+# ---------- فاز ۳: سانتریفیوژ و غنی‌سازی ----------
+CENTRIFUGE_BATCH_SIZE = 500                  # هر چرخه‌ی تولید، این تعداد سانتریفیوژ می‌سازد
+CENTRIFUGE_BATCH_COST_USD = 2_000_000_000.0  # هزینه‌ی دلاری هر چرخه
+CENTRIFUGE_BATCH_STEEL = 80_000.0            # تن فولاد هر چرخه
+CENTRIFUGE_BATCH_ALUMINUM = 60_000.0         # تن آلومینیوم هر چرخه
+CENTRIFUGE_BATCH_HOURS = 6.0                 # زمان ساخت هر چرخه (ساعت)
+CENTRIFUGE_SWU_PER_UNIT_PER_24H = 0.9        # SWU تولیدی هر سانتریفیوژ در ۲۴ ساعت
+ENRICHMENT_HALL_CENTRIFUGE_CAPACITY = 6_000  # ظرفیت هر سالن غنی‌سازی
+
+# رده‌های غنی‌سازی: (کلید، نام فارسی، درصد، SWU لازم برای هر کیلوگرم محصول، رده‌ی پیش‌نیاز)
+ENRICHMENT_TIERS: list[tuple[str, str, float, float, str | None]] = [
+    ("u235_35", "۳.۵٪ (سوخت نیروگاهی)", 3.5, 6.0, None),
+    ("u235_20", "۲۰٪ (سوخت تحقیقاتی)", 20.0, 30.0, "u235_35"),
+    ("u235_60", "۶۰٪ (آستانه‌ی تسلیحاتی)", 60.0, 90.0, "u235_20"),
+    ("u235_90", "۹۰٪ (تسلیحاتی — HEU)", 90.0, 180.0, "u235_60"),
+]
+
+# مصرف UF6 برای هر کیلوگرم اورانیوم غنی‌شده‌ی ۳.۵٪ (کیلوگرم UF6)
+UF6_KG_PER_KG_LEU = 9.0
+
+# ---------- فاز ۴: مونتاژ کلاهک ----------
+WARHEAD_HEU_REQUIRED_KG = 25.0            # کیلوگرم اورانیوم ۹۰٪ برای هر کلاهک
+WARHEAD_ASSEMBLY_DAYS = 2.0               # زمان مونتاژ («روزِ اسپک»)
+WARHEAD_ASSEMBLY_COST_USD = 8_000_000_000.0
+WARHEAD_YIELD_KT_RANGE = (15.0, 150.0)    # بازه‌ی قدرت تصادفی کلاهک (کیلوتن)
+
+# ---------- فاز ۵: آزمایش هسته‌ای ----------
+NUCLEAR_TEST_DAYS = 1.0                   # زمان آماده‌سازی آزمایش («روزِ اسپک»)
+NUCLEAR_TEST_COST_USD = 5_000_000_000.0
+NUCLEAR_TEST_SATISFACTION_GAIN = 6.0      # افتخار ملی
+NUCLEAR_TEST_STABILITY_DROP = 3.0         # فشار بین‌المللی
+NUCLEAR_TEST_EXPOSURE = 100.0             # آزمایش = افشای کامل برنامه
+
+# ---------- ریسک افشا (شاخص انباشتی ۰ تا ۱۰۰) ----------
+# افزایش شاخص افشا به ازای هر اقدام در هر فاز (طبق درصدهای اسپک، به‌صورت انباشتی)
+NUCLEAR_EXPOSURE_PER_PHASE: dict[int, float] = {
+    1: 10.0,   # فاز ۱: ۱۰٪
+    2: 25.0,   # فاز ۲: ۲۵٪
+    3: 50.0,   # فاز ۳: ۵۰٪
+    4: 75.0,   # فاز ۴: ۷۵٪
+    5: 100.0,  # فاز ۵: افشای کامل
+}
+# ضریب تبدیل شاخص افشا به احتمال کشف در هر تیک زمان‌بند
+NUCLEAR_DETECTION_CHANCE_FACTOR = 0.004
+# پوشش صلح‌آمیز: سقف رده‌ی مجاز غنی‌سازی + ضریب کاهش افشا
+NUCLEAR_CIVILIAN_COVER_TIER = "u235_20"
+NUCLEAR_CIVILIAN_COVER_EXPOSURE_CUT = 0.6
+# هزینه‌ی ۲۴ساعته‌ی برنامه‌ی ضدجاسوسی و میزان کاهش شاخص افشا
+NUCLEAR_COUNTERINTEL_COST_USD = 4_000_000_000.0
+NUCLEAR_COUNTERINTEL_EXPOSURE_DROP = 12.0
+
+# ---------- بازدارندگی ----------
+# به ازای هر کلاهک: افزایش قدرت نظامی و کاهش شانس موفقیت حمله‌ی دشمن (درصد)
+NUCLEAR_DETERRENCE_POWER_PER_WARHEAD = 2.5
+NUCLEAR_DETERRENCE_DEFENSE_PER_WARHEAD = 3.0
+NUCLEAR_DETERRENCE_MAX_DEFENSE = 30.0
+
+# ---------- خرابکاری سایبری (استاکس‌نت) ----------
+CYBER_SABOTAGE_COST_USD = 6_000_000_000.0
+CYBER_SABOTAGE_SUCCESS_BASE = 55.0            # درصد پایه‌ی موفقیت
+CYBER_SABOTAGE_CENTRIFUGE_LOSS = (0.2, 0.6)   # بازه‌ی درصد سانتریفیوژهای نابودشده
+CYBER_SABOTAGE_COOLDOWN_HOURS = 24
 
 

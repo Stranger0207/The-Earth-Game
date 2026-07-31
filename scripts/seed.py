@@ -43,6 +43,7 @@ DEFAULT_BASE_YIELD: dict[str, float] = {
     ResourceType.OIL.value: 0.3,       # میلیون بشکه
     ResourceType.GAS.value: 6,         # میلیون متر مکعب
     ResourceType.GOLD.value: 50,       # کیلوگرم
+    ResourceType.URANIUM.value: 2,     # تن سنگ اورانیوم (v1.10.4)
 }
 
 
@@ -159,6 +160,51 @@ async def resync_military() -> None:
         print(f"✅ تجهیزات نظامی {updated} کشور تازه‌سازی شد.")
 
 
+async def resync_reserves() -> None:
+    """
+    ذخایرِ **جدید** (مثلاً اورانیوم در v1.10.4) را به کشورهای موجود اضافه می‌کند.
+
+    ایمن و غیرمخرب: فقط ردیف‌های ذخیره‌ای که هنوز وجود ندارند ساخته می‌شوند؛
+    مقدار و وضعیت ذخایر موجود (که بازیکنان استخراج/معامله کرده‌اند) دست‌نخورده می‌ماند.
+    """
+    from sqlalchemy import select
+
+    data = _load_json("countries.json")
+    now = datetime.now(timezone.utc)
+    yield_until = now + timedelta(hours=DEFAULT_RESERVE_YIELD_HOURS)
+
+    async with async_session_factory() as session:
+        added = 0
+        for entry in data["countries"]:
+            country = await countries_repo.get_country_by_name(session, entry["name_en"])
+            if country is None:
+                continue
+
+            result = await session.execute(
+                select(Reserve.resource).where(Reserve.country_id == country.id)
+            )
+            existing = set(result.scalars().all())
+
+            for res_key, res_val in entry.get("reserves", {}).items():
+                if res_key in existing:
+                    continue  # ذخیره‌ی موجود هرگز بازنویسی نمی‌شود
+                can_extract = res_val.get("can_extract", False)
+                session.add(
+                    Reserve(
+                        country_id=country.id,
+                        resource=res_key,
+                        amount=res_val.get("amount", 0.0),
+                        can_extract=can_extract,
+                        base_yield=DEFAULT_BASE_YIELD.get(res_key, 0.0) if can_extract else 0.0,
+                        yield_until=yield_until if can_extract else None,
+                    )
+                )
+                added += 1
+
+        await session.commit()
+        print(f"✅ {added} ردیف ذخیره‌ی جدید به کشورهای موجود اضافه شد (ذخایر قبلی دست‌نخورده).")
+
+
 async def main() -> None:
     # حالت تازه‌سازی تجهیزات: python -m scripts.seed --refresh-military
     if "--refresh-military" in sys.argv:
@@ -166,6 +212,14 @@ async def main() -> None:
         await init_db()
         await resync_military()
         print("🎉 تازه‌سازی تجهیزات کامل شد.")
+        return
+
+    # حالت افزودن ذخایر جدید: python -m scripts.seed --refresh-reserves
+    if "--refresh-reserves" in sys.argv:
+        print("⏳ در حال افزودن ذخایر جدید (مثل اورانیوم) به کشورهای موجود...")
+        await init_db()
+        await resync_reserves()
+        print("🎉 افزودن ذخایر جدید کامل شد.")
         return
 
     print("⏳ در حال ساخت جدول‌ها...")

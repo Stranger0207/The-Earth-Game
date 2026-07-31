@@ -51,6 +51,12 @@ from ..database.models import (
     Letter,
     BaseEquipment,
     MilitaryBase,
+    NuclearFacility,
+    NuclearInspection,
+    NuclearProgram,
+    NuclearTech,
+    NuclearTest,
+    NuclearWarhead,
     Satellite,
     TariffRate,
 )
@@ -118,6 +124,13 @@ async def reset_season(session: AsyncSession) -> dict[str, int]:
     await session.execute(delete(BaseEquipment))
     await session.execute(delete(MilitaryBase))
     await session.execute(delete(Satellite))
+    # --- برنامه‌ی هسته‌ای (v1.10.4) ---
+    await session.execute(delete(NuclearWarhead))
+    await session.execute(delete(NuclearTest))
+    await session.execute(delete(NuclearInspection))
+    await session.execute(delete(NuclearFacility))
+    await session.execute(delete(NuclearTech))
+    await session.execute(delete(NuclearProgram))
     await session.execute(delete(TariffRate))
 
     # --- ۲) آزادسازی مالکیت همه‌ی کشورها ---

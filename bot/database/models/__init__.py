@@ -30,6 +30,14 @@ from .military import MilitaryAsset
 from .military_base import BaseEquipment, MilitaryBase
 from .military_factory import MilitaryFactory
 from .military_sale import MilitarySale
+from .nuclear import (
+    NuclearFacility,
+    NuclearInspection,
+    NuclearProgram,
+    NuclearTech,
+    NuclearTest,
+    NuclearWarhead,
+)
 from .reserves import Reserve
 from .satellite import Satellite
 from .tariff import TariffRate
@@ -60,6 +68,12 @@ __all__ = [
     "MilitaryBase",
     "MilitaryFactory",
     "MilitarySale",
+    "NuclearFacility",
+    "NuclearInspection",
+    "NuclearProgram",
+    "NuclearTech",
+    "NuclearTest",
+    "NuclearWarhead",
     "PhoneCall",
     "PhoneCallMessage",
     "Protest",

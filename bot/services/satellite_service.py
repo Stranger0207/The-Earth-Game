@@ -212,9 +212,32 @@ async def spy_scan_target_country(
     assets = await mil_repo.list_assets(session, target.id)
     asset_data = [{"name": a.name, "count": a.count, "branch": a.branch} for a in assets if a.count > 0]
 
+    # ۴. تأسیسات هسته‌ای رویِ زمین (v1.10.4)
+    # تأسیسات زیرزمینی از دید ماهواره پنهان می‌مانند — تنها راه کشفشان، افشای برنامه است.
+    from ..database.repositories import nuclear as nuc_repo
+    from ..enums import NUCLEAR_FACILITY_STATUS_FA, NuclearFacilityStatus
+
+    nuclear_data = []
+    nuc_facilities = await nuc_repo.list_facilities(session, target.id)
+    for f in nuc_facilities:
+        if f.is_underground:
+            continue  # زیرزمینی: از فضا دیده نمی‌شود
+        nuclear_data.append({
+            "name": f.name,
+            "location": f.location,
+            "status": NUCLEAR_FACILITY_STATUS_FA.get(
+                NuclearFacilityStatus(f.status), f.status
+            ),
+        })
+
+    # تعداد تأسیسات پنهان (فقط به‌عنوان «فعالیت مشکوک» گزارش می‌شود، نه جزئیات)
+    hidden_count = sum(1 for f in nuc_facilities if f.is_underground)
+
     return {
         "target_country": f"{target.flag} {target.name_fa}",
         "bases": base_data,
         "deployments": dep_data,
         "assets_summary": asset_data,
+        "nuclear_facilities": nuclear_data,
+        "nuclear_hidden_count": hidden_count,
     }

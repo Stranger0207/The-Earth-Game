@@ -18,6 +18,7 @@ class ResourceType(str, enum.Enum):
     OIL = "oil"              # نفت — میلیون بشکه
     GAS = "gas"              # گاز — میلیون متر مکعب
     GOLD = "gold"            # طلا — کیلوگرم
+    URANIUM = "uranium"      # اورانیوم — تن (v1.10.4 — پیش‌نیاز برنامه‌ی هسته‌ای)
 
 
 # نام فارسی هر ذخیره برای نمایش
@@ -29,6 +30,7 @@ RESOURCE_FA: dict[ResourceType, str] = {
     ResourceType.OIL: "نفت",
     ResourceType.GAS: "گاز",
     ResourceType.GOLD: "طلا",
+    ResourceType.URANIUM: "اورانیوم",
 }
 
 # واحد شمارش هر ذخیره
@@ -40,6 +42,7 @@ RESOURCE_UNIT_FA: dict[ResourceType, str] = {
     ResourceType.OIL: "میلیون بشکه",
     ResourceType.GAS: "میلیون متر مکعب",
     ResourceType.GOLD: "کیلوگرم",
+    ResourceType.URANIUM: "تن",
 }
 
 # ایموجی هر ذخیره برای نمایش زیباتر
@@ -51,6 +54,7 @@ RESOURCE_EMOJI: dict[ResourceType, str] = {
     ResourceType.OIL: "🛢",
     ResourceType.GAS: "⛽",
     ResourceType.GOLD: "🥇",
+    ResourceType.URANIUM: "☢️",
 }
 
 
@@ -340,4 +344,100 @@ LAW_STATUS_FA: dict[LawStatus, str] = {
     LawStatus.IN_PARLIAMENT: "🏛 در مجلس",
     LawStatus.APPROVED: "✅ تصویب‌شده",
     LawStatus.REJECTED: "❌ ردشده",
+}
+
+
+# ============================================================
+#  ☢️ برنامه‌ی هسته‌ای (v1.10.4) — فقط کشورهای VIP
+# ============================================================
+
+
+class NuclearPhase(int, enum.Enum):
+    """فازهای پنج‌گانه‌ی توسعه‌ی هسته‌ای."""
+
+    NONE = 0            # برنامه‌ای آغاز نشده
+    MINING = 1          # فاز ۱: استخراج و آسیاب (کیک زرد)
+    CONVERSION = 2      # فاز ۲: تبدیل به UF6 و زیرساخت
+    ENRICHMENT = 3      # فاز ۳: غنی‌سازی
+    WEAPONIZATION = 4   # فاز ۴: طراحی و مونتاژ کلاهک
+    DELIVERY = 5        # فاز ۵: آزمایش و سامانه‌ی حمل
+
+
+NUCLEAR_PHASE_FA: dict[NuclearPhase, str] = {
+    NuclearPhase.NONE: "بدون برنامه",
+    NuclearPhase.MINING: "فاز ۱ — استخراج و آسیاب",
+    NuclearPhase.CONVERSION: "فاز ۲ — تبدیل و زیرساخت",
+    NuclearPhase.ENRICHMENT: "فاز ۳ — غنی‌سازی",
+    NuclearPhase.WEAPONIZATION: "فاز ۴ — تسلیحاتی‌سازی",
+    NuclearPhase.DELIVERY: "فاز ۵ — آزمایش و سامانه‌ی حمل",
+}
+
+
+class NuclearTechType(str, enum.Enum):
+    """فناوری‌های قابل‌تحقیق در مسیر هسته‌ای."""
+
+    GEOLOGY_2 = "geology_2"          # زمین‌شناسی سطح ۲ + نقشه‌ی منابع
+    IND_CHEMISTRY = "ind_chemistry"  # شیمی صنعتی (تبدیل کیک زرد به UF6)
+    CENTRIFUGE = "centrifuge"        # متالورژی و ساخت سانتریفیوژ
+    COMP_PHYSICS = "comp_physics"    # فیزیک محاسباتی (طراحی کلاهک)
+    DELIVERY_SYS = "delivery_sys"    # سامانه‌ی حمل (موشک/بمب‌افکن)
+
+
+class NuclearFacilityType(str, enum.Enum):
+    """انواع تأسیسات برنامه‌ی هسته‌ای."""
+
+    MILL = "mill"                    # آسیاب کیک زرد (فاز ۱)
+    CONVERSION = "conversion"        # کارخانه‌ی تبدیل به UF6 (فاز ۲)
+    ENRICHMENT_HALL = "enrich_hall"  # سالن غنی‌سازی — میزبان سانتریفیوژها (فاز ۳)
+    CENTRIFUGE_PLANT = "cent_plant"  # کارخانه‌ی ساخت سانتریفیوژ
+    WEAPONS_LAB = "weapons_lab"      # آزمایشگاه تسلیحاتی (فاز ۴)
+    TEST_SITE = "test_site"          # سایت آزمایش هسته‌ای (فاز ۵)
+
+
+class NuclearFacilityStatus(str, enum.Enum):
+    """وضعیت یک تأسیسات هسته‌ای."""
+
+    BUILDING = "building"      # در حال ساخت
+    ACTIVE = "active"          # فعال
+    DAMAGED = "damaged"        # آسیب‌دیده (بازدهی کاهش‌یافته)
+    DESTROYED = "destroyed"    # نابودشده
+
+
+NUCLEAR_FACILITY_STATUS_FA: dict[NuclearFacilityStatus, str] = {
+    NuclearFacilityStatus.BUILDING: "🏗 در حال ساخت",
+    NuclearFacilityStatus.ACTIVE: "🟢 فعال",
+    NuclearFacilityStatus.DAMAGED: "🟠 آسیب‌دیده",
+    NuclearFacilityStatus.DESTROYED: "🔴 نابودشده",
+}
+
+
+class WarheadStatus(str, enum.Enum):
+    """وضعیت یک کلاهک هسته‌ای."""
+
+    ASSEMBLING = "assembling"  # در حال مونتاژ
+    ASSEMBLED = "assembled"    # مونتاژشده (در انبار)
+    MOUNTED = "mounted"        # نصب‌شده روی سامانه‌ی حمل
+    TESTED = "tested"          # در آزمایش هسته‌ای مصرف شد
+
+
+WARHEAD_STATUS_FA: dict[WarheadStatus, str] = {
+    WarheadStatus.ASSEMBLING: "🔧 در حال مونتاژ",
+    WarheadStatus.ASSEMBLED: "☢️ مونتاژشده",
+    WarheadStatus.MOUNTED: "🚀 نصب‌شده",
+    WarheadStatus.TESTED: "💥 مصرف‌شده در آزمایش",
+}
+
+
+class DeliverySystem(str, enum.Enum):
+    """سامانه‌های حمل کلاهک هسته‌ای."""
+
+    BALLISTIC = "ballistic"    # موشک بالستیک
+    BOMBER = "bomber"          # بمب‌افکن استراتژیک
+    SUBMARINE = "submarine"    # زیردریایی
+
+
+DELIVERY_SYSTEM_FA: dict[DeliverySystem, str] = {
+    DeliverySystem.BALLISTIC: "🚀 موشک بالستیک",
+    DeliverySystem.BOMBER: "✈️ بمب‌افکن استراتژیک",
+    DeliverySystem.SUBMARINE: "🚢 زیردریایی",
 }

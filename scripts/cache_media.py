@@ -95,7 +95,7 @@ async def main() -> None:
     # v1.10.5: به‌جای برش ناپایدارِ local[already:]، با نام فایل تشخیص می‌دهیم چه عکسی
     # هنوز کش نشده تا همه‌ی عکس‌ها (به‌ویژه WTO/Trump) قطعی و کامل کش شوند.
     # دسته‌های ui_* (سیستم تصویری منوهای اصلی) هم اینجا کش می‌شوند.
-    for category in ("wto", "trump", "diplomacy_travel", "meeting", *media.UI_CATEGORIES):
+    for category in ("wto", "trump", "diplomacy_travel", "meeting", "nuclear", *media.UI_CATEGORIES):
         local = media._local_images(category)
         cached_names = media._cached_filenames(category)
         pending = [p for p in local if p.name not in cached_names]

@@ -794,6 +794,294 @@ async def process_battle_phases_job(bot: Bot) -> None:
         await battle_service.process_battle_phases(session, bot)
 
 
+async def process_nuclear(bot: Bot) -> None:
+    """پردازش زمان‌دار برنامه‌های هسته‌ای (v1.10.4):
+
+    ۱. اتمام ساخت تأسیسات و اتمام تحقیقات
+    ۲. اتمام چرخه‌ی تولید سانتریفیوژ
+    ۳. زنجیره‌ی سوخت ۲۴ساعته (آسیاب کیک زرد + تبدیل UF6)
+    ۴. تیک غنی‌سازی (مدل SWU) + گزارش رسیدن به هر رده
+    ۵. اتمام مونتاژ کلاهک
+    ۶. اجرای آزمایش هسته‌ای سررسیدشده (خبر عمومی)
+    ۷. تاس کشف برنامه بر اساس شاخص افشا (خبر «گزارش آژانس»)
+    """
+    import random as _random
+
+    from ..constants import (
+        CENTRIFUGE_BATCH_SIZE,
+        CONVERSION_UF6_PER_24H,
+        CONVERSION_YELLOWCAKE_INTAKE_PER_24H,
+        MILL_URANIUM_INTAKE_PER_24H,
+        MILL_YELLOWCAKE_PER_24H,
+        NUCLEAR_DETECTION_CHANCE_FACTOR,
+    )
+    from ..database.repositories import countries as countries_repo
+    from ..database.repositories import nuclear as nuc_repo
+    from ..enums import (
+        NuclearFacilityStatus,
+        NuclearFacilityType,
+        NuclearTechType,
+        WarheadStatus,
+    )
+    from ..services import nuclear_service
+    from ..services.news_service import publish_news as _publish, send_log
+    from ..constants import NUCLEAR_TECHS
+
+    now = _utcnow()
+    owner_pings: list[tuple[int, str]] = []      # (owner_user_id, text)
+    public_news: list[str] = []                  # کانال نظامی
+    diplo_news: list[str] = []                   # کانال دیپلماسی (کشف برنامه)
+    log_msgs: list[str] = []
+
+    async with async_session_factory() as session:
+        # کش کشورها برای پیام‌دادن
+        async def _country(cid: int):
+            return await countries_repo.get_country(session, cid)
+
+        # ---------- ۱a. اتمام ساخت تأسیسات ----------
+        for fac in await nuc_repo.list_building_facilities(session):
+            if nuclear_service.facility_done_at(fac) <= now:
+                fac.status = NuclearFacilityStatus.ACTIVE.value
+                fac.built_at = now
+                c = await _country(fac.country_id)
+                if c and c.owner_user_id:
+                    owner_pings.append((
+                        c.owner_user_id,
+                        f"☢️ <b>اطلاعیه‌ی برنامه‌ی هسته‌ای:</b> ساخت «{fac.name}» "
+                        f"در {fac.location or 'محل نامشخص'} به پایان رسید و اکنون فعال است."
+                        + (" (تأسیسات زیرزمینی 🕳)" if fac.is_underground else ""),
+                    ))
+                if c:
+                    log_msgs.append(
+                        f"☢️ اتمام ساخت تأسیسات هسته‌ای — {c.flag} {c.name_fa}: {fac.name}"
+                        f"{' (زیرزمینی)' if fac.is_underground else ''}"
+                    )
+
+        # ---------- ۱b. اتمام تحقیقات ----------
+        for tech in await nuc_repo.list_pending_techs(session):
+            if nuclear_service.tech_done_at(tech) <= now:
+                tech.is_done = True
+                tech.done_at = now
+                c = await _country(tech.country_id)
+                tech_fa = NUCLEAR_TECHS[NuclearTechType(tech.tech_type)][0]
+                if c and c.owner_user_id:
+                    owner_pings.append((
+                        c.owner_user_id,
+                        f"🧪 <b>تحقیقات کامل شد:</b> فناوری «{tech_fa}» در دسترس است.",
+                    ))
+                if c:
+                    log_msgs.append(f"🧪 اتمام تحقیق هسته‌ای — {c.flag} {c.name_fa}: {tech_fa}")
+
+        # ---------- پردازش برنامه‌های فعال ----------
+        for program in await nuc_repo.list_active_programs(session):
+            c = await _country(program.country_id)
+            if c is None:
+                continue
+
+            # ۲. اتمام چرخه‌ی سانتریفیوژ
+            batch_done = _aware(program.centrifuge_batch_done_at)
+            if batch_done is not None and batch_done <= now:
+                program.centrifuges += CENTRIFUGE_BATCH_SIZE
+                program.centrifuge_batch_done_at = None
+                if c.owner_user_id:
+                    owner_pings.append((
+                        c.owner_user_id,
+                        f"⚙️ <b>چرخه‌ی تولید سانتریفیوژ تکمیل شد:</b> {fa_number(CENTRIFUGE_BATCH_SIZE)} "
+                        f"سانتریفیوژ جدید (مجموع: {fa_number(program.centrifuges)}).",
+                    ))
+
+            # ۳. زنجیره‌ی سوخت ۲۴ساعته (آسیاب + تبدیل)
+            last_chain = _aware(program.last_chain_tick_at)
+            if last_chain is None:
+                program.last_chain_tick_at = now
+            elif (now - last_chain).total_seconds() / 3600.0 >= 24.0:
+                program.last_chain_tick_at = now
+                chain_notes: list[str] = []
+
+                # آسیاب: سنگ اورانیوم → کیک زرد
+                mills = await nuc_repo.list_active_facilities(
+                    session, program.country_id, NuclearFacilityType.MILL
+                )
+                for mill in mills:
+                    eff = mill.integrity_pct / 100.0
+                    intake = MILL_URANIUM_INTAKE_PER_24H * eff
+                    if await reserves_repo.has_enough(
+                        session, program.country_id, ResourceType.URANIUM, intake
+                    ):
+                        await reserves_repo.add_amount(
+                            session, program.country_id, ResourceType.URANIUM, -intake
+                        )
+                        made = MILL_YELLOWCAKE_PER_24H * eff
+                        program.yellowcake_tons += made
+                        chain_notes.append(
+                            f"🟡 آسیاب: {made:.1f} تن کیک زرد (انبار: {program.yellowcake_tons:.1f} تن)"
+                        )
+
+                # تبدیل: کیک زرد → UF6
+                convs = await nuc_repo.list_active_facilities(
+                    session, program.country_id, NuclearFacilityType.CONVERSION
+                )
+                for conv in convs:
+                    eff = conv.integrity_pct / 100.0
+                    intake = CONVERSION_YELLOWCAKE_INTAKE_PER_24H * eff
+                    if program.yellowcake_tons >= intake:
+                        program.yellowcake_tons -= intake
+                        made = CONVERSION_UF6_PER_24H * eff
+                        program.uf6_tons += made
+                        chain_notes.append(
+                            f"💨 تبدیل: {made:.1f} تن UF6 (انبار: {program.uf6_tons:.1f} تن)"
+                        )
+
+                if chain_notes and c.owner_user_id:
+                    owner_pings.append((
+                        c.owner_user_id,
+                        "☢️ <b>گزارش ۲۴ساعته‌ی زنجیره‌ی سوخت هسته‌ای:</b>\n" + "\n".join(chain_notes)
+                        + "\n⏳ چرخه‌ی بعدی: ۲۴ ساعت دیگر",
+                    ))
+
+            # ۴. تیک غنی‌سازی
+            if program.enrich_tier is not None:
+                tier_key = program.enrich_tier
+                before = nuclear_service.tier_stock_kg(program, tier_key)
+                produced = nuclear_service.enrichment_tick(program, now)
+                if produced > 0:
+                    after = nuclear_service.tier_stock_kg(program, tier_key)
+                    tier_fa = nuclear_service.tier_info(tier_key)[1]
+                    # پیام فقط وقتی از مرزهای مهم عبور می‌کند (هر ۱۰ کیلوگرم) تا اسپم نشود
+                    if int(before // 10) != int(after // 10) and c.owner_user_id:
+                        owner_pings.append((
+                            c.owner_user_id,
+                            f"⚛️ <b>پیشرفت غنی‌سازی:</b> موجودی رده‌ی {tier_fa} "
+                            f"به {after:.1f} کیلوگرم رسید.",
+                        ))
+                # اگر خوراک تمام شد، غنی‌سازی خودکار متوقف شود
+                feed_empty = (
+                    program.uf6_tons <= 0.0005
+                    if nuclear_service.tier_info(tier_key)[4] is None
+                    else nuclear_service.tier_stock_kg(
+                        program, nuclear_service.tier_info(tier_key)[4]
+                    ) <= 0.0005
+                )
+                if feed_empty:
+                    tier_fa = nuclear_service.tier_info(tier_key)[1]
+                    program.enrich_tier = None
+                    program.enrich_centrifuges = 0
+                    program.swu_accumulated = 0.0
+                    if c.owner_user_id:
+                        owner_pings.append((
+                            c.owner_user_id,
+                            f"⏸ <b>غنی‌سازی متوقف شد:</b> خوراک رده‌ی {tier_fa} تمام شد. "
+                            "زنجیره‌ی تولید خوراک را تقویت کنید.",
+                        ))
+
+            # ۷. تاس کشف برنامه (فقط برنامه‌های هنوز مخفی)
+            if not program.is_discovered and program.exposure > 0:
+                chance = program.exposure * NUCLEAR_DETECTION_CHANCE_FACTOR
+                if _random.uniform(0.0, 100.0) <= chance:
+                    program.is_discovered = True
+                    program.discovered_at = now
+                    diplo_news.append(
+                        "🔴 <b>گزارش فوق‌محرمانه‌ی آژانس بین‌المللی انرژی اتمی!!</b>\n\n"
+                        f"🛰 تصاویر ماهواره‌ای و اسناد اطلاعاتی تازه نشان می‌دهد کشور "
+                        f"{c.flag} <b>{c.name_fa}</b> به‌صورت مخفیانه در حال توسعه‌ی "
+                        "برنامه‌ی هسته‌ای است!\n"
+                        "⚠️ شورای امنیت خواستار توضیح فوری این کشور و دسترسی بازرسان شد. "
+                        "احتمال تحریم‌های بین‌المللی وجود دارد."
+                    )
+                    if c.owner_user_id:
+                        owner_pings.append((
+                            c.owner_user_id,
+                            "🚨 <b>هشدار امنیتی:</b> برنامه‌ی هسته‌ای شما توسط سرویس‌های اطلاعاتی "
+                            "<b>کشف شد</b> و در رسانه‌های جهانی منتشر گردید! منتظر واکنش‌های دیپلماتیک باشید.",
+                        ))
+                    log_msgs.append(
+                        f"🚨 کشف برنامه‌ی هسته‌ای — {c.flag} {c.name_fa} (شاخص افشا: {program.exposure:.0f})"
+                    )
+
+        # ---------- ۵. اتمام مونتاژ کلاهک ----------
+        for wh in await nuc_repo.list_assembling_warheads(session):
+            if nuclear_service.warhead_done_at(wh) <= now:
+                wh.status = WarheadStatus.ASSEMBLED.value
+                wh.assembled_at = now
+                c = await _country(wh.country_id)
+                if c and c.owner_user_id:
+                    owner_pings.append((
+                        c.owner_user_id,
+                        f"☢️ <b>کلاهک هسته‌ای آماده شد:</b> «{wh.name}» با قدرت "
+                        f"{wh.yield_kt:.0f} کیلوتن به زرادخانه‌ی شما افزوده شد.",
+                    ))
+                if c:
+                    log_msgs.append(
+                        f"☢️ کلاهک هسته‌ای مونتاژ شد — {c.flag} {c.name_fa}: «{wh.name}» ({wh.yield_kt:.0f}kt)"
+                    )
+
+        # ---------- ۶. اجرای آزمایش‌های سررسیدشده ----------
+        for test in await nuc_repo.list_pending_tests(session):
+            sched = _aware(test.scheduled_at)
+            if sched is not None and sched <= now:
+                test.status = "done"
+                test.done_at = now
+                c = await _country(test.country_id)
+                if c is None:
+                    continue
+                program = await nuc_repo.get_program(session, test.country_id)
+                if program is not None:
+                    nuclear_service.apply_test_effects(program, c)
+                public_news.append(
+                    "🔴 <b>خبر فوری — آزمایش هسته‌ای!!</b>\n\n"
+                    f"💥 لرزه‌نگارهای سراسر جهان دقایقی پیش انفجاری با قدرت "
+                    f"<b>{test.yield_kt:.0f} کیلوتن</b> را در منطقه‌ی "
+                    f"{test.site_name or 'نامشخص'} کشور {c.flag} <b>{c.name_fa}</b> ثبت کردند!\n"
+                    f"☢️ {c.name_fa} رسماً به باشگاه قدرت‌های هسته‌ای جهان پیوست.\n"
+                    "⚠️ واکنش‌های شدید بین‌المللی در راه است."
+                )
+                if c.owner_user_id:
+                    owner_pings.append((
+                        c.owner_user_id,
+                        f"💥 <b>آزمایش هسته‌ای با موفقیت انجام شد!</b> قدرت انفجار: {test.yield_kt:.0f} کیلوتن.\n"
+                        "☢️ کشور شما اکنون یک قدرت هسته‌ای شناخته‌شده است (+رضایت عمومی، −ثبات).",
+                    ))
+                log_msgs.append(
+                    f"💥 آزمایش هسته‌ای — {c.flag} {c.name_fa}: {test.yield_kt:.0f}kt در {test.site_name}"
+                )
+
+        await session.commit()
+
+    # ---------- ارسال پیام‌ها (خارج از session) ----------
+    from ..config import get_settings as _get_settings
+    from ..services.media import send_photo_news
+
+    _settings = _get_settings()
+
+    for owner_id, text in owner_pings:
+        try:
+            await bot.send_message(owner_id, text)
+        except Exception:  # noqa: BLE001
+            pass
+    # اخبار بزرگ هسته‌ای با عکس مخصوص (دسته‌ی nuclear) منتشر می‌شوند
+    for text in public_news:
+        try:
+            if _settings.news_military_channel_id:
+                await send_photo_news(bot, _settings.news_military_channel_id, "nuclear", text)
+            else:
+                await _publish(bot, NewsCategory.MILITARY, text)
+        except Exception:  # noqa: BLE001
+            pass
+    for text in diplo_news:
+        try:
+            if _settings.news_diplomacy_channel_id:
+                await send_photo_news(bot, _settings.news_diplomacy_channel_id, "nuclear", text)
+            else:
+                await _publish(bot, NewsCategory.DIPLOMACY, text)
+        except Exception:  # noqa: BLE001
+            pass
+    for text in log_msgs:
+        try:
+            await send_log(bot, text)
+        except Exception:  # noqa: BLE001
+            pass
+
+
 async def _tick(bot: Bot) -> None:
     """جاب اصلی که هر دقیقه همه‌ی پردازش‌های زمان‌دار را اجرا می‌کند.
 
@@ -812,6 +1100,7 @@ async def _tick(bot: Bot) -> None:
         ("process_investments", lambda: process_investments(bot)),
         ("process_satellites", lambda: process_satellites()),
         ("process_battle_phases", lambda: process_battle_phases_job(bot)),
+        ("process_nuclear", lambda: process_nuclear(bot)),
         ("process_taxes", lambda: process_taxes(bot)),
         ("process_protests", lambda: process_protests(bot)),
     )

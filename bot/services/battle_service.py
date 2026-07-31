@@ -173,6 +173,34 @@ async def approve_battle_by_owner(session: AsyncSession, battle_id: int) -> Batt
         payload_text=battle.payload,
     )
 
+    # بازدارندگی هسته‌ای (v1.10.4): زرادخانه‌ی مدافع تلفات مهاجم را بالا و خسارت مدافع را کم می‌کند.
+    # مهاجم در برابر یک قدرت هسته‌ای محتاط‌تر عمل می‌کند و عمق عملیات کمتر می‌شود.
+    try:
+        from . import nuclear_service
+
+        deterrence = await nuclear_service.deterrence_defense_pct(session, defender.id)
+        if deterrence > 0:
+            factor = deterrence / 100.0
+            def_losses = eval_res.get("defender_losses", [])
+            for item in def_losses:
+                item["count"] = max(0, int(int(item.get("count", 0)) * (1.0 - factor)))
+            econ = eval_res.get("economic_effects", {})
+            for key in (
+                "defender_satisfaction_delta",
+                "defender_stability_delta",
+                "defender_inflation_delta",
+            ):
+                if key in econ:
+                    econ[key] = float(econ[key]) * (1.0 - factor)
+            eval_res["economic_effects"] = econ
+            logger.info(
+                "Nuclear deterrence applied: defender=%s, reduction=%.1f%%",
+                defender.name_en,
+                deterrence,
+            )
+    except Exception as exc:  # noqa: BLE001 — بازدارندگی نباید جریان نبرد را متوقف کند
+        logger.exception("Failed to apply nuclear deterrence: %s", exc)
+
     fuel_cost = float(eval_res.get("fuel_cost_oil_barrels", 1.0))
     battle.fuel_cost = fuel_cost
     battle.attacker_losses_json = json.dumps(eval_res.get("attacker_losses", []), ensure_ascii=False)

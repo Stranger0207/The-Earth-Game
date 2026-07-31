@@ -221,6 +221,19 @@ async def cb_sat_scan_exec(call: CallbackQuery, state: FSMContext, session: Asyn
         for d in data["deployments"]:
             lines.append(f"• {d['branch']} ({d['asset_name']}: {fa_number(d['count'])}) -> منطقه {d['region']}")
 
+    lines.append("")
+    lines.append("☢️ **تأسیسات هسته‌ای قابل‌مشاهده:**")
+    if not data["nuclear_facilities"]:
+        if data.get("nuclear_hidden_count", 0) > 0:
+            lines.append(" ◦ هیچ تأسیسات سطحی شناسایی نشد، اما نشانه‌هایی از فعالیت مشکوک زیرزمینی وجود دارد.")
+        else:
+            lines.append(" ◦ هیچ تأسیسات هسته‌ای مشاهده نشد.")
+    else:
+        for nf in data["nuclear_facilities"]:
+            lines.append(f"• <b>{nf['name']}</b> — {nf['location']} ({nf['status']})")
+        if data.get("nuclear_hidden_count", 0) > 0:
+            lines.append(f"\n⚠️ <i>علاوه بر تأسیسات فوق، {fa_number(data['nuclear_hidden_count'])} محل مشکوک زیرزمینی نیز شناسایی شد که جزئیات آن از دید ماهواره پنهان است.</i>")
+
     text = "\n".join(lines)
     if len(text) > 3900:
         text = text[:3900] + "\n..."

@@ -125,6 +125,7 @@ def _home_kb() -> InlineKeyboardMarkup:
     builder.button(text="✈️ پروازهای دیپلماتیک", callback_data="god:flights", style=STYLE_MAIN)
     builder.button(text="🚫 تحریم‌ها", callback_data="god:sanctions", style=STYLE_MAIN)
     builder.button(text="📈 سرمایه‌گذاری‌ها", callback_data="god:invest", style=STYLE_MAIN)
+    builder.button(text="☢️ برنامه‌های هسته‌ای", callback_data="god:nuclear", style=STYLE_MAIN)
     builder.button(text="💥 سیستم تلفات", callback_data="god:casualty", style=STYLE_NO)
     builder.adjust(1)
     return builder.as_markup()
@@ -1347,3 +1348,256 @@ async def cb_arrive_now(call: CallbackQuery, session: AsyncSession) -> None:
 
         await process_group_meetings(bot)
     await _render_flights_list(call, session)
+
+
+# ============================================================
+#  ☢️ مدیریت برنامه‌های هسته‌ای (v1.10.4)
+# ============================================================
+@router.callback_query(F.data == "god:nuclear")
+async def cb_god_nuclear(call: CallbackQuery, session: AsyncSession) -> None:
+    """فهرست کشورهای دارای برنامه‌ی هسته‌ای."""
+    if not await _guard(call):
+        return
+    await call.answer()
+    await _render_god_nuclear_list(call, session)
+
+
+async def _render_god_nuclear_list(call: CallbackQuery, session: AsyncSession) -> None:
+    """رندر فهرست برنامه‌های هسته‌ای فعال."""
+    from ..database.repositories import nuclear as nuc_repo
+
+    programs = await nuc_repo.list_active_programs(session)
+    lines = [header("برنامه‌های هسته‌ای فعال", "☢️"), ""]
+    builder = InlineKeyboardBuilder()
+
+    if programs:
+        for p in programs:
+            c = await countries_repo.get_country(session, p.country_id)
+            if c is None:
+                continue
+            mark = "🚨" if p.is_discovered else "🕵️"
+            warheads = await nuc_repo.count_ready_warheads(session, p.country_id)
+            lines.append(
+                f"{mark} {c.flag} {c.name_fa} — فاز {fa_number(p.phase)} | "
+                f"افشا {fa_number(p.exposure)}٪ | کلاهک: {fa_number(warheads)}"
+            )
+            builder.button(
+                text=f"{c.flag} {c.name_fa}",
+                callback_data=f"godnuc:{p.country_id}",
+                style=STYLE_MAIN,
+            )
+    else:
+        lines.append("— هیچ کشوری برنامه‌ی هسته‌ای فعالی ندارد.")
+
+    builder.button(text="🔙 بازگشت", callback_data="god:home", style=STYLE_MAIN)
+    builder.adjust(2)
+    await call.message.edit_text("\n".join(lines), reply_markup=builder.as_markup())
+
+
+@router.callback_query(F.data.startswith("godnuc:"))
+async def cb_god_nuclear_country(call: CallbackQuery, session: AsyncSession) -> None:
+    """پنل مدیریت برنامه‌ی هسته‌ای یک کشور."""
+    if not await _guard(call):
+        return
+    await call.answer()
+    cid = int(call.data.split(":")[1])
+    await _render_god_nuclear_country(call, session, cid)
+
+
+async def _render_god_nuclear_country(
+    call: CallbackQuery, session: AsyncSession, cid: int
+) -> None:
+    """رندر جزئیات برنامه‌ی هسته‌ای همراه ابزارهای مدیریتی."""
+    from ..database.repositories import nuclear as nuc_repo
+    from ..enums import NUCLEAR_FACILITY_STATUS_FA, NuclearFacilityStatus
+
+    country = await countries_repo.get_country(session, cid)
+    program = await nuc_repo.get_program(session, cid)
+    if country is None or program is None:
+        await call.answer("برنامه یافت نشد.", show_alert=True)
+        return
+
+    facilities = await nuc_repo.list_facilities(session, cid)
+    warheads = await nuc_repo.count_ready_warheads(session, cid)
+    discovered_fa = "🚨 کشف‌شده" if program.is_discovered else "مخفی"
+    cover_fa = "فعال" if program.civilian_cover else "غیرفعال"
+    npt_fa = "عضو" if program.npt_member else "خارج‌شده"
+
+    lines = [
+        header(f"برنامه‌ی هسته‌ای {country.flag} {country.name_fa}", "☢️"),
+        "",
+        f"🚩 فاز: {fa_number(program.phase)} از ۵",
+        f"🕵️ شاخص افشا: {fa_number(program.exposure)}٪ ({discovered_fa})",
+        f"🎭 پوشش صلح‌آمیز: {cover_fa} | 📜 NPT: {npt_fa}",
+        "",
+        f"🟡 کیک زرد: {fa_number(program.yellowcake_tons, 1)} تن | "
+        f"💨 UF6: {fa_number(program.uf6_tons, 1)} تن",
+        f"⚛️ ۳.۵٪: {fa_number(program.leu_35_kg, 1)}kg | ۲۰٪: {fa_number(program.leu_20_kg, 1)}kg",
+        f"⚛️ ۶۰٪: {fa_number(program.heu_60_kg, 1)}kg | ۹۰٪: {fa_number(program.heu_90_kg, 1)}kg",
+        f"⚙️ سانتریفیوژ: {fa_number(program.centrifuges)} | ☢️ کلاهک آماده: {fa_number(warheads)}",
+        "",
+        "🏗 <b>تأسیسات:</b>",
+    ]
+    if facilities:
+        for f in facilities:
+            status = NUCLEAR_FACILITY_STATUS_FA.get(
+                NuclearFacilityStatus(f.status), f.status
+            )
+            ug = " 🕳" if f.is_underground else ""
+            lines.append(f"• {f.name}{ug} — {f.location or '—'} ({status})")
+    else:
+        lines.append("—")
+
+    builder = InlineKeyboardBuilder()
+    if program.is_discovered:
+        builder.button(text="🕵️ مخفی‌سازی مجدد", callback_data=f"godnuchide:{cid}", style=STYLE_OK)
+    else:
+        builder.button(text="🚨 افشای فوری برنامه", callback_data=f"godnucreveal:{cid}", style=STYLE_NO)
+    builder.button(text="♻️ صفرکردن شاخص افشا", callback_data=f"godnuczero:{cid}", style=STYLE_OK)
+    builder.button(text="⏸ توقف غنی‌سازی", callback_data=f"godnucstop:{cid}", style=STYLE_NO)
+    builder.button(text="🗑 حذف کامل برنامه", callback_data=f"godnucwipe:{cid}", style=STYLE_NO)
+    builder.button(text="🔙 بازگشت", callback_data="god:nuclear", style=STYLE_MAIN)
+    builder.adjust(1)
+    await call.message.edit_text("\n".join(lines), reply_markup=builder.as_markup())
+
+
+@router.callback_query(F.data.startswith("godnucreveal:"))
+async def cb_god_nuclear_reveal(call: CallbackQuery, session: AsyncSession) -> None:
+    """افشای فوری برنامه‌ی هسته‌ای توسط مدیریت."""
+    if not await _guard(call):
+        return
+    from ..database.repositories import nuclear as nuc_repo
+
+    cid = int(call.data.split(":")[1])
+    program = await nuc_repo.get_program(session, cid)
+    if program is None:
+        await call.answer("برنامه یافت نشد.", show_alert=True)
+        return
+    program.is_discovered = True
+    program.discovered_at = _utcnow()
+    program.exposure = 100.0
+    await session.commit()
+    country = await countries_repo.get_country(session, cid)
+    await call.answer("برنامه افشا شد 🚨")
+    if country is not None:
+        await send_log(
+            bot,
+            "🚨 <b>افشای برنامه‌ی هسته‌ای توسط مدیریت</b>\n"
+            f"کشور: {country.flag} {country.name_fa}",
+        )
+    await _render_god_nuclear_country(call, session, cid)
+
+
+@router.callback_query(F.data.startswith("godnuchide:"))
+async def cb_god_nuclear_hide(call: CallbackQuery, session: AsyncSession) -> None:
+    """بازگرداندن برنامه به حالت مخفی."""
+    if not await _guard(call):
+        return
+    from ..database.repositories import nuclear as nuc_repo
+
+    cid = int(call.data.split(":")[1])
+    program = await nuc_repo.get_program(session, cid)
+    if program is None:
+        await call.answer("برنامه یافت نشد.", show_alert=True)
+        return
+    program.is_discovered = False
+    program.discovered_at = None
+    program.exposure = 0.0
+    await session.commit()
+    await call.answer("برنامه دوباره مخفی شد 🕵️")
+    await _render_god_nuclear_country(call, session, cid)
+
+
+@router.callback_query(F.data.startswith("godnuczero:"))
+async def cb_god_nuclear_zero(call: CallbackQuery, session: AsyncSession) -> None:
+    """صفرکردن شاخص افشا."""
+    if not await _guard(call):
+        return
+    from ..database.repositories import nuclear as nuc_repo
+
+    cid = int(call.data.split(":")[1])
+    program = await nuc_repo.get_program(session, cid)
+    if program is None:
+        await call.answer("برنامه یافت نشد.", show_alert=True)
+        return
+    program.exposure = 0.0
+    await session.commit()
+    await call.answer("شاخص افشا صفر شد ♻️")
+    await _render_god_nuclear_country(call, session, cid)
+
+
+@router.callback_query(F.data.startswith("godnucstop:"))
+async def cb_god_nuclear_stop(call: CallbackQuery, session: AsyncSession) -> None:
+    """توقف اضطراری غنی‌سازی یک کشور."""
+    if not await _guard(call):
+        return
+    from ..database.repositories import nuclear as nuc_repo
+
+    cid = int(call.data.split(":")[1])
+    program = await nuc_repo.get_program(session, cid)
+    if program is None:
+        await call.answer("برنامه یافت نشد.", show_alert=True)
+        return
+    program.enrich_tier = None
+    program.enrich_centrifuges = 0
+    program.swu_accumulated = 0.0
+    program.enrich_started_at = None
+    program.last_enrich_tick_at = None
+    await session.commit()
+    await call.answer("غنی‌سازی متوقف شد ⏸")
+    await _render_god_nuclear_country(call, session, cid)
+
+
+@router.callback_query(F.data.startswith("godnucwipe:"))
+async def cb_god_nuclear_wipe_ask(call: CallbackQuery, session: AsyncSession) -> None:
+    """تأیید دومرحله‌ای برای حذف کامل برنامه (عملیات مخرب)."""
+    if not await _guard(call):
+        return
+    await call.answer()
+    cid = int(call.data.split(":")[1])
+    country = await countries_repo.get_country(session, cid)
+    if country is None:
+        await call.answer("کشور یافت نشد.", show_alert=True)
+        return
+    builder = InlineKeyboardBuilder()
+    builder.button(text="✅ بله، همه‌چیز حذف شود", callback_data=f"godnucwipeok:{cid}", style=STYLE_NO)
+    builder.button(text="❌ انصراف", callback_data=f"godnuc:{cid}", style=STYLE_MAIN)
+    builder.adjust(1)
+    await call.message.edit_text(
+        header("حذف کامل برنامه‌ی هسته‌ای", "⚠️") + "\n\n"
+        f"کشور: {country.flag} <b>{country.name_fa}</b>\n\n"
+        "🚨 این عملیات <b>غیرقابل‌بازگشت</b> است: تمام تأسیسات، تحقیقات، سانتریفیوژها، "
+        "ذخایر غنی‌شده و کلاهک‌های این کشور برای همیشه حذف می‌شوند.\n\n"
+        "آیا کاملاً مطمئنید؟",
+        reply_markup=builder.as_markup(),
+    )
+
+
+@router.callback_query(F.data.startswith("godnucwipeok:"))
+async def cb_god_nuclear_wipe(call: CallbackQuery, session: AsyncSession) -> None:
+    """اجرای حذف کامل برنامه‌ی هسته‌ای یک کشور."""
+    if not await _guard(call):
+        return
+    from sqlalchemy import delete as _delete
+
+    from ..database.models import (
+        NuclearFacility,
+        NuclearProgram,
+        NuclearTech,
+        NuclearTest,
+        NuclearWarhead,
+    )
+
+    cid = int(call.data.split(":")[1])
+    country = await countries_repo.get_country(session, cid)
+    for model in (NuclearWarhead, NuclearTest, NuclearFacility, NuclearTech, NuclearProgram):
+        await session.execute(_delete(model).where(model.country_id == cid))
+    await session.commit()
+    await call.answer("برنامه‌ی هسته‌ای حذف شد 🗑", show_alert=True)
+    if country is not None:
+        await send_log(
+            bot,
+            "🗑 <b>حذف کامل برنامه‌ی هسته‌ای توسط مدیریت</b>\n"
+            f"کشور: {country.flag} {country.name_fa}",
+        )
+    await _render_god_nuclear_list(call, session)

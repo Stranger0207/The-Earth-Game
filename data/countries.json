@@ -48,6 +48,10 @@
         "gold": {
           "amount": 2000,
           "can_extract": true
+        },
+        "uranium": {
+          "amount": 230000,
+          "can_extract": true
         }
       },
       "military": [
@@ -548,6 +552,10 @@
         "gold": {
           "amount": 760,
           "can_extract": false
+        },
+        "uranium": {
+          "amount": 6600,
+          "can_extract": true
         }
       },
       "military": [
@@ -943,6 +951,10 @@
         "gold": {
           "amount": 100,
           "can_extract": false
+        },
+        "uranium": {
+          "amount": 1500,
+          "can_extract": true
         }
       },
       "military": [
@@ -1324,6 +1336,10 @@
         "gold": {
           "amount": 2000,
           "can_extract": true
+        },
+        "uranium": {
+          "amount": 4000,
+          "can_extract": true
         }
       },
       "military": [
@@ -1585,6 +1601,10 @@
         },
         "gold": {
           "amount": 10000,
+          "can_extract": true
+        },
+        "uranium": {
+          "amount": 1700000,
           "can_extract": true
         }
       },
@@ -1883,6 +1903,10 @@
         "gold": {
           "amount": 800,
           "can_extract": false
+        },
+        "uranium": {
+          "amount": 90000,
+          "can_extract": true
         }
       },
       "military": [
@@ -2256,6 +2280,10 @@
         },
         "gold": {
           "amount": 300,
+          "can_extract": true
+        },
+        "uranium": {
+          "amount": 9000,
           "can_extract": true
         }
       },
@@ -2645,6 +2673,10 @@
         "gold": {
           "amount": 1500,
           "can_extract": true
+        },
+        "uranium": {
+          "amount": 3000,
+          "can_extract": true
         }
       },
       "military": [
@@ -2970,6 +3002,10 @@
         "gold": {
           "amount": 50,
           "can_extract": false
+        },
+        "uranium": {
+          "amount": 0,
+          "can_extract": false
         }
       },
       "military": [
@@ -3203,6 +3239,10 @@
         },
         "gold": {
           "amount": 400,
+          "can_extract": true
+        },
+        "uranium": {
+          "amount": 6000,
           "can_extract": true
         }
       },
@@ -3501,6 +3541,10 @@
         "gold": {
           "amount": 200,
           "can_extract": true
+        },
+        "uranium": {
+          "amount": 2000,
+          "can_extract": true
         }
       },
       "military": [
@@ -3727,6 +3771,10 @@
         },
         "gold": {
           "amount": 50,
+          "can_extract": false
+        },
+        "uranium": {
+          "amount": 0,
           "can_extract": false
         }
       },
@@ -3961,6 +4009,10 @@
         },
         "gold": {
           "amount": 100,
+          "can_extract": false
+        },
+        "uranium": {
+          "amount": 0,
           "can_extract": false
         }
       },
@@ -4203,6 +4255,10 @@
         "gold": {
           "amount": 30,
           "can_extract": false
+        },
+        "uranium": {
+          "amount": 80000,
+          "can_extract": true
         }
       },
       "military": [
@@ -4465,6 +4521,10 @@
         "gold": {
           "amount": 90,
           "can_extract": false
+        },
+        "uranium": {
+          "amount": 1000,
+          "can_extract": true
         }
       },
       "military": [
@@ -4726,6 +4786,10 @@
         },
         "gold": {
           "amount": 350,
+          "can_extract": true
+        },
+        "uranium": {
+          "amount": 2000,
           "can_extract": true
         }
       },
@@ -5024,6 +5088,10 @@
         "gold": {
           "amount": 20,
           "can_extract": false
+        },
+        "uranium": {
+          "amount": 0,
+          "can_extract": false
         }
       },
       "military": [
@@ -5257,6 +5325,10 @@
         },
         "gold": {
           "amount": 7500,
+          "can_extract": true
+        },
+        "uranium": {
+          "amount": 480000,
           "can_extract": true
         }
       },
@@ -5674,6 +5746,10 @@
         "gold": {
           "amount": 310,
           "can_extract": false
+        },
+        "uranium": {
+          "amount": 0,
+          "can_extract": false
         }
       },
       "military": [
@@ -5964,6 +6040,10 @@
         "gold": {
           "amount": 2400,
           "can_extract": false
+        },
+        "uranium": {
+          "amount": 1500,
+          "can_extract": true
         }
       },
       "military": [
@@ -6219,6 +6299,10 @@
         "gold": {
           "amount": 3300,
           "can_extract": false
+        },
+        "uranium": {
+          "amount": 3000,
+          "can_extract": true
         }
       },
       "military": [
@@ -6474,6 +6558,10 @@
         "gold": {
           "amount": 50,
           "can_extract": false
+        },
+        "uranium": {
+          "amount": 1000,
+          "can_extract": true
         }
       },
       "military": [
@@ -6735,6 +6823,10 @@
         },
         "gold": {
           "amount": 500,
+          "can_extract": true
+        },
+        "uranium": {
+          "amount": 7000,
           "can_extract": true
         }
       },
@@ -7012,6 +7104,10 @@
         "gold": {
           "amount": 2450,
           "can_extract": false
+        },
+        "uranium": {
+          "amount": 4800,
+          "can_extract": true
         }
       },
       "military": [
@@ -7281,6 +7377,10 @@
         "gold": {
           "amount": 280,
           "can_extract": false
+        },
+        "uranium": {
+          "amount": 56000,
+          "can_extract": true
         }
       },
       "military": [
@@ -7543,6 +7643,10 @@
         "gold": {
           "amount": 230,
           "can_extract": false
+        },
+        "uranium": {
+          "amount": 7000,
+          "can_extract": true
         }
       },
       "military": [
@@ -7805,6 +7909,10 @@
         "gold": {
           "amount": 50,
           "can_extract": false
+        },
+        "uranium": {
+          "amount": 107000,
+          "can_extract": true
         }
       },
       "military": [
@@ -8088,6 +8196,10 @@
         "gold": {
           "amount": 150,
           "can_extract": true
+        },
+        "uranium": {
+          "amount": 6000,
+          "can_extract": true
         }
       },
       "military": [
@@ -8272,6 +8384,10 @@
         },
         "gold": {
           "amount": 1040,
+          "can_extract": false
+        },
+        "uranium": {
+          "amount": 0,
           "can_extract": false
         }
       },
@@ -8472,6 +8588,10 @@
         "gold": {
           "amount": 100,
           "can_extract": false
+        },
+        "uranium": {
+          "amount": 1000,
+          "can_extract": true
         }
       },
       "military": [
@@ -8740,6 +8860,10 @@
         },
         "gold": {
           "amount": 8130,
+          "can_extract": true
+        },
+        "uranium": {
+          "amount": 100000,
           "can_extract": true
         }
       },
@@ -9213,6 +9337,10 @@
         "gold": {
           "amount": 130,
           "can_extract": true
+        },
+        "uranium": {
+          "amount": 310000,
+          "can_extract": true
         }
       },
       "military": [
@@ -9475,6 +9603,10 @@
         "gold": {
           "amount": 120,
           "can_extract": true
+        },
+        "uranium": {
+          "amount": 2000,
+          "can_extract": true
         }
       },
       "military": [
@@ -9723,6 +9855,10 @@
         "gold": {
           "amount": 5000,
           "can_extract": true
+        },
+        "uranium": {
+          "amount": 590000,
+          "can_extract": true
         }
       },
       "military": [
@@ -9964,6 +10100,10 @@
         "gold": {
           "amount": 60,
           "can_extract": true
+        },
+        "uranium": {
+          "amount": 31000,
+          "can_extract": true
         }
       },
       "military": [
@@ -10204,6 +10344,10 @@
         },
         "gold": {
           "amount": 1200,
+          "can_extract": true
+        },
+        "uranium": {
+          "amount": 1000,
           "can_extract": true
         }
       },

@@ -46,7 +46,6 @@ from ..enums import (
 )
 from ..keyboards.common import confirm_cancel_kb, countries_kb
 from ..keyboards.military import (
-    attack_types_kb,
     military_factory_menu_kb,
     military_factory_types_kb,
     military_menu_kb,
@@ -56,7 +55,7 @@ from ..services.ai import evaluators
 from ..services.media import send_photo_news
 from ..services.military_service import apply_losses, format_casualties_log
 from ..services.news_service import send_log
-from ..states import AttackForm, MilitaryFactoryForm, MilitarySaleForm
+from ..states import MilitaryFactoryForm, MilitarySaleForm
 from ..utils.formatting import render_military_panel
 from ..utils.numbers import fa_money, fa_number, parse_amount
 from ..utils.ui import STYLE_NO, STYLE_OK, header

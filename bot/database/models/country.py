@@ -73,6 +73,19 @@ class Country(Base):
     # --- عوارض بین‌المللی (v1.5) — فقط برای آمریکا معنا دارد: مجموع تعرفه‌های جمع‌آوری‌شده ---
     international_duties: Mapped[float] = mapped_column(Float, default=0.0)
 
+    # --- توان نظامی (v1.10.6) ---
+    # آمادگی رزمی (۰ تا ۴۰): با رزمایش بالا می‌رود، روزانه افت می‌کند و
+    # مستقیماً قدرت عملیات نظامی کشور را تقویت می‌کند.
+    readiness: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    last_readiness_decay_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    # پس از ترور موفق رئیس‌جمهور، کشور تا این لحظه در «بحران رهبری» است
+    # و نمی‌تواند عملیات نظامی جدید ثبت کند.
+    leadership_crisis_until: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
     # --- روابط ---
     owner: Mapped["User | None"] = relationship(back_populates="country")
     reserves: Mapped[list["Reserve"]] = relationship(

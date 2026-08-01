@@ -66,6 +66,10 @@ _COLUMN_MIGRATIONS = [
     ("countries", "tax_rate", "DOUBLE PRECISION NOT NULL DEFAULT 10.0"),
     ("countries", "last_tax_collected_at", "TIMESTAMP WITH TIME ZONE"),
     ("countries", "last_protest_check_at", "TIMESTAMP WITH TIME ZONE"),
+    # v1.10.6 — بازسازی سیستم نظامی: آمادگی رزمی و بحران رهبری
+    ("countries", "readiness", "DOUBLE PRECISION NOT NULL DEFAULT 0"),
+    ("countries", "last_readiness_decay_at", "TIMESTAMP WITH TIME ZONE"),
+    ("countries", "leadership_crisis_until", "TIMESTAMP WITH TIME ZONE"),
 ]
 
 

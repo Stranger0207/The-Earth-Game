@@ -441,3 +441,202 @@ DELIVERY_SYSTEM_FA: dict[DeliverySystem, str] = {
     DeliverySystem.BOMBER: "✈️ بمب‌افکن استراتژیک",
     DeliverySystem.SUBMARINE: "🚢 زیردریایی",
 }
+
+
+# ============================================================
+#  ⚔️ سیستم عملیات نظامی (v1.10.6) — بازسازی کامل
+# ============================================================
+
+
+class OperationType(str, enum.Enum):
+    """انواع عملیات نظامی که یک کشور می‌تواند اجرا کند."""
+
+    GROUND_ASSAULT = "ground_assault"    # حمله‌ی زمینی
+    AIR_STRIKE = "air_strike"            # حمله‌ی هوایی
+    NAVAL_STRIKE = "naval_strike"        # حمله‌ی دریایی
+    SABOTAGE = "sabotage"                # خرابکاری مخفیانه
+    ASSASSINATION = "assassination"      # ترور فرمانده/شخص بلندپایه
+    INTERCEPTION = "interception"         # رهگیری محموله‌ی عبوری
+    PATROL = "patrol"                    # گشت (هوایی/زمینی/دریایی)
+    DRILL = "drill"                      # رزمایش (تکی/مشترک)
+
+
+OPERATION_FA: dict[OperationType, str] = {
+    OperationType.GROUND_ASSAULT: "حمله زمینی",
+    OperationType.AIR_STRIKE: "حمله هوایی",
+    OperationType.NAVAL_STRIKE: "حمله دریایی",
+    OperationType.SABOTAGE: "خرابکاری مخفیانه",
+    OperationType.ASSASSINATION: "عملیات ترور",
+    OperationType.INTERCEPTION: "رهگیری محموله",
+    OperationType.PATROL: "گشت",
+    OperationType.DRILL: "رزمایش",
+}
+
+OPERATION_EMOJI: dict[OperationType, str] = {
+    OperationType.GROUND_ASSAULT: "🪖",
+    OperationType.AIR_STRIKE: "✈️",
+    OperationType.NAVAL_STRIKE: "🚢",
+    OperationType.SABOTAGE: "🕵️",
+    OperationType.ASSASSINATION: "🎯",
+    OperationType.INTERCEPTION: "⚓",
+    OperationType.PATROL: "🛩",
+    OperationType.DRILL: "🎪",
+}
+
+# عملیات‌های تهاجمی که نیاز به اعلام جنگ رسمی دارند (خرابکاری و ترور مخفیانه‌اند)
+OPEN_WAR_OPERATIONS: frozenset[OperationType] = frozenset({
+    OperationType.GROUND_ASSAULT,
+    OperationType.AIR_STRIKE,
+    OperationType.NAVAL_STRIKE,
+})
+
+# عملیات‌های مخفیانه که گزینه‌ی «پذیرش/عدم پذیرش مسئولیت» دارند
+COVERT_OPERATIONS: frozenset[OperationType] = frozenset({
+    OperationType.SABOTAGE,
+    OperationType.ASSASSINATION,
+    OperationType.INTERCEPTION,
+})
+
+
+class OperationStatus(str, enum.Enum):
+    """وضعیت یک عملیات در چرخه‌ی عمرش."""
+
+    PENDING_OWNER = "pending_owner"  # در انتظار تأیید مالک بازی
+    APPROVED = "approved"            # تأییدشده، آماده‌ی اجرا
+    IN_PROGRESS = "in_progress"      # در حال اجرای فازهای خبری
+    RESOLVED = "resolved"            # پایان‌یافته
+    REJECTED = "rejected"            # ردشده توسط مالک
+    FAILED = "failed"                # ناموفق (امکان‌سنجی یا اجرا شکست خورد)
+
+
+OPERATION_STATUS_FA: dict[OperationStatus, str] = {
+    OperationStatus.PENDING_OWNER: "⏳ در انتظار تأیید",
+    OperationStatus.APPROVED: "✅ تأییدشده",
+    OperationStatus.IN_PROGRESS: "🔴 در حال اجرا",
+    OperationStatus.RESOLVED: "🏁 پایان‌یافته",
+    OperationStatus.REJECTED: "❌ ردشده",
+    OperationStatus.FAILED: "⚠️ ناموفق",
+}
+
+
+class TargetType(str, enum.Enum):
+    """نوع هدف یک عملیات تهاجمی."""
+
+    MILITARY_BASE = "military_base"      # پایگاه نظامی
+    CITY = "city"                        # زیرساخت شهری (تلفات غیرنظامی دارد)
+    OIL_PLATFORM = "oil_platform"        # سکوی نفتی/گازی
+    FACTORY = "factory"                  # کارخانه و صنایع
+    NUCLEAR_SITE = "nuclear_site"        # تأسیسات هسته‌ای
+    AIRPORT = "airport"                  # فرودگاه
+    PORT = "port"                        # بندر
+    DEPLOYED_FORCE = "deployed_force"    # نیروی مستقر دشمن
+    SHIPMENT = "shipment"                # محموله‌ی در حال عبور
+
+
+TARGET_FA: dict[TargetType, str] = {
+    TargetType.MILITARY_BASE: "پایگاه نظامی",
+    TargetType.CITY: "زیرساخت شهری",
+    TargetType.OIL_PLATFORM: "سکوی نفتی/گازی",
+    TargetType.FACTORY: "کارخانه و صنایع",
+    TargetType.NUCLEAR_SITE: "تأسیسات هسته‌ای",
+    TargetType.AIRPORT: "فرودگاه",
+    TargetType.PORT: "بندر",
+    TargetType.DEPLOYED_FORCE: "نیروی مستقر",
+    TargetType.SHIPMENT: "محموله‌ی در حال عبور",
+}
+
+TARGET_EMOJI: dict[TargetType, str] = {
+    TargetType.MILITARY_BASE: "🏛",
+    TargetType.CITY: "🏙",
+    TargetType.OIL_PLATFORM: "🛢",
+    TargetType.FACTORY: "🏭",
+    TargetType.NUCLEAR_SITE: "☢️",
+    TargetType.AIRPORT: "🛫",
+    TargetType.PORT: "⚓",
+    TargetType.DEPLOYED_FORCE: "🪖",
+    TargetType.SHIPMENT: "📦",
+}
+
+# اهدافی که تلفات غیرنظامی تولید می‌کنند
+CIVILIAN_TARGETS: frozenset[TargetType] = frozenset({
+    TargetType.CITY,
+    TargetType.AIRPORT,
+    TargetType.PORT,
+})
+
+
+class PatrolType(str, enum.Enum):
+    """انواع گشت دفاعی."""
+
+    AIR = "air"        # گشت هوایی
+    GROUND = "ground"  # گشت زمینی (مرزی)
+    NAVAL = "naval"    # گشت دریایی
+
+
+PATROL_FA: dict[PatrolType, str] = {
+    PatrolType.AIR: "گشت هوایی",
+    PatrolType.GROUND: "گشت زمینی مرزی",
+    PatrolType.NAVAL: "گشت دریایی",
+}
+
+PATROL_EMOJI: dict[PatrolType, str] = {
+    PatrolType.AIR: "🛩",
+    PatrolType.GROUND: "🚙",
+    PatrolType.NAVAL: "🚤",
+}
+
+
+class DrillType(str, enum.Enum):
+    """انواع رزمایش."""
+
+    SOLO = "solo"      # رزمایش تکی
+    JOINT = "joint"    # رزمایش مشترک با کشور دیگر
+
+
+DRILL_FA: dict[DrillType, str] = {
+    DrillType.SOLO: "رزمایش تکی",
+    DrillType.JOINT: "رزمایش مشترک",
+}
+
+
+class CommanderRole(str, enum.Enum):
+    """تخصص یک فرمانده نظامی (NPC)."""
+
+    GROUND = "ground"          # فرمانده نیروی زمینی
+    AIR = "air"                # فرمانده نیروی هوایی
+    NAVAL = "naval"            # فرمانده نیروی دریایی
+    INTELLIGENCE = "intel"     # رئیس سازمان اطلاعات
+    NUCLEAR = "nuclear"        # مسئول برنامه‌ی هسته‌ای (دانشمند ارشد)
+
+
+COMMANDER_ROLE_FA: dict[CommanderRole, str] = {
+    CommanderRole.GROUND: "فرمانده نیروی زمینی",
+    CommanderRole.AIR: "فرمانده نیروی هوایی",
+    CommanderRole.NAVAL: "فرمانده نیروی دریایی",
+    CommanderRole.INTELLIGENCE: "رئیس سازمان اطلاعات",
+    CommanderRole.NUCLEAR: "دانشمند ارشد هسته‌ای",
+}
+
+COMMANDER_ROLE_EMOJI: dict[CommanderRole, str] = {
+    CommanderRole.GROUND: "🪖",
+    CommanderRole.AIR: "✈️",
+    CommanderRole.NAVAL: "⚓",
+    CommanderRole.INTELLIGENCE: "🕵️",
+    CommanderRole.NUCLEAR: "☢️",
+}
+
+
+class NewsArchetype(str, enum.Enum):
+    """
+    آرکه‌تایپ‌های خبری (v1.10.6) — برای جلوگیری از تکراری‌شدن اخبار.
+    هر خبر با یکی از این سبک‌ها نوشته می‌شود تا فرمت‌ها هیچ‌وقت یکسان نباشند.
+    """
+
+    FLASH = "flash"                      # فلش فوری کوتاه
+    EYEWITNESS = "eyewitness"            # روایت شاهد عینی
+    OFFICIAL = "official"                # بیانیه‌ی رسمی نظامی
+    ANALYST = "analyst"                  # تحلیل کارشناس نظامی
+    DEFENSE_REPORT = "defense_report"    # گزارش عملکرد پدافند
+    DAMAGE_ASSESSMENT = "damage_assess"  # ارزیابی میدانی خسارت
+    WIRE = "wire"                        # خبر خبرگزاری بین‌المللی
+    TICKER = "ticker"                    # تیتر تک‌خطی فوری

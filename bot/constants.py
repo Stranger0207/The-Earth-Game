@@ -8,12 +8,16 @@ from __future__ import annotations
 
 from .enums import (
     FACILITY_FA,
+    CommanderRole,
     FacilityType,
     GovernmentType,
     MilitaryFactoryType,
     NuclearFacilityType,
     NuclearTechType,
+    OperationType,
+    PatrolType,
     ResourceType,
+    TargetType,
 )
 
 # ============================================================
@@ -463,3 +467,223 @@ CYBER_SABOTAGE_CENTRIFUGE_LOSS = (0.2, 0.6)   # بازه‌ی درصد سانت�
 CYBER_SABOTAGE_COOLDOWN_HOURS = 24
 
 
+
+
+# ============================================================
+#  ⚔️ سیستم عملیات نظامی (v1.10.6) — بازسازی کامل
+# ============================================================
+
+# ---------- سقف عملیات ----------
+# سقف کلی: هر کشور در هر ۲۴ ساعت حداکثر این تعداد عملیات تهاجمی ثبت می‌کند.
+# گشت و رزمایش از این سقف مستثنا هستند (فقط هزینه‌ی منابع دارند).
+OPERATION_LIMIT_WINDOW_HOURS = 24
+OPERATION_LIMIT_PER_WINDOW = 3
+
+# عملیات‌هایی که در سقف بالا شمرده نمی‌شوند
+OPERATION_LIMIT_EXEMPT: frozenset[OperationType] = frozenset({
+    OperationType.PATROL,
+    OperationType.DRILL,
+})
+
+# ---------- هزینه‌ی سوخت (میلیون بشکه نفت) ----------
+# هزینه‌ی پایه‌ی هر نوع عملیات، پیش از ضریب فاصله و حجم نیرو
+OPERATION_BASE_FUEL: dict[OperationType, float] = {
+    OperationType.GROUND_ASSAULT: 2.0,
+    OperationType.AIR_STRIKE: 3.0,
+    OperationType.NAVAL_STRIKE: 4.0,
+    OperationType.SABOTAGE: 0.2,
+    OperationType.ASSASSINATION: 0.3,
+    OperationType.INTERCEPTION: 1.0,
+    OperationType.PATROL: 0.5,
+    OperationType.DRILL: 1.5,
+}
+
+# سوخت اضافی به ازای هر واحد تجهیزات درگیر
+OPERATION_FUEL_PER_UNIT = 0.02
+
+# ضریب سوخت بر اساس رده‌ی فاصله (کلیدها هماهنگ با geo_service)
+DISTANCE_FUEL_MULTIPLIER: dict[str, float] = {
+    "neighbor": 1.0,
+    "regional": 1.6,
+    "continental": 2.4,
+    "intercontinental": 3.5,
+}
+
+# ضریب کاهش قدرت مؤثر بر اساس فاصله (هرچه دورتر، اثربخشی کمتر)
+DISTANCE_POWER_MULTIPLIER: dict[str, float] = {
+    "neighbor": 1.0,
+    "regional": 0.88,
+    "continental": 0.72,
+    "intercontinental": 0.55,
+}
+
+# ---------- برد عملیاتی (کیلومتر) ----------
+# حداکثر فاصله‌ای که هر نوع حمله بدون پایگاه نزدیک می‌تواند طی کند.
+# داشتن پایگاه نظامی در کشور همسایه‌ی هدف این محدودیت را برمی‌دارد.
+OPERATION_MAX_RANGE_KM: dict[OperationType, float] = {
+    OperationType.GROUND_ASSAULT: 1500.0,   # نیروی زمینی فقط نزدیک
+    OperationType.AIR_STRIKE: 6000.0,       # با سوخت‌گیری هوایی
+    OperationType.NAVAL_STRIKE: 12000.0,    # ناوگان دریایی برد بلند
+    OperationType.SABOTAGE: 20000.0,        # عوامل نفوذی — بدون محدودیت عملی
+    OperationType.ASSASSINATION: 20000.0,
+    OperationType.INTERCEPTION: 4000.0,
+}
+
+# ---------- پدافند و رهگیری ----------
+AIR_DEFENSE_MAX_INTERCEPT_PCT = 92.0   # سقف درصد رهگیری پدافند (هیچ‌وقت ۱۰۰٪ نیست)
+AIR_DEFENSE_MIN_INTERCEPT_PCT = 3.0    # کف رهگیری (همیشه کمی مقاومت هست)
+# ضریب تبدیل نسبت پدافند/حمله به درصد رهگیری.
+# نسبت در بازه‌ی ۰..۱ است؛ این ضریب آن را به درصد رهگیری می‌نگارد.
+# مقدار ۱۰۵ باعث می‌شود پدافند متعادل (نسبت ۰.۵) حدود ۵۲٪ رهگیری کند
+# و پدافند بسیار قوی (نسبت ۰.۸) به سقف نزدیک شود.
+DEFENSE_RATIO_SCALING = 105.0
+
+# بونوس پدافند در صورت داشتن گشت فعال از همان نوع (درصد اضافه)
+PATROL_DEFENSE_BONUS_PCT = 12.0
+# بونوس پدافند به ازای هر پایگاه نظامی فعال مدافع (درصد، با سقف)
+BASE_DEFENSE_BONUS_PCT = 4.0
+BASE_DEFENSE_BONUS_MAX_PCT = 20.0
+
+# ---------- تلفات ----------
+# درصد تلفات مهاجم از بخش رهگیری‌شده‌ی نیرو
+ATTACKER_LOSS_FROM_INTERCEPT_PCT = 60.0
+# درصد تلفات مدافع از بخش نفوذکرده
+DEFENDER_LOSS_BASE_PCT = 35.0
+# نوسان تصادفی تلفات (±درصد)
+LOSS_RANDOM_VARIANCE_PCT = 15.0
+
+# ---------- تلفات غیرنظامی ----------
+# تلفات غیرنظامی به ازای هر واحد قدرت نفوذکرده در هدف شهری
+CIVILIAN_CASUALTIES_PER_POWER = 8.0
+# ضریب جمعیت (کشور پرجمعیت‌تر تلفات بیشتری می‌دهد)
+CIVILIAN_POPULATION_FACTOR = 0.00000004
+CIVILIAN_CASUALTIES_MAX = 50_000  # سقف تلفات یک عملیات (واقع‌گرایی بازی)
+
+# ---------- اثرات اقتصادی ----------
+# اثر روی مدافع به ازای هر ۱۰٪ خسارت زیرساخت
+DEFENDER_SATISFACTION_PER_10PCT = -1.8
+DEFENDER_STABILITY_PER_10PCT = -1.5
+DEFENDER_INFLATION_PER_10PCT = 0.8
+DEFENDER_BUDGET_LOSS_PER_10PCT = 2_000_000_000.0  # خسارت مالی
+
+# اثر روی خودِ مهاجم (هزینه‌ی جنگ — طبق خواسته‌ی آپدیت)
+ATTACKER_SATISFACTION_PER_OP = -0.8       # افکار عمومی داخلی
+ATTACKER_STABILITY_PER_OP = -0.4
+ATTACKER_INFLATION_PER_OP = 0.5           # هزینه‌ی جنگ تورم‌زاست
+ATTACKER_BUDGET_COST_BASE = 1_500_000_000.0   # هزینه‌ی پایه‌ی عملیات
+ATTACKER_BUDGET_COST_PER_UNIT = 25_000_000.0  # به ازای هر واحد تجهیزات
+
+# اگر عملیات علیه غیرنظامیان باشد، انزوای بین‌المللی سنگین‌تر است
+CIVILIAN_STRIKE_EXTRA_SATISFACTION = -2.5
+CIVILIAN_STRIKE_EXTRA_STABILITY = -1.0
+
+# ---------- شدت عملیات و فازهای خبری ----------
+# شدت (۱ تا ۱۰) از حجم نیرو و خسارت محاسبه می‌شود و تعداد فازهای خبری را تعیین می‌کند.
+# هر ردیف: (سقف شدت، تعداد فاز، فاصله‌ی بین فازها به دقیقه)
+OPERATION_INTENSITY_PHASES: list[tuple[int, int, int]] = [
+    (3, 3, 1),    # شدت ۱–۳ → ۳ فاز، هر ۱ دقیقه (≈۳ دقیقه)
+    (6, 5, 1),    # شدت ۴–۶ → ۵ فاز (≈۵ دقیقه)
+    (8, 7, 2),    # شدت ۷–۸ → ۷ فاز، هر ۲ دقیقه (≈۱۴ دقیقه)
+    (10, 9, 2),   # شدت ۹–۱۰ → ۹ فاز (≈۱۸ دقیقه)
+]
+
+# ---------- فیلتر کانال خبری ----------
+# خبر فقط وقتی به کانال نظامی می‌رود که یکی از طرفین VIP باشد و شدت از این حد بگذرد.
+NEWS_CHANNEL_MIN_INTENSITY = 5
+# اگر هیچ‌کدام VIP نباشند، شدت باید از این حد بالاتر باشد تا به کانال برود
+NEWS_CHANNEL_NONVIP_MIN_INTENSITY = 9
+
+# ---------- گشت (Patrol) ----------
+PATROL_DURATION_HOURS = 12                # مدت هر گشت
+PATROL_MAX_ACTIVE_PER_COUNTRY = 3         # حداکثر گشت فعال هم‌زمان
+PATROL_FUEL_COST = 0.8                    # میلیون بشکه به ازای هر گشت
+PATROL_DETECT_SABOTAGE_PCT = 45.0         # شانس کشف خرابکاری علیه خود
+PATROL_DETECT_ASSASSINATION_PCT = 35.0    # شانس خنثی‌سازی ترور
+PATROL_INTERCEPT_BONUS_PCT = 25.0         # بونوس شانس رهگیری محموله
+
+# ---------- رزمایش (Drill) ----------
+DRILL_DURATION_HOURS = 6                  # مدت اجرای رزمایش
+DRILL_READINESS_GAIN_SOLO = 8.0           # افزایش آمادگی رزمی (رزمایش تکی)
+DRILL_READINESS_GAIN_JOINT = 14.0         # افزایش آمادگی (رزمایش مشترک)
+DRILL_READINESS_MAX = 40.0                # سقف آمادگی رزمی
+DRILL_READINESS_DECAY_PER_DAY = 3.0       # افت روزانه‌ی آمادگی
+DRILL_COOLDOWN_HOURS = 12                 # فاصله‌ی بین دو رزمایش
+DRILL_FUEL_COST = 1.5                     # میلیون بشکه
+DRILL_BUDGET_COST = 3_000_000_000.0       # هزینه‌ی دلاری رزمایش
+# رزمایش مشترک رضایت عمومی هر دو طرف را کمی بالا می‌برد (نمایش قدرت)
+DRILL_SATISFACTION_GAIN = 1.5
+
+# ---------- ترور (Assassination) ----------
+ASSASSINATION_BASE_SUCCESS_PCT = 35.0        # شانس پایه علیه فرمانده NPC
+ASSASSINATION_PRESIDENT_SUCCESS_PCT = 8.0    # شانس پایه علیه رئیس‌جمهور بازیکن
+ASSASSINATION_EXPOSURE_ON_FAIL_PCT = 70.0    # شانس افشا در صورت شکست
+ASSASSINATION_EXPOSURE_ON_SUCCESS_PCT = 25.0 # شانس افشا حتی در صورت موفقیت
+COMMANDER_REPLACEMENT_HOURS = 48             # زمان انتصاب جانشین فرمانده
+LEADERSHIP_CRISIS_HOURS = 6                  # مدت «بحران رهبری» پس از ترور رئیس‌جمهور
+LEADERSHIP_CRISIS_STABILITY_HIT = -20.0      # افت ثبات در بحران رهبری
+ASSASSINATION_FAIL_DIPLOMATIC_HIT = -5.0     # افت رضایت مهاجم در صورت افشای شکست
+
+# بونوس هر فرمانده به شاخه‌ی تخصصی خودش (درصد افزایش قدرت)
+COMMANDER_BONUS_PCT: dict[CommanderRole, float] = {
+    CommanderRole.GROUND: 10.0,
+    CommanderRole.AIR: 10.0,
+    CommanderRole.NAVAL: 10.0,
+    CommanderRole.INTELLIGENCE: 8.0,   # بونوس روی عملیات مخفیانه
+    CommanderRole.NUCLEAR: 0.0,        # اثرش روی سرعت برنامه‌ی هسته‌ای است
+}
+
+# تعداد فرماندهان هر کشور هنگام seed
+COMMANDERS_PER_COUNTRY_MIN = 3
+COMMANDERS_PER_COUNTRY_MAX = 5
+
+# ---------- رهگیری محموله (Interception) ----------
+INTERCEPTION_BASE_SUCCESS_PCT = 40.0       # شانس پایه‌ی رهگیری موفق
+INTERCEPTION_SEIZE_PCT = 55.0              # در صورت موفقیت: شانس مصادره (وگرنه نابودی)
+INTERCEPTION_DIPLOMATIC_HIT = -4.0         # افت رضایت رهگیرنده (بحران دیپلماتیک)
+INTERCEPTION_FAIL_SATISFACTION_HIT = -2.0  # افت رضایت در صورت شکست
+
+# ---------- آمادگی رزمی ----------
+# ضریب تبدیل آمادگی رزمی به افزایش قدرت (readiness=40 → +۲۰٪ قدرت)
+READINESS_TO_POWER_FACTOR = 0.5
+
+# ---------- بازدارندگی هسته‌ای ----------
+NUCLEAR_DETERRENCE_MAX_PCT = 30.0  # سقف کاهش تلفات مدافع دارای زرادخانه
+
+# ---------- ضریب آسیب‌پذیری هر نوع هدف ----------
+# هرچه عدد بالاتر، آن هدف در برابر حمله آسیب‌پذیرتر است (ضریب خسارت زیرساخت).
+TARGET_VULNERABILITY: dict[TargetType, float] = {
+    TargetType.MILITARY_BASE: 0.8,     # سخت‌تر — مقاوم‌سازی‌شده
+    TargetType.CITY: 1.3,              # نرم‌ترین هدف
+    TargetType.OIL_PLATFORM: 1.4,      # بسیار آسیب‌پذیر و پرارزش
+    TargetType.FACTORY: 1.1,
+    TargetType.NUCLEAR_SITE: 0.5,      # زیرزمینی/مقاوم — سخت‌ترین هدف
+    TargetType.AIRPORT: 1.2,
+    TargetType.PORT: 1.2,
+    TargetType.DEPLOYED_FORCE: 1.0,
+    TargetType.SHIPMENT: 1.5,          # بی‌دفاع در مسیر
+}
+
+# اهدافی که فقط با نوع حمله‌ی مشخصی قابل هدف‌گیری‌اند (بقیه: هر نوع حمله)
+TARGET_ALLOWED_OPERATIONS: dict[TargetType, frozenset[OperationType]] = {
+    TargetType.PORT: frozenset({
+        OperationType.NAVAL_STRIKE, OperationType.AIR_STRIKE, OperationType.SABOTAGE,
+    }),
+    TargetType.SHIPMENT: frozenset({OperationType.INTERCEPTION}),
+    TargetType.NUCLEAR_SITE: frozenset({
+        OperationType.AIR_STRIKE, OperationType.SABOTAGE,
+    }),
+}
+
+# ---------- هزینه‌ی سوخت هر نوع گشت (میلیون بشکه در هر دوره) ----------
+PATROL_FUEL_BY_TYPE: dict[PatrolType, float] = {
+    PatrolType.AIR: 1.2,      # گشت هوایی پرهزینه‌ترین
+    PatrolType.GROUND: 0.5,
+    PatrolType.NAVAL: 1.0,
+}
+
+# نگاشت نوع گشت به branchهای تجهیزات لازم (هماهنگ با countries.json)
+PATROL_REQUIRED_BRANCHES: dict[PatrolType, frozenset[str]] = {
+    PatrolType.AIR: frozenset({"نیروی هوایی", "سامانه‌های حمله هوایی"}),
+    PatrolType.GROUND: frozenset({"نیروی زمینی", "خودروهای زمینی", "سامانه‌های دفاعی"}),
+    PatrolType.NAVAL: frozenset({"نیروی دریایی"}),
+}

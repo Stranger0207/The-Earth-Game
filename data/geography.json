@@ -1,0 +1,221 @@
+{
+  "_comment": "لایه‌ی جغرافیای بازی (v1.10.6) — همسایگان زمینی، دسترسی دریایی و مختصات پایتخت هر کشور. منبع: مرزهای واقعی ۲۰۲۶. فقط کشورهای داخل بازی به‌عنوان همسایه فهرست می‌شوند.",
+  "countries": {
+    "China": {
+      "continent": "Asia",
+      "coords": [39.9, 116.4],
+      "neighbors": ["Russia", "India", "NorthKorea", "Pakistan"],
+      "seas": ["pacific", "east_china_sea", "south_china_sea"]
+    },
+    "Japan": {
+      "continent": "Asia",
+      "coords": [35.7, 139.7],
+      "neighbors": [],
+      "seas": ["pacific", "east_china_sea", "sea_of_japan"]
+    },
+    "SouthKorea": {
+      "continent": "Asia",
+      "coords": [37.6, 127.0],
+      "neighbors": ["NorthKorea"],
+      "seas": ["pacific", "east_china_sea", "sea_of_japan"]
+    },
+    "NorthKorea": {
+      "continent": "Asia",
+      "coords": [39.0, 125.8],
+      "neighbors": ["China", "Russia", "SouthKorea"],
+      "seas": ["sea_of_japan", "east_china_sea"]
+    },
+    "Australia": {
+      "continent": "Oceania",
+      "coords": [-35.3, 149.1],
+      "neighbors": [],
+      "seas": ["pacific", "indian_ocean"]
+    },
+    "India": {
+      "continent": "Asia",
+      "coords": [28.6, 77.2],
+      "neighbors": ["China", "Pakistan"],
+      "seas": ["indian_ocean", "arabian_sea", "bay_of_bengal"]
+    },
+    "Iran": {
+      "continent": "Asia",
+      "coords": [35.7, 51.4],
+      "neighbors": ["Iraq", "Turkey", "Pakistan", "Azerbaijan"],
+      "seas": ["persian_gulf", "gulf_of_oman", "caspian_sea", "arabian_sea"]
+    },
+    "Pakistan": {
+      "continent": "Asia",
+      "coords": [33.7, 73.1],
+      "neighbors": ["India", "Iran", "China"],
+      "seas": ["arabian_sea", "indian_ocean"]
+    },
+    "Oman": {
+      "continent": "Asia",
+      "coords": [23.6, 58.5],
+      "neighbors": ["UAE", "SaudiArabia", "Yemen"],
+      "seas": ["gulf_of_oman", "arabian_sea", "indian_ocean"]
+    },
+    "SaudiArabia": {
+      "continent": "Asia",
+      "coords": [24.7, 46.7],
+      "neighbors": ["Iraq", "Yemen", "Oman", "UAE", "Qatar"],
+      "seas": ["persian_gulf", "red_sea", "arabian_sea"]
+    },
+    "Azerbaijan": {
+      "continent": "Asia",
+      "coords": [40.4, 49.9],
+      "neighbors": ["Iran", "Russia", "Turkey"],
+      "seas": ["caspian_sea"]
+    },
+    "Qatar": {
+      "continent": "Asia",
+      "coords": [25.3, 51.5],
+      "neighbors": ["SaudiArabia"],
+      "seas": ["persian_gulf"]
+    },
+    "UAE": {
+      "continent": "Asia",
+      "coords": [24.5, 54.4],
+      "neighbors": ["SaudiArabia", "Oman"],
+      "seas": ["persian_gulf", "gulf_of_oman"]
+    },
+    "Syria": {
+      "continent": "Asia",
+      "coords": [33.5, 36.3],
+      "neighbors": ["Turkey", "Iraq", "Israel"],
+      "seas": ["mediterranean"]
+    },
+    "Iraq": {
+      "continent": "Asia",
+      "coords": [33.3, 44.4],
+      "neighbors": ["Iran", "Turkey", "Syria", "SaudiArabia"],
+      "seas": ["persian_gulf"]
+    },
+    "Egypt": {
+      "continent": "Africa",
+      "coords": [30.0, 31.2],
+      "neighbors": ["Israel"],
+      "seas": ["mediterranean", "red_sea"]
+    },
+    "Yemen": {
+      "continent": "Asia",
+      "coords": [15.4, 44.2],
+      "neighbors": ["SaudiArabia", "Oman"],
+      "seas": ["red_sea", "arabian_sea", "indian_ocean"]
+    },
+    "Russia": {
+      "continent": "Europe",
+      "coords": [55.8, 37.6],
+      "neighbors": ["China", "NorthKorea", "Ukraine", "Poland", "Azerbaijan"],
+      "seas": ["arctic", "baltic_sea", "black_sea", "caspian_sea", "pacific", "sea_of_japan"]
+    },
+    "Britain": {
+      "continent": "Europe",
+      "coords": [51.5, -0.1],
+      "neighbors": [],
+      "seas": ["atlantic", "north_sea"]
+    },
+    "France": {
+      "continent": "Europe",
+      "coords": [48.9, 2.4],
+      "neighbors": ["Germany", "Italy", "Spain", "Switzerland"],
+      "seas": ["atlantic", "mediterranean", "north_sea"]
+    },
+    "Germany": {
+      "continent": "Europe",
+      "coords": [52.5, 13.4],
+      "neighbors": ["France", "Poland", "Switzerland"],
+      "seas": ["north_sea", "baltic_sea"]
+    },
+    "Israel": {
+      "continent": "Asia",
+      "coords": [31.8, 35.2],
+      "neighbors": ["Egypt", "Syria"],
+      "seas": ["mediterranean", "red_sea"]
+    },
+    "Turkey": {
+      "continent": "Europe",
+      "coords": [39.9, 32.9],
+      "neighbors": ["Iran", "Iraq", "Syria", "Greece", "Azerbaijan"],
+      "seas": ["mediterranean", "black_sea"]
+    },
+    "Italy": {
+      "continent": "Europe",
+      "coords": [41.9, 12.5],
+      "neighbors": ["France", "Switzerland"],
+      "seas": ["mediterranean"]
+    },
+    "Spain": {
+      "continent": "Europe",
+      "coords": [40.4, -3.7],
+      "neighbors": ["France"],
+      "seas": ["atlantic", "mediterranean"]
+    },
+    "Poland": {
+      "continent": "Europe",
+      "coords": [52.2, 21.0],
+      "neighbors": ["Germany", "Ukraine", "Russia"],
+      "seas": ["baltic_sea"]
+    },
+    "Ukraine": {
+      "continent": "Europe",
+      "coords": [50.5, 30.5],
+      "neighbors": ["Russia", "Poland"],
+      "seas": ["black_sea"]
+    },
+    "Sweden": {
+      "continent": "Europe",
+      "coords": [59.3, 18.1],
+      "neighbors": [],
+      "seas": ["baltic_sea", "north_sea"]
+    },
+    "Switzerland": {
+      "continent": "Europe",
+      "coords": [46.9, 7.4],
+      "neighbors": ["France", "Germany", "Italy"],
+      "seas": []
+    },
+    "Greece": {
+      "continent": "Europe",
+      "coords": [38.0, 23.7],
+      "neighbors": ["Turkey"],
+      "seas": ["mediterranean"]
+    },
+    "USA": {
+      "continent": "Americas",
+      "coords": [38.9, -77.0],
+      "neighbors": ["Canada", "Mexico"],
+      "seas": ["atlantic", "pacific", "gulf_of_mexico", "arctic"]
+    },
+    "Brazil": {
+      "continent": "Americas",
+      "coords": [-15.8, -47.9],
+      "neighbors": ["Argentina", "Colombia"],
+      "seas": ["atlantic"]
+    },
+    "Mexico": {
+      "continent": "Americas",
+      "coords": [19.4, -99.1],
+      "neighbors": ["USA"],
+      "seas": ["pacific", "gulf_of_mexico", "atlantic"]
+    },
+    "Canada": {
+      "continent": "Americas",
+      "coords": [45.4, -75.7],
+      "neighbors": ["USA"],
+      "seas": ["atlantic", "pacific", "arctic"]
+    },
+    "Argentina": {
+      "continent": "Americas",
+      "coords": [-34.6, -58.4],
+      "neighbors": ["Brazil"],
+      "seas": ["atlantic"]
+    },
+    "Colombia": {
+      "continent": "Americas",
+      "coords": [4.7, -74.1],
+      "neighbors": ["Brazil"],
+      "seas": ["atlantic", "pacific"]
+    }
+  }
+}

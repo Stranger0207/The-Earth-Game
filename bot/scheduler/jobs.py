@@ -788,10 +788,139 @@ async def process_protests(bot: Bot) -> None:
             pass
 
 
-async def process_battle_phases_job(bot: Bot) -> None:
-    from ..services import battle_service
+async def process_operations(bot: Bot) -> None:
+    """فازهای خبری عملیات نظامی را پیش می‌برد (v1.10.6)."""
+    from ..services import operation_phases
+
     async with async_session_factory() as session:
-        await battle_service.process_battle_phases(session, bot)
+        await operation_phases.process_due_phases(session, bot)
+
+
+async def process_patrols(bot: Bot) -> None:
+    """گشت‌های سررسیدشده را می‌بندد و به مالک گزارش می‌دهد (v1.10.6)."""
+    from ..database.repositories import countries as countries_repo
+    from ..database.repositories import patrols as patrol_repo
+    from ..enums import PATROL_FA, PatrolType
+
+    pings: list[tuple[int, str]] = []
+
+    async with async_session_factory() as session:
+        for patrol in await patrol_repo.list_expired(session):
+            patrol.is_active = False
+            country = await countries_repo.get_country(session, patrol.country_id)
+            if country and country.owner_user_id:
+                try:
+                    ptype_fa = PATROL_FA[PatrolType(patrol.patrol_type)]
+                except (ValueError, KeyError):
+                    ptype_fa = patrol.patrol_type
+                detections = (
+                    f"\n🔍 موارد کشف‌شده: {fa_number(patrol.detections)}"
+                    if patrol.detections
+                    else ""
+                )
+                pings.append((
+                    country.owner_user_id,
+                    f"🛩 <b>پایان گشت</b>\n"
+                    f"نوع: {ptype_fa}\n"
+                    f"منطقه: {patrol.area or '—'}{detections}\n\n"
+                    "<i>برای حفظ آمادگی دفاعی، گشت جدیدی آغاز کنید.</i>",
+                ))
+        await session.commit()
+
+    for owner_id, text in pings:
+        try:
+            await bot.send_message(owner_id, text)
+        except Exception:  # noqa: BLE001
+            pass
+
+
+async def process_drills(bot: Bot) -> None:
+    """رزمایش‌های تمام‌شده را نهایی و آمادگی رزمی را اعمال می‌کند (v1.10.6)."""
+    from ..database.repositories import countries as countries_repo
+    from ..database.repositories import drills as drill_repo
+    from ..services import drill_service
+
+    pings: list[tuple[int, str]] = []
+
+    async with async_session_factory() as session:
+        for drill in await drill_repo.list_due(session):
+            # رزمایش مشترکِ پذیرفته‌نشده اجرا نمی‌شود
+            if drill.partner_country_id and not drill.partner_accepted:
+                continue
+            try:
+                result = await drill_service.complete_drill(session, drill)
+            except Exception as exc:  # noqa: BLE001
+                logger.exception("Drill completion failed (id=%s): %s", drill.id, exc)
+                continue
+
+            for country_id, gain_key in (
+                (drill.country_id, "country_gain"),
+                (drill.partner_country_id, "partner_gain"),
+            ):
+                if not country_id:
+                    continue
+                gain = result.get(gain_key, 0.0)
+                country = await countries_repo.get_country(session, country_id)
+                if country and country.owner_user_id:
+                    pings.append((
+                        country.owner_user_id,
+                        f"🎪 <b>رزمایش «{drill.title}» پایان یافت</b>\n"
+                        f"🎯 آمادگی رزمی: +{fa_number(gain, 1)}\n"
+                        f"📊 آمادگی فعلی: {fa_number(country.readiness, 1)}\n\n"
+                        "<i>آمادگی رزمی مستقیماً قدرت نیروهای شما را در نبرد بالا می‌برد.</i>",
+                    ))
+        await session.commit()
+
+    for owner_id, text in pings:
+        try:
+            await bot.send_message(owner_id, text)
+        except Exception:  # noqa: BLE001
+            pass
+
+
+async def process_readiness_decay(bot: Bot) -> None:
+    """افت طبیعی روزانه‌ی آمادگی رزمی کشورها (v1.10.6)."""
+    from sqlalchemy import select
+
+    from ..database.models import Country
+    from ..services import drill_service
+
+    async with async_session_factory() as session:
+        result = await session.execute(
+            select(Country).where(Country.is_claimed == True)  # noqa: E712
+        )
+        for country in result.scalars().all():
+            try:
+                drill_service.decay_readiness(country)
+            except Exception as exc:  # noqa: BLE001
+                logger.debug("readiness decay failed for %s: %s", country.id, exc)
+        await session.commit()
+
+
+async def process_commander_replacements(bot: Bot) -> None:
+    """انتصاب جانشین فرماندهان ترورشده (v1.10.6)."""
+    from ..database.repositories import countries as countries_repo
+    from ..services import assassination_service
+
+    pings: list[tuple[int, str]] = []
+
+    async with async_session_factory() as session:
+        restored = await assassination_service.restore_due_commanders(session)
+        for country_id, name in restored:
+            country = await countries_repo.get_country(session, country_id)
+            if country and country.owner_user_id:
+                pings.append((
+                    country.owner_user_id,
+                    f"🎖 <b>انتصاب جانشین</b>\n"
+                    f"{name} به فرماندهی منصوب شد و بونوس شاخه‌ی مربوطه بازگشت.",
+                ))
+        await session.commit()
+
+    for owner_id, text in pings:
+        try:
+            await bot.send_message(owner_id, text)
+        except Exception:  # noqa: BLE001
+            pass
 
 
 async def process_nuclear(bot: Bot) -> None:
@@ -1094,12 +1223,17 @@ async def _tick(bot: Bot) -> None:
         ("process_military_factories", lambda: process_military_factories(bot)),
         ("process_military_shipments", lambda: process_military_shipments(bot)),
         ("process_attacks", lambda: process_attacks(bot)),
+        # --- سیستم جدید عملیات نظامی (v1.10.6) ---
+        ("process_operations", lambda: process_operations(bot)),
+        ("process_patrols", lambda: process_patrols(bot)),
+        ("process_drills", lambda: process_drills(bot)),
+        ("process_readiness_decay", lambda: process_readiness_decay(bot)),
+        ("process_commander_replacements", lambda: process_commander_replacements(bot)),
         ("process_meetings", lambda: process_meetings(bot)),
         ("process_group_meetings", lambda: process_group_meetings(bot)),
         ("process_calls", lambda: process_calls()),
         ("process_investments", lambda: process_investments(bot)),
         ("process_satellites", lambda: process_satellites()),
-        ("process_battle_phases", lambda: process_battle_phases_job(bot)),
         ("process_nuclear", lambda: process_nuclear(bot)),
         ("process_taxes", lambda: process_taxes(bot)),
         ("process_protests", lambda: process_protests(bot)),

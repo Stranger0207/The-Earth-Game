@@ -12,7 +12,6 @@ from ..database.repositories import reserves as reserves_repo
 from ..keyboards.diplomacy import diplomacy_menu_kb
 from ..keyboards.economy import economy_menu_kb
 from ..keyboards.menu import main_menu_kb
-from ..keyboards.military import military_menu_kb
 from ..utils.formatting import render_economy_panel
 from ..utils.screens import safe_edit, show_menu
 from ..utils.ui import header
@@ -48,10 +47,8 @@ async def cb_diplomacy(call: CallbackQuery) -> None:
     await show_menu(call, header("بخش دیپلماسی", "🤝"), diplomacy_menu_kb(), image_key="diplomacy")
 
 
-@router.callback_query(F.data == "menu:military")
-async def cb_military(call: CallbackQuery) -> None:
-    await call.answer()
-    await show_menu(call, header("بخش نظامی", "⚔️"), military_menu_kb(), image_key="military")
+# توجه (v1.10.6): «menu:military» اکنون در handlers/command_center.py مدیریت می‌شود
+# (ستاد فرماندهی کل). هندلر قدیمی اینجا حذف شد تا تضاد ثبت روتر پیش نیاید.
 
 
 @router.callback_query(F.data == "menu:status")

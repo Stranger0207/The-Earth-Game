@@ -8,9 +8,11 @@ from .attack import Attack
 from .battle import Battle, WarDeclaration
 from .bot_state import BotState
 from .claim import ClaimRequest
+from .commander import Commander
 from .cooldown import Cooldown
 from .country import Country
 from .deployment import Deployment
+from .drill import Drill
 from .diplomacy import (
     Contract,
     GroupMeeting,
@@ -30,6 +32,7 @@ from .military import MilitaryAsset
 from .military_base import BaseEquipment, MilitaryBase
 from .military_factory import MilitaryFactory
 from .military_sale import MilitarySale
+from .news_fingerprint import NewsFingerprint
 from .nuclear import (
     NuclearFacility,
     NuclearInspection,
@@ -38,6 +41,8 @@ from .nuclear import (
     NuclearTest,
     NuclearWarhead,
 )
+from .operation import Operation
+from .patrol import Patrol
 from .reserves import Reserve
 from .satellite import Satellite
 from .tariff import TariffRate
@@ -52,10 +57,12 @@ __all__ = [
     "Battle",
     "BotState",
     "ClaimRequest",
+    "Commander",
     "Contract",
     "Cooldown",
     "Country",
     "Deployment",
+    "Drill",
     "Facility",
     "Investment",
     "JointBuildRequest",
@@ -68,12 +75,15 @@ __all__ = [
     "MilitaryBase",
     "MilitaryFactory",
     "MilitarySale",
+    "NewsFingerprint",
     "NuclearFacility",
     "NuclearInspection",
     "NuclearProgram",
     "NuclearTech",
     "NuclearTest",
     "NuclearWarhead",
+    "Operation",
+    "Patrol",
     "PhoneCall",
     "PhoneCallMessage",
     "Protest",

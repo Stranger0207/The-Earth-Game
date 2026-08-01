@@ -12,11 +12,14 @@
 from __future__ import annotations
 
 import json
+import logging
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from sqlalchemy import delete, update
 from sqlalchemy.ext.asyncio import AsyncSession
+
+logger = logging.getLogger(__name__)
 
 from ..constants import DEFAULT_RESERVE_YIELD_HOURS
 from ..database.models import (
@@ -40,6 +43,11 @@ from ..database.models import (
     Alliance,
     AllianceMember,
     Battle,
+    Commander,
+    Drill,
+    NewsFingerprint,
+    Operation,
+    Patrol,
     WarDeclaration,
     Deployment,
     Speech,
@@ -113,6 +121,12 @@ async def reset_season(session: AsyncSession) -> dict[str, int]:
     await session.execute(delete(Alliance))
     await session.execute(delete(Battle))
     await session.execute(delete(WarDeclaration))
+    # --- سیستم عملیات نظامی (v1.10.6) ---
+    await session.execute(delete(Operation))
+    await session.execute(delete(Patrol))
+    await session.execute(delete(Drill))
+    await session.execute(delete(Commander))
+    await session.execute(delete(NewsFingerprint))
     await session.execute(delete(Deployment))
     await session.execute(delete(Speech))
     await session.execute(delete(Law))
@@ -166,6 +180,11 @@ async def reset_season(session: AsyncSession) -> dict[str, int]:
         country.last_tax_collected_at = None
         country.last_protest_check_at = None
 
+        # ریست فیلدهای نظامی (v1.10.6)
+        country.readiness = 0.0
+        country.last_readiness_decay_at = None
+        country.leadership_crisis_until = None
+
         # بازنشانی ذخایر این کشور (حذف و درج دوباره از روی داده‌ی اولیه)
         await session.execute(
             delete(Reserve).where(Reserve.country_id == country.id)
@@ -202,4 +221,16 @@ async def reset_season(session: AsyncSession) -> dict[str, int]:
         reset_count += 1
 
     await session.commit()
-    return {"countries_reset": reset_count}
+
+    # --- بازسازی فرماندهان NPC (v1.10.6) ---
+    # بدون فرمانده، سیستم ترور هدفی ندارد و بونوس شاخه‌ها از بین می‌رود.
+    commanders_created = 0
+    try:
+        from scripts.seed_commanders import seed_commanders
+
+        stats = await seed_commanders(force=True)
+        commanders_created = stats.get("created", 0)
+    except Exception as exc:  # noqa: BLE001 — خطای seed نباید ریست فصل را بشکند
+        logger.warning("Commander re-seed after season reset failed: %s", exc)
+
+    return {"countries_reset": reset_count, "commanders_created": commanders_created}

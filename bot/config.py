@@ -35,6 +35,17 @@ class Settings(BaseSettings):
     ai_model: str = "openai/gpt-oss-120b"
     ai_max_tokens: int = 1500
 
+    # --- Google Gemini (تولید عکس اخبار — v1.10.6) ---
+    # کلید را از https://aistudio.google.com/apikey بگیرید و در .env بگذارید.
+    # اگر خالی بماند، ربات خودکار از بانک عکس محلی استفاده می‌کند و هیچ خطایی نمی‌دهد.
+    gemini_api_key: str = ""
+    gemini_image_model: str = "gemini-3.1-flash-image"
+    gemini_base_url: str = "https://generativelanguage.googleapis.com/v1beta"
+    # سقف تولید عکس در هر ۲۴ ساعت (کنترل هزینه)
+    gemini_image_daily_limit: int = 50
+    # مهلت هر درخواست تولید عکس (ثانیه)
+    gemini_timeout_seconds: int = 60
+
     # --- نقش‌ها ---
     owner_ids: list[int] = []
     admin_ids: list[int] = []

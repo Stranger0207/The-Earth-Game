@@ -18,7 +18,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..constants import ESCORT_MAX_UNITS
+from ..constants import ESCORT_MAX_UNITS, INTERCEPTOR_MAX_UNITS
 from ..database.models import User
 from ..database.repositories import countries as countries_repo
 from ..database.repositories import trade as trade_repo
@@ -46,6 +46,17 @@ def _summary(selected: dict[str, int]) -> str:
     lines = [f"  ✅ {name} — {fa_number(count)}" for name, count in selected.items()]
     lines.append(f"\n📦 مجموع: <b>{fa_number(sum(selected.values()))}</b> واحد")
     return "\n".join(lines)
+
+
+def _depleted_report(result: dict) -> str:
+    """گزارش پدافندهای تخلیه‌شده در پایان عملیات (v1.11.2)."""
+    items = result.get("depleted") or []
+    if not items:
+        return ""
+    lines = "، ".join(
+        f"{fa_number(i['count'])} {i.get('unit', '')} {i['name']}" for i in items[:4]
+    )
+    return f"\n\n🎯 <b>پدافندهای تخلیه‌شده:</b> {lines}"
 
 
 def _build_committed(data: dict) -> list[CommittedAsset]:
@@ -138,9 +149,10 @@ async def cb_intercept_pick(
         sale_id=sale_id, escort_power=escort_power, required_power=needed, selected={}, page=0
     )
 
+    # (v1.11.2) محتویات محموله فاش نمی‌شود؛ رهگیر تا لحظه‌ی توقیف نمی‌داند چه می‌برد
     base = (
         f"🚢 محموله: {seller.flag} {seller.name_fa} ← {buyer.flag} {buyer.name_fa}\n"
-        f"📦 محتوا: {fa_number(sale.amount)} واحد\n"
+        f"📦 محتوا: <i>نامعلوم — بارنامه در اختیار شما نیست</i>\n"
         f"🛡 وضعیت: {interception_service.escort_label(escort_power)}"
     )
 
@@ -181,9 +193,14 @@ async def cb_intercept_pick(
         header("انتخاب نیروی رهگیر", "⚓") + f"\n\n{base}\n"
         f"🛡 محافظان: {escort_text}\n"
         f"{DIVIDER}\n"
-        f"⚔️ حداقل قدرت لازم: <b>{fa_number(needed)}</b>\n\n"
+        f"⚔️ حداقل قدرت لازم: <b>{fa_number(needed)}</b>\n"
+        f"📦 حداکثر نیروی اعزامی: <b>{fa_number(INTERCEPTOR_MAX_UNITS)}</b> واحد\n\n"
         "نیرویی که برای شکستن اسکورت اعزام می‌کنید را انتخاب کنید.\n"
-        "<i>نیروی ناکافی دفع می‌شود و تلفات سنگین می‌دهید.</i>",
+        "<i>نیروی ناکافی دفع می‌شود و تلفات سنگین می‌دهید.</i>\n\n"
+        "⚠️ <b>توجه:</b> تمام سامانه‌های پدافندی که برای رهگیری استفاده کنید "
+        "<b>تخلیه می‌شوند</b> و پس از عملیات به‌طور کامل از تجهیزات کشور شما "
+        "حذف می‌گردند — چه رهگیری موفق شود و چه شکست بخورد. "
+        "<i>جنگنده و شناور فقط تلفات معمول می‌دهند.</i>",
         reply_markup=asset_picker_kb(assets, {}, page=0),
     )
 
@@ -269,6 +286,15 @@ async def msg_intercept_count(message: Message, state: FSMContext) -> None:
     else:
         selected[asset["name"]] = count
 
+    # (v1.11.2) سقف کل نیروی رهگیر
+    total = sum(selected.values())
+    if total > INTERCEPTOR_MAX_UNITS:
+        await message.answer(
+            f"⚠️ مجموع نیروی رهگیر از سقف {fa_number(INTERCEPTOR_MAX_UNITS)} واحد بیشتر شد "
+            f"({fa_number(total)}). تعداد کمتری انتخاب کنید."
+        )
+        return
+
     await state.update_data(selected=selected, pending_index=None)
     await state.set_state(InterceptionForm.selecting_assets)
 
@@ -317,6 +343,16 @@ async def cb_intercept_done(call: CallbackQuery, state: FSMContext) -> None:
             "احتمال دفع شدن و تلفات سنگین بالاست."
         )
 
+    # (v1.11.2) فهرست پدافندهایی که با اجرای عملیات تخلیه می‌شوند
+    depleted, _ = interception_service.split_depleted(committed)
+    depleted_note = ""
+    if depleted:
+        items = "، ".join(f"{a.name} ({fa_number(a.count)})" for a in depleted)
+        depleted_note = (
+            f"\n\n🎯 <b>تخلیه‌ی کامل پس از عملیات:</b> {items}\n"
+            "<i>این سامانه‌ها پس از رهگیری از تجهیزات کشور شما حذف می‌شوند.</i>"
+        )
+
     await state.set_state(InterceptionForm.confirming)
     await safe_edit(
         call,
@@ -326,6 +362,7 @@ async def cb_intercept_done(call: CallbackQuery, state: FSMContext) -> None:
         f"📊 حداقل لازم: {fa_number(needed)}\n"
         f"{DIVIDER}\n"
         + _summary(selected)
+        + depleted_note
         + warning
         + "\n\n<i>رهگیری بحران دیپلماتیک ایجاد می‌کند.</i>",
         reply_markup=confirm_kb("intc_confirm", "op:intercept"),
@@ -373,6 +410,7 @@ async def cb_intercept_confirm(
             f"{result['effect_note']}\n"
             f"{DIVIDER}\n"
             f"💀 تلفات شما: {_losses(result['interceptor_losses'])}"
+            + _depleted_report(result)
         )
     elif result["success"]:
         text = (
@@ -382,11 +420,13 @@ async def cb_intercept_confirm(
             f"💀 تلفات شما: {_losses(result['interceptor_losses'])}\n"
             f"🛡 تلفات اسکورت: {_losses(result['escort_losses'])}\n\n"
             "⚠️ <i>این اقدام روابط شما با هر دو کشور را تیره کرد.</i>"
+            + _depleted_report(result)
         )
     else:
         text = (
             header("رهگیری ناموفق", "❌") + "\n\n"
             f"{result['effect_note']}"
+            + _depleted_report(result)
         )
 
     await safe_edit(call, text, reply_markup=operations_menu_kb())

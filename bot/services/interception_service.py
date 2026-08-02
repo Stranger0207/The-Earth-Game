@@ -9,6 +9,10 @@
 - محموله‌ی اسکورت‌دار: باید نیروی رهگیر **۳۵٪ قوی‌تر** از اسکورت باشد،
   وگرنه اسکورت آن را دفع می‌کند و رهگیر تلفات سنگین می‌دهد.
 
+**تخلیه‌ی پدافند (v1.11.2):** سامانه‌های شاخه‌ی «سامانه‌های دفاعی» که برای
+رهگیری اعزام می‌شوند یک‌بارمصرف‌اند — کل تعداد اعزامی از موجودی حذف می‌شود،
+چه رهگیری موفق شود و چه دفع. جنگنده و ناوچه فقط تلفات معمول می‌دهند.
+
 نتیجه‌ی موفق: مصادره یا نابودی محموله + بحران دیپلماتیک با هر دو طرف.
 """
 
@@ -28,6 +32,7 @@ from ..constants import (
     INTERCEPTION_FAIL_SATISFACTION_HIT,
     INTERCEPTION_SEIZE_PCT,
     INTERCEPTION_UNESCORTED_SUCCESS_PCT,
+    INTERCEPTOR_DEPLETED_BRANCHES,
     INTERCEPTOR_LOSS_PCT,
     INTERCEPTOR_REPULSED_LOSS_PCT,
 )
@@ -175,6 +180,69 @@ async def _apply_losses(
             logger.warning("Failed to apply interception loss: %s", exc)
 
 
+def split_depleted(
+    committed: list[CommittedAsset],
+) -> tuple[list[CommittedAsset], list[CommittedAsset]]:
+    """
+    نیروی رهگیر را به دو گروه می‌شکند (v1.11.2):
+
+    - **تخلیه‌شونده:** سامانه‌های پدافندی که پس از شلیک از بین می‌روند و کل
+      تعداد اعزامی‌شان از موجودی حذف می‌شود.
+    - **بازگشتی:** جنگنده و شناور که فقط سهم تلفات را می‌دهند.
+    """
+    depleted = [a for a in committed if a.branch in INTERCEPTOR_DEPLETED_BRANCHES]
+    reusable = [a for a in committed if a.branch not in INTERCEPTOR_DEPLETED_BRANCHES]
+    return depleted, reusable
+
+
+def _as_items(assets: list[CommittedAsset]) -> list[dict]:
+    """تبدیل تجهیزات اعزامی به فهرست خوانا (برای گزارش و کسر موجودی)."""
+    return [
+        {
+            "name": a.name,
+            "count": a.count,
+            "unit": a.unit,
+            "category": a.category,
+        }
+        for a in assets
+        if a.count > 0
+    ]
+
+
+def _depletion_note(result: dict) -> str:
+    """جملات هشدار تخلیه‌ی پدافند برای متن نتیجه (v1.11.2)."""
+    if not result.get("depleted"):
+        return ""
+    return (
+        "\n🎯 سامانه‌های پدافندی به‌کاررفته تخلیه شدند و از موجودی خارج گردیدند."
+    )
+
+
+async def _charge_interceptor(
+    session: AsyncSession,
+    interceptor_id: int,
+    committed: list[CommittedAsset],
+    loss_pct: float,
+    rng: random.Random,
+    result: dict,
+) -> None:
+    """
+    هزینه‌ی نیروی رهگیر را اعمال می‌کند (v1.11.2).
+
+    پدافندهای اعزامی کامل تخلیه می‌شوند و بقیه‌ی نیرو سهم تلفات را می‌دهد.
+    هر دو گروه در نتیجه ثبت می‌شوند تا در گزارش بازیکن تفکیک شوند.
+    """
+    depleted, reusable = split_depleted(committed)
+
+    losses = _distribute(reusable, loss_pct / 100.0, rng)
+    depleted_items = _as_items(depleted)
+
+    result["interceptor_losses"] = losses
+    result["depleted"] = depleted_items
+
+    await _apply_losses(session, interceptor_id, losses + depleted_items)
+
+
 async def resolve_interception(
     session: AsyncSession,
     interceptor: Country,
@@ -232,6 +300,7 @@ async def resolve_interception(
         "attack_power": attack_power,
         "interceptor_losses": [],
         "escort_losses": [],
+        "depleted": [],  # (v1.11.2) پدافندهای تخلیه‌شده
         "effect_note": "",
     }
 
@@ -250,13 +319,23 @@ async def resolve_interception(
                 0.0,
                 (interceptor.public_satisfaction or 0.0) + INTERCEPTION_FAIL_SATISFACTION_HIT,
             )
+            # پدافندهای اعزامی حتی در صورت شکست هم تخلیه شده‌اند
+            if committed:
+                await _charge_interceptor(
+                    session, interceptor.id, committed, 0.0, rng, result
+                )
             result["effect_note"] = (
                 "❌ محموله از چنگ نیروهای شما گریخت و مسیر خود را ادامه داد."
+                + _depletion_note(result)
             )
             await session.flush()
             return result
 
         result["success"] = True
+        if committed:
+            await _charge_interceptor(
+                session, interceptor.id, committed, 0.0, rng, result
+            )
 
     # ============================================================
     #  مسیر ۲: محموله‌ی اسکورت‌دار — نبرد واقعی
@@ -279,9 +358,9 @@ async def resolve_interception(
         if effective_attack < needed:
             # ---------- اسکورت حمله را دفع کرد ----------
             result["repulsed"] = True
-            loss_ratio = INTERCEPTOR_REPULSED_LOSS_PCT / 100.0
-            result["interceptor_losses"] = _distribute(committed, loss_ratio, rng)
-            await _apply_losses(session, interceptor.id, result["interceptor_losses"])
+            await _charge_interceptor(
+                session, interceptor.id, committed, INTERCEPTOR_REPULSED_LOSS_PCT, rng, result
+            )
 
             interceptor.public_satisfaction = max(
                 0.0,
@@ -293,16 +372,16 @@ async def resolve_interception(
                 f"نیروی شما با قدرت {effective_attack:,.0f} برای شکستن آن کافی نبود "
                 f"(حداقل لازم: {needed:,.0f}).\n"
                 "نیروهای رهگیر تلفات سنگینی دادند."
+                + _depletion_note(result)
             )
             await session.flush()
             return result
 
         # ---------- اسکورت شکسته شد ----------
         result["success"] = True
-        result["interceptor_losses"] = _distribute(
-            committed, INTERCEPTOR_LOSS_PCT / 100.0, rng
+        await _charge_interceptor(
+            session, interceptor.id, committed, INTERCEPTOR_LOSS_PCT, rng, result
         )
-        await _apply_losses(session, interceptor.id, result["interceptor_losses"])
 
         escort_items = [CommittedAsset.from_dict(i) for i in parse_escort(sale)]
         result["escort_losses"] = _distribute(escort_items, ESCORT_LOSS_PCT / 100.0, rng)
@@ -328,6 +407,8 @@ async def resolve_interception(
 
     if result["escort_losses"]:
         result["effect_note"] += "\n🛡 اسکورت محموله در نبرد تلفات داد."
+
+    result["effect_note"] += _depletion_note(result)
 
     # ---------- هزینه‌ی دیپلماتیک ----------
     interceptor.public_satisfaction = max(

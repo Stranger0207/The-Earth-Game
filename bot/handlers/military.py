@@ -584,6 +584,55 @@ async def cb_sell_buyer(call: CallbackQuery, state: FSMContext, session: AsyncSe
         await safe_edit(call,"موجودی شما برای این تعداد کافی نیست.", reply_markup=military_menu_kb())
         return
 
+    # (v1.11.2) سنجش توان فناورانه‌ی خریدار توسط AI.
+    # کشوری که در واقعیت توان نگهداری این قلم را ندارد نمی‌تواند آن را بخرد
+    # (مثلاً F-22 برای هیچ‌کس، یا جنگنده‌ی نسل ۵ برای کشور با ارتش سنتی).
+    # در صورت خطای AI، معامله ادامه می‌یابد تا جریان بازی نشکند.
+    await safe_edit(
+        call,
+        "⏳ <b>در حال بررسی معامله...</b>\n\n"
+        f"کارشناسان در حال ارزیابی توان فناورانه‌ی {buyer.flag} {buyer.name_fa} "
+        f"برای نگهداری «{pick['name']}» هستند.",
+    )
+    verdict = await evaluators.evaluate_arms_export(
+        session,
+        country.id,
+        buyer_id,
+        item_name=pick["name"],
+        category_fa=pick["category"],
+        branch_fa=pick.get("branch", ""),
+        count=int(count),
+    )
+    if verdict and verdict.get("allowed") is False:
+        reason = str(verdict.get("reason") or "").strip() or (
+            "کشور خریدار در دنیای واقعی توان فناورانه‌ی نگهداری و بهره‌برداری "
+            "از این تجهیزات را ندارد."
+        )
+        severity = str(verdict.get("severity") or "capability")
+        title = (
+            "⛔️ <b>این قلم قابل صادرات نیست</b>"
+            if severity == "embargo"
+            else "⛔️ <b>خریدار توان نگهداری این تجهیزات را ندارد</b>"
+        )
+        await safe_edit(
+            call,
+            f"{title}\n\n"
+            f"🪖 تجهیزات: {fa_number(count)} {pick['unit']} {pick['name']}\n"
+            f"🎯 خریدار: {buyer.flag} {buyer.name_fa}\n\n"
+            f"📋 <b>ارزیابی کارشناسی:</b>\n{reason}\n\n"
+            "<i>معامله ثبت نشد. می‌توانید قلم دیگری برای فروش انتخاب کنید.</i>",
+            reply_markup=military_menu_kb(),
+        )
+        await send_log(
+            bot,
+            "⛔️ <b>فروش نظامی رد شد (ارزیابی فناورانه)</b>\n"
+            f"فروشنده: {country.flag} {country.name_fa}\n"
+            f"خریدار: {buyer.flag} {buyer.name_fa}\n"
+            f"تجهیزات: {fa_number(count)} {pick['unit']} {pick['name']}\n"
+            f"دلیل: {reason}",
+        )
+        return
+
     sale = MilitarySale(
         seller_country=country.id,
         buyer_country=buyer_id,

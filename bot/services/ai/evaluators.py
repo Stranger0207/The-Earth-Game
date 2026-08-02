@@ -45,6 +45,33 @@ async def evaluate_attack(
     return await ask_ai_json(prompts.attack_evaluator_prompt(), user_prompt)
 
 
+async def evaluate_arms_export(
+    session: AsyncSession,
+    seller_id: int,
+    buyer_id: int,
+    *,
+    item_name: str,
+    category_fa: str,
+    branch_fa: str,
+    count: int,
+) -> dict:
+    """
+    سنجش توان فناورانه‌ی خریدار برای نگهداری یک قلم تسلیحاتی (v1.11.2).
+
+    خروجی: {"allowed": bool, "reason": str, "severity": str}
+    """
+    seller_ctx = await build_country_context(session, seller_id)
+    buyer_ctx = await build_country_context(session, buyer_id)
+    user_prompt = (
+        f"قلم تسلیحاتی: {item_name}\n"
+        f"شاخه: {branch_fa} | دسته: {category_fa}\n"
+        f"تعداد: {count}\n\n"
+        f"کشور فروشنده:\n{json.dumps(seller_ctx, ensure_ascii=False)}\n\n"
+        f"کشور خریدار:\n{json.dumps(buyer_ctx, ensure_ascii=False)}"
+    )
+    return await ask_ai_json(prompts.arms_export_prompt(), user_prompt)
+
+
 async def estimate_travel_time(
     origin_name: str, destination_name: str
 ) -> dict:

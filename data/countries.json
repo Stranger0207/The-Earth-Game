@@ -10549,6 +10549,811 @@
           "count": 18
         }
       ]
+    },
+    {
+      "name_en": "Norway",
+      "name_fa": "نروژ",
+      "flag": "🇳🇴",
+      "region": "europe",
+      "is_vip": false,
+      "population": 5600000,
+      "economy": {
+        "economic_power": 76,
+        "budget": 250000000000,
+        "growth": "up",
+        "inflation": 2.5,
+        "unemployment": 3.9,
+        "energy_status": "excellent",
+        "foreign_trade": "positive",
+        "govt_debt": 196000000000,
+        "public_satisfaction": 82,
+        "stability": 88
+      },
+      "reserves": {
+        "coal": {
+          "amount": 1500000,
+          "can_extract": true
+        },
+        "aluminum": {
+          "amount": 1400000,
+          "can_extract": true
+        },
+        "iron": {
+          "amount": 3000000,
+          "can_extract": true
+        },
+        "steel": {
+          "amount": 600000,
+          "can_extract": false
+        },
+        "oil": {
+          "amount": 760,
+          "can_extract": true
+        },
+        "gas": {
+          "amount": 14000,
+          "can_extract": true
+        },
+        "gold": {
+          "amount": 0,
+          "can_extract": false
+        },
+        "uranium": {
+          "amount": 8000,
+          "can_extract": false
+        }
+      },
+      "military": [
+        {
+          "branch": "نیروی زمینی",
+          "category": "سرباز آماده نبرد",
+          "name": "پرسنل آماده نبرد",
+          "unit": "نفر",
+          "count": 22500
+        },
+        {
+          "branch": "سامانه‌های دفاعی",
+          "category": "سامانه ضدموشکی",
+          "name": "NASAMS III",
+          "unit": "سامانه",
+          "count": 9
+        },
+        {
+          "branch": "سامانه‌های دفاعی",
+          "category": "سامانه ضدموشکی",
+          "name": "NOMADS (NASAMS متحرک)",
+          "unit": "سامانه",
+          "count": 5
+        },
+        {
+          "branch": "سامانه‌های دفاعی",
+          "category": "توپخانه زمین به زمین",
+          "name": "K9 VIDAR",
+          "unit": "عراده",
+          "count": 25
+        },
+        {
+          "branch": "خودروهای زمینی",
+          "category": "تانک",
+          "name": "Leopard 2A4NO",
+          "unit": "دستگاه",
+          "count": 32
+        },
+        {
+          "branch": "خودروهای زمینی",
+          "category": "تانک",
+          "name": "Leopard 2A8 NOR",
+          "unit": "دستگاه",
+          "count": 2
+        },
+        {
+          "branch": "خودروهای زمینی",
+          "category": "نفربر زرهی",
+          "name": "CV9030N Mk IIIb",
+          "unit": "دستگاه",
+          "count": 66
+        },
+        {
+          "branch": "خودروهای زمینی",
+          "category": "نفربر زرهی",
+          "name": "CV90 RWS STING",
+          "unit": "دستگاه",
+          "count": 25
+        },
+        {
+          "branch": "خودروهای زمینی",
+          "category": "نفربر زرهی",
+          "name": "CV90 RWS Multi BK",
+          "unit": "دستگاه",
+          "count": 22
+        },
+        {
+          "branch": "خودروهای زمینی",
+          "category": "نفربر زرهی",
+          "name": "M113A2/F3",
+          "unit": "دستگاه",
+          "count": 259
+        },
+        {
+          "branch": "نیروی هوایی",
+          "category": "جنگنده",
+          "name": "F-35A Lightning II",
+          "unit": "فروند",
+          "count": 47
+        },
+        {
+          "branch": "نیروی هوایی",
+          "category": "هواپیماهای ترابری",
+          "name": "C-130J-30 Super Hercules",
+          "unit": "فروند",
+          "count": 4
+        },
+        {
+          "branch": "نیروی هوایی",
+          "category": "هواپیماهای پشتیبانی",
+          "name": "P-8A Poseidon",
+          "unit": "فروند",
+          "count": 5
+        },
+        {
+          "branch": "نیروی هوایی",
+          "category": "بالگرد",
+          "name": "AW101 SAR Queen",
+          "unit": "فروند",
+          "count": 14
+        },
+        {
+          "branch": "نیروی هوایی",
+          "category": "بالگرد",
+          "name": "Bell 412 SP/HP",
+          "unit": "فروند",
+          "count": 16
+        },
+        {
+          "branch": "نیروی هوایی",
+          "category": "بالگرد",
+          "name": "MH-60R Seahawk",
+          "unit": "فروند",
+          "count": 3
+        },
+        {
+          "branch": "نیروی دریایی",
+          "category": "ناوشکن",
+          "name": "Fridtjof Nansen-class",
+          "unit": "فروند",
+          "count": 4
+        },
+        {
+          "branch": "نیروی دریایی",
+          "category": "ناوچه",
+          "name": "Skjold-class",
+          "unit": "فروند",
+          "count": 5
+        },
+        {
+          "branch": "نیروی دریایی",
+          "category": "زیر دریایی",
+          "name": "Ula-class",
+          "unit": "فروند",
+          "count": 5
+        },
+        {
+          "branch": "سامانه‌های حمله هوایی",
+          "category": "موشک کروز",
+          "name": "NSM (Naval Strike Missile)",
+          "unit": "موشک",
+          "count": 180
+        },
+        {
+          "branch": "سامانه‌های حمله هوایی",
+          "category": "موشک کروز",
+          "name": "JSM (Joint Strike Missile)",
+          "unit": "موشک",
+          "count": 90
+        }
+      ]
+    },
+    {
+      "name_en": "Afghanistan",
+      "name_fa": "افغانستان",
+      "flag": "🇦🇫",
+      "region": "middle_east",
+      "is_vip": false,
+      "population": 43000000,
+      "economy": {
+        "economic_power": 15,
+        "budget": 3000000000,
+        "growth": "flat",
+        "inflation": 3.0,
+        "unemployment": 14.0,
+        "energy_status": "weak",
+        "foreign_trade": "negative",
+        "govt_debt": 1400000000,
+        "public_satisfaction": 35,
+        "stability": 40
+      },
+      "reserves": {
+        "coal": {
+          "amount": 4000000,
+          "can_extract": true
+        },
+        "aluminum": {
+          "amount": 0,
+          "can_extract": false
+        },
+        "iron": {
+          "amount": 20000000,
+          "can_extract": false
+        },
+        "steel": {
+          "amount": 50000,
+          "can_extract": false
+        },
+        "oil": {
+          "amount": 90,
+          "can_extract": false
+        },
+        "gas": {
+          "amount": 500,
+          "can_extract": true
+        },
+        "gold": {
+          "amount": 30,
+          "can_extract": true
+        },
+        "uranium": {
+          "amount": 1500,
+          "can_extract": false
+        }
+      },
+      "military": [
+        {
+          "branch": "نیروی زمینی",
+          "category": "سرباز آماده نبرد",
+          "name": "پرسنل آماده نبرد",
+          "unit": "نفر",
+          "count": 135000
+        },
+        {
+          "branch": "سامانه‌های دفاعی",
+          "category": "سامانه ضدموشکی",
+          "name": "ZU-23-2",
+          "unit": "سامانه",
+          "count": 16
+        },
+        {
+          "branch": "سامانه‌های دفاعی",
+          "category": "سامانه ضدموشکی",
+          "name": "FIM-92 Stinger (غنیمتی)",
+          "unit": "سامانه",
+          "count": 45
+        },
+        {
+          "branch": "سامانه‌های دفاعی",
+          "category": "توپخانه زمین به زمین",
+          "name": "M-30 122mm",
+          "unit": "عراده",
+          "count": 209
+        },
+        {
+          "branch": "سامانه‌های دفاعی",
+          "category": "توپخانه زمین به زمین",
+          "name": "D-30 122mm",
+          "unit": "عراده",
+          "count": 37
+        },
+        {
+          "branch": "سامانه‌های دفاعی",
+          "category": "توپخانه زمین به زمین",
+          "name": "BM-21 Grad",
+          "unit": "عراده",
+          "count": 3
+        },
+        {
+          "branch": "خودروهای زمینی",
+          "category": "تانک",
+          "name": "T-55",
+          "unit": "دستگاه",
+          "count": 99
+        },
+        {
+          "branch": "خودروهای زمینی",
+          "category": "تانک",
+          "name": "T-62M",
+          "unit": "دستگاه",
+          "count": 90
+        },
+        {
+          "branch": "خودروهای زمینی",
+          "category": "نفربر زرهی",
+          "name": "M1117 Guardian (غنیمتی)",
+          "unit": "دستگاه",
+          "count": 572
+        },
+        {
+          "branch": "خودروهای زمینی",
+          "category": "نفربر زرهی",
+          "name": "BTR-70",
+          "unit": "دستگاه",
+          "count": 324
+        },
+        {
+          "branch": "خودروهای زمینی",
+          "category": "نفربر زرهی",
+          "name": "BMP-1",
+          "unit": "دستگاه",
+          "count": 315
+        },
+        {
+          "branch": "خودروهای زمینی",
+          "category": "نفربر زرهی",
+          "name": "M113A2 (غنیمتی)",
+          "unit": "دستگاه",
+          "count": 156
+        },
+        {
+          "branch": "خودروهای زمینی",
+          "category": "نفربر زرهی",
+          "name": "BMP-2",
+          "unit": "دستگاه",
+          "count": 135
+        },
+        {
+          "branch": "خودروهای زمینی",
+          "category": "نفربر زرهی",
+          "name": "MaxxPro MRAP (غنیمتی)",
+          "unit": "دستگاه",
+          "count": 63
+        },
+        {
+          "branch": "خودروهای زمینی",
+          "category": "نفربر زرهی",
+          "name": "BTR-50",
+          "unit": "دستگاه",
+          "count": 90
+        },
+        {
+          "branch": "نیروی هوایی",
+          "category": "جنگنده",
+          "name": "A-29 Super Tucano",
+          "unit": "فروند",
+          "count": 1
+        },
+        {
+          "branch": "نیروی هوایی",
+          "category": "پهپادها",
+          "name": "ScanEagle (غنیمتی)",
+          "unit": "فروند",
+          "count": 6
+        },
+        {
+          "branch": "نیروی هوایی",
+          "category": "هواپیماهای ترابری",
+          "name": "Cessna 208 Caravan",
+          "unit": "فروند",
+          "count": 5
+        },
+        {
+          "branch": "نیروی هوایی",
+          "category": "هواپیماهای ترابری",
+          "name": "An-32",
+          "unit": "فروند",
+          "count": 2
+        },
+        {
+          "branch": "نیروی هوایی",
+          "category": "هواپیماهای ترابری",
+          "name": "An-26",
+          "unit": "فروند",
+          "count": 1
+        },
+        {
+          "branch": "نیروی هوایی",
+          "category": "بالگرد",
+          "name": "Mi-8/17",
+          "unit": "فروند",
+          "count": 6
+        },
+        {
+          "branch": "نیروی هوایی",
+          "category": "بالگرد",
+          "name": "UH-60 Black Hawk (غنیمتی)",
+          "unit": "فروند",
+          "count": 6
+        },
+        {
+          "branch": "نیروی هوایی",
+          "category": "بالگرد",
+          "name": "MD-530F Defender",
+          "unit": "فروند",
+          "count": 5
+        },
+        {
+          "branch": "نیروی هوایی",
+          "category": "بالگرد",
+          "name": "Mi-24/35",
+          "unit": "فروند",
+          "count": 4
+        }
+      ]
+    },
+    {
+      "name_en": "Taiwan",
+      "name_fa": "تایوان",
+      "flag": "🇹🇼",
+      "region": "east_asia",
+      "is_vip": false,
+      "population": 23400000,
+      "economy": {
+        "economic_power": 79,
+        "budget": 133000000000,
+        "growth": "up",
+        "inflation": 1.7,
+        "unemployment": 3.4,
+        "energy_status": "weak",
+        "foreign_trade": "positive",
+        "govt_debt": 240000000000,
+        "public_satisfaction": 66,
+        "stability": 58
+      },
+      "reserves": {
+        "coal": {
+          "amount": 200000,
+          "can_extract": false
+        },
+        "aluminum": {
+          "amount": 100000,
+          "can_extract": false
+        },
+        "iron": {
+          "amount": 0,
+          "can_extract": false
+        },
+        "steel": {
+          "amount": 6000000,
+          "can_extract": false
+        },
+        "oil": {
+          "amount": 1,
+          "can_extract": false
+        },
+        "gas": {
+          "amount": 6,
+          "can_extract": true
+        },
+        "gold": {
+          "amount": 20,
+          "can_extract": true
+        },
+        "uranium": {
+          "amount": 0,
+          "can_extract": false
+        }
+      },
+      "military": [
+        {
+          "branch": "نیروی زمینی",
+          "category": "سرباز آماده نبرد",
+          "name": "پرسنل آماده نبرد",
+          "unit": "نفر",
+          "count": 152100
+        },
+        {
+          "branch": "سامانه‌های دفاعی",
+          "category": "سامانه ضدموشکی",
+          "name": "Patriot PAC-3",
+          "unit": "سامانه",
+          "count": 8
+        },
+        {
+          "branch": "سامانه‌های دفاعی",
+          "category": "سامانه ضدموشکی",
+          "name": "Tien Kung III (آسمان‌کمان ۳)",
+          "unit": "سامانه",
+          "count": 11
+        },
+        {
+          "branch": "سامانه‌های دفاعی",
+          "category": "سامانه ضدموشکی",
+          "name": "Tien Kung II (آسمان‌کمان ۲)",
+          "unit": "سامانه",
+          "count": 5
+        },
+        {
+          "branch": "سامانه‌های دفاعی",
+          "category": "سامانه ضدموشکی",
+          "name": "M1097 Avenger",
+          "unit": "سامانه",
+          "count": 67
+        },
+        {
+          "branch": "سامانه‌های دفاعی",
+          "category": "سامانه ضدموشکی",
+          "name": "Antelope (بزکوهی)",
+          "unit": "سامانه",
+          "count": 45
+        },
+        {
+          "branch": "سامانه‌های دفاعی",
+          "category": "توپخانه زمین به زمین",
+          "name": "M114 155mm",
+          "unit": "عراده",
+          "count": 306
+        },
+        {
+          "branch": "سامانه‌های دفاعی",
+          "category": "توپخانه زمین به زمین",
+          "name": "M109A2/A5",
+          "unit": "عراده",
+          "count": 198
+        },
+        {
+          "branch": "سامانه‌های دفاعی",
+          "category": "توپخانه زمین به زمین",
+          "name": "M110A2 203mm",
+          "unit": "عراده",
+          "count": 63
+        },
+        {
+          "branch": "سامانه‌های دفاعی",
+          "category": "توپخانه زمین به زمین",
+          "name": "Thunderbolt-2000 MLRS",
+          "unit": "عراده",
+          "count": 45
+        },
+        {
+          "branch": "سامانه‌های دفاعی",
+          "category": "توپخانه زمین به زمین",
+          "name": "M142 HIMARS",
+          "unit": "عراده",
+          "count": 10
+        },
+        {
+          "branch": "خودروهای زمینی",
+          "category": "تانک",
+          "name": "M60A3 TTS",
+          "unit": "دستگاه",
+          "count": 432
+        },
+        {
+          "branch": "خودروهای زمینی",
+          "category": "تانک",
+          "name": "CM-11 Brave Tiger",
+          "unit": "دستگاه",
+          "count": 405
+        },
+        {
+          "branch": "خودروهای زمینی",
+          "category": "تانک",
+          "name": "M1A2T Abrams",
+          "unit": "دستگاه",
+          "count": 97
+        },
+        {
+          "branch": "خودروهای زمینی",
+          "category": "نفربر زرهی",
+          "name": "CM-21",
+          "unit": "دستگاه",
+          "count": 855
+        },
+        {
+          "branch": "خودروهای زمینی",
+          "category": "نفربر زرهی",
+          "name": "CM-32 Clouded Leopard",
+          "unit": "دستگاه",
+          "count": 585
+        },
+        {
+          "branch": "نیروی هوایی",
+          "category": "جنگنده",
+          "name": "F-16V Block 20",
+          "unit": "فروند",
+          "count": 127
+        },
+        {
+          "branch": "نیروی هوایی",
+          "category": "جنگنده",
+          "name": "F-CK-1 Ching-kuo (IDF)",
+          "unit": "فروند",
+          "count": 116
+        },
+        {
+          "branch": "نیروی هوایی",
+          "category": "جنگنده",
+          "name": "Mirage 2000-5",
+          "unit": "فروند",
+          "count": 48
+        },
+        {
+          "branch": "نیروی هوایی",
+          "category": "پهپادها",
+          "name": "ALTIUS 600M-V (پهپاد انتحاری)",
+          "unit": "فروند",
+          "count": 262
+        },
+        {
+          "branch": "نیروی هوایی",
+          "category": "پهپادها",
+          "name": "Chien Hsiang (پهپاد ضدرادار)",
+          "unit": "فروند",
+          "count": 94
+        },
+        {
+          "branch": "نیروی هوایی",
+          "category": "پهپادها",
+          "name": "Cardinal II",
+          "unit": "فروند",
+          "count": 49
+        },
+        {
+          "branch": "نیروی هوایی",
+          "category": "پهپادها",
+          "name": "Albatross I (رعد شاهین)",
+          "unit": "فروند",
+          "count": 29
+        },
+        {
+          "branch": "نیروی هوایی",
+          "category": "پهپادها",
+          "name": "MQ-9B SeaGuardian",
+          "unit": "فروند",
+          "count": 2
+        },
+        {
+          "branch": "نیروی هوایی",
+          "category": "هواپیماهای ترابری",
+          "name": "C-130H Hercules",
+          "unit": "فروند",
+          "count": 17
+        },
+        {
+          "branch": "نیروی هوایی",
+          "category": "هواپیماهای پشتیبانی",
+          "name": "E-2K Hawkeye 2000",
+          "unit": "فروند",
+          "count": 5
+        },
+        {
+          "branch": "نیروی هوایی",
+          "category": "هواپیماهای پشتیبانی",
+          "name": "P-3C Orion",
+          "unit": "فروند",
+          "count": 11
+        },
+        {
+          "branch": "نیروی هوایی",
+          "category": "بالگرد",
+          "name": "AH-1W SuperCobra",
+          "unit": "فروند",
+          "count": 56
+        },
+        {
+          "branch": "نیروی هوایی",
+          "category": "بالگرد",
+          "name": "UH-60M Black Hawk",
+          "unit": "فروند",
+          "count": 40
+        },
+        {
+          "branch": "نیروی هوایی",
+          "category": "بالگرد",
+          "name": "OH-58D Kiowa Warrior",
+          "unit": "فروند",
+          "count": 33
+        },
+        {
+          "branch": "نیروی هوایی",
+          "category": "بالگرد",
+          "name": "AH-64E Apache",
+          "unit": "فروند",
+          "count": 26
+        },
+        {
+          "branch": "نیروی هوایی",
+          "category": "بالگرد",
+          "name": "S-70C(M) Thunderhawk",
+          "unit": "فروند",
+          "count": 15
+        },
+        {
+          "branch": "نیروی هوایی",
+          "category": "بالگرد",
+          "name": "CH-47SD Chinook",
+          "unit": "فروند",
+          "count": 7
+        },
+        {
+          "branch": "نیروی دریایی",
+          "category": "ناوشکن",
+          "name": "Kee Lung-class (Kidd)",
+          "unit": "فروند",
+          "count": 4
+        },
+        {
+          "branch": "نیروی دریایی",
+          "category": "ناوچه",
+          "name": "Cheng Kung-class",
+          "unit": "فروند",
+          "count": 9
+        },
+        {
+          "branch": "نیروی دریایی",
+          "category": "ناوچه",
+          "name": "Tuo Chiang-class",
+          "unit": "فروند",
+          "count": 8
+        },
+        {
+          "branch": "نیروی دریایی",
+          "category": "ناوچه",
+          "name": "Kang Ding-class (La Fayette)",
+          "unit": "فروند",
+          "count": 5
+        },
+        {
+          "branch": "نیروی دریایی",
+          "category": "ناوچه",
+          "name": "Chi Yang-class (Knox)",
+          "unit": "فروند",
+          "count": 5
+        },
+        {
+          "branch": "نیروی دریایی",
+          "category": "ناوچه",
+          "name": "Kuang Hua VI (قایق موشک‌انداز)",
+          "unit": "فروند",
+          "count": 27
+        },
+        {
+          "branch": "نیروی دریایی",
+          "category": "زیر دریایی",
+          "name": "Hai Lung-class",
+          "unit": "فروند",
+          "count": 2
+        },
+        {
+          "branch": "نیروی دریایی",
+          "category": "زیر دریایی",
+          "name": "Hai Shih-class (آموزشی)",
+          "unit": "فروند",
+          "count": 2
+        },
+        {
+          "branch": "سامانه‌های حمله هوایی",
+          "category": "موشک کروز",
+          "name": "Hsiung Feng III (بادپای ۳)",
+          "unit": "موشک",
+          "count": 360
+        },
+        {
+          "branch": "سامانه‌های حمله هوایی",
+          "category": "موشک کروز",
+          "name": "Hsiung Feng II (بادپای ۲)",
+          "unit": "موشک",
+          "count": 315
+        },
+        {
+          "branch": "سامانه‌های حمله هوایی",
+          "category": "موشک کروز",
+          "name": "Hsiung Sheng (بادپیروز)",
+          "unit": "موشک",
+          "count": 180
+        },
+        {
+          "branch": "سامانه‌های حمله هوایی",
+          "category": "موشک کروز",
+          "name": "RGM-84L Harpoon (ساحلی)",
+          "unit": "موشک",
+          "count": 180
+        },
+        {
+          "branch": "سامانه‌های حمله هوایی",
+          "category": "موشک کروز",
+          "name": "Yun Feng (ابربادپا)",
+          "unit": "موشک",
+          "count": 45
+        }
+      ]
     }
   ]
 }

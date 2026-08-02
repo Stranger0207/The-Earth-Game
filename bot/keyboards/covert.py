@@ -99,15 +99,15 @@ def shipments_kb(shipments: list[dict], back_data: str) -> InlineKeyboardMarkup:
     فهرست محموله‌های قابل رهگیری با نمایش وضعیت اسکورت.
 
     shipments: خروجی `interception_service.interceptable_shipments`
+
+    (v1.11.2) محتویات محموله (نوع و مقدار منبع) به رهگیر نشان داده نمی‌شود؛
+    او فقط مبدأ/مقصد و وضعیت اسکورت را می‌بیند و پیش از رهگیری نمی‌داند
+    داخل محموله چیست.
     """
     builder = InlineKeyboardBuilder()
 
     for item in shipments:
-        escort = item["escort_label"]
-        label = (
-            f"{item['seller']} ← {item['buyer']} | "
-            f"{fa_number(item['amount'])} {item['unit']} {item['resource_fa']} | {escort}"
-        )
+        label = f"{item['seller']} ← {item['buyer']} | {item['escort_label']}"
         builder.button(
             text=label[:64],
             callback_data=f"intc_pick:{item['sale_id']}",

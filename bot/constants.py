@@ -687,3 +687,48 @@ PATROL_REQUIRED_BRANCHES: dict[PatrolType, frozenset[str]] = {
     PatrolType.GROUND: frozenset({"نیروی زمینی", "خودروهای زمینی", "سامانه‌های دفاعی"}),
     PatrolType.NAVAL: frozenset({"نیروی دریایی"}),
 }
+
+
+# ============================================================
+#  🕵️ جاسوسی و اسکورت محموله (v1.10.7)
+# ============================================================
+
+# ---------- عملیات جاسوسی (پیش‌نیاز ترور) ----------
+# بدون اطلاعات معتبر، ترور فرمانده اصلاً ممکن نیست.
+ESPIONAGE_BASE_SUCCESS_PCT = 55.0       # شانس پایه‌ی موفقیت جاسوسی
+ESPIONAGE_COST_USD = 800_000_000.0      # هزینه‌ی هر عملیات جاسوسی
+ESPIONAGE_COOLDOWN_HOURS = 6            # فاصله‌ی بین دو جاسوسی
+ESPIONAGE_INTEL_VALID_HOURS = 48        # مدت اعتبار اطلاعات به‌دست‌آمده
+ESPIONAGE_DETECTION_BASE_PCT = 20.0     # شانس پایه‌ی لو رفتن جاسوس
+
+# کیفیت اطلاعات (۰ تا ۱۰۰) از این بازه‌ی تصادفی تعیین می‌شود
+ESPIONAGE_QUALITY_MIN = 35.0
+ESPIONAGE_QUALITY_MAX = 90.0
+# بونوس کیفیت بابت ماهواره‌ی فعال و فرمانده‌ی اطلاعات
+ESPIONAGE_SATELLITE_QUALITY_BONUS = 15.0
+ESPIONAGE_COMMANDER_QUALITY_FACTOR = 1.5   # ضرب در بونوس فرمانده اطلاعات
+
+# حداقل کیفیت اطلاعات برای اینکه ترور مجاز باشد
+ASSASSINATION_MIN_INTEL_QUALITY = 30.0
+# اثر کیفیت اطلاعات روی شانس ترور:
+# شانس = پایه × (INTEL_SUCCESS_FLOOR + کیفیت/۱۰۰ × INTEL_SUCCESS_SCALE)
+INTEL_SUCCESS_FLOOR = 0.4
+INTEL_SUCCESS_SCALE = 0.9
+
+# ---------- اسکورت محموله ----------
+# فروشنده می‌تواند نیروی محافظ همراه محموله بفرستد.
+ESCORT_MAX_UNITS = 40                   # حداکثر واحد اسکورت هر محموله
+ESCORT_FUEL_PER_UNIT = 0.03             # میلیون بشکه به ازای هر واحد
+# رهگیری فقط وقتی موفق می‌شود که قدرت مهاجم از این نسبت از اسکورت بیشتر باشد
+ESCORT_BREAK_RATIO = 1.35               # نیاز به ۳۵٪ برتری قدرت
+# محموله‌ی بدون اسکورت با این شانس پایه رهگیری می‌شود
+INTERCEPTION_UNESCORTED_SUCCESS_PCT = 75.0
+# تلفات دو طرف
+ESCORT_LOSS_PCT = 45.0                  # تلفات اسکورت در صورت شکست
+INTERCEPTOR_LOSS_PCT = 25.0             # تلفات رهگیر حتی در صورت موفقیت
+INTERCEPTOR_REPULSED_LOSS_PCT = 40.0    # تلفات رهگیر در صورت دفع شدن
+
+# شاخه‌های مجاز برای اسکورت
+ESCORT_ALLOWED_BRANCHES: frozenset[str] = frozenset({
+    "نیروی دریایی", "نیروی هوایی", "سامانه‌های دفاعی",
+})

@@ -145,12 +145,14 @@ async def cb_start_operation(
         await safe_edit(call, str(err), reply_markup=operations_menu_kb())
         return
 
-    # عملیات ترور و رهگیری جریان اختصاصی دارند (فعلاً در دست ساخت)
+    # ترور و رهگیری جریان اختصاصی دارند و در روترهای جدا مدیریت می‌شوند
+    # (handlers/covert_ops.py و handlers/interception.py — v1.10.7).
+    # دکمه‌های منو مستقیم به آن‌ها اشاره می‌کنند، پس اینجا نباید برسیم.
     if operation in (OperationType.ASSASSINATION, OperationType.INTERCEPTION):
         await safe_edit(
             call,
             f"{_op_title(operation)}\n\n"
-            "🚧 این عملیات در مرحله‌ی بعدی همین آپدیت فعال می‌شود.",
+            "این عملیات از منوی «عملیات‌ها» با دکمه‌ی اختصاصی خودش اجرا می‌شود.",
             reply_markup=operations_menu_kb(),
         )
         return

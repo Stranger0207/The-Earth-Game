@@ -23,8 +23,11 @@ from ..constants import (
     ASSASSINATION_EXPOSURE_ON_FAIL_PCT,
     ASSASSINATION_EXPOSURE_ON_SUCCESS_PCT,
     ASSASSINATION_FAIL_DIPLOMATIC_HIT,
+    ASSASSINATION_MIN_INTEL_QUALITY,
     ASSASSINATION_PRESIDENT_SUCCESS_PCT,
     COMMANDER_REPLACEMENT_HOURS,
+    INTEL_SUCCESS_FLOOR,
+    INTEL_SUCCESS_SCALE,
     LEADERSHIP_CRISIS_HOURS,
     LEADERSHIP_CRISIS_STABILITY_HIT,
 )
@@ -63,7 +66,11 @@ async def resolve_assassination(
     اجرای یک عملیات ترور و اعمال نتایجش.
 
     خروجی dict شامل:
-        success, detected, exposed, target_label, effect_note
+        success, detected, exposed, target_label, effect_note, intel_quality
+
+    **پیش‌نیاز (v1.10.7):** برای ترور فرمانده، باید اطلاعات جاسوسی معتبر
+    روی او داشته باشیم. کیفیت اطلاعات مستقیماً شانس موفقیت را تعیین می‌کند.
+    ترور رئیس‌جمهور نیازی به جاسوسی ندارد (محل او علنی است) ولی شانسش بسیار کم است.
 
     - `detected`: گشت کشور هدف عملیات را پیش از اجرا خنثی کرد
     - `exposed`: هویت مهاجم فاش شد (تنش دیپلماتیک)
@@ -85,7 +92,29 @@ async def resolve_assassination(
         "exposed": False,
         "target_label": target_label,
         "effect_note": "",
+        "intel_quality": 0.0,
     }
+
+    # ---------- ۰) بررسی اطلاعات جاسوسی (فقط برای فرماندهان) ----------
+    intel = None
+    intel_quality = 0.0
+    if not target_president:
+        from ..database.repositories import commander_intel as intel_repo
+
+        intel = await intel_repo.get_valid_intel(session, attacker.id, commander.id)
+        if intel is None:
+            raise AssassinationError(
+                f"🕵️ اطلاعات کافی از محل «{target_label}» ندارید.\n\n"
+                "پیش از ترور باید عملیات جاسوسی روی این فرمانده اجرا کنید."
+            )
+        if intel.quality < ASSASSINATION_MIN_INTEL_QUALITY:
+            raise AssassinationError(
+                f"🕵️ اطلاعات شما از «{target_label}» بسیار ناقص است "
+                f"(کیفیت {intel.quality:.0f} از حداقل {ASSASSINATION_MIN_INTEL_QUALITY:.0f}).\n\n"
+                "عملیات جاسوسی دیگری اجرا کنید تا اطلاعات دقیق‌تری به دست آورید."
+            )
+        intel_quality = intel.quality
+        result["intel_quality"] = intel_quality
 
     # ---------- ۱) گشت کشور هدف ممکن است عملیات را خنثی کند ----------
     detected = await patrol_service.try_detect(
@@ -98,6 +127,11 @@ async def resolve_assassination(
         result["effect_note"] = (
             "🛡 گشت امنیتی کشور هدف عوامل نفوذی را پیش از اجرای عملیات شناسایی و بازداشت کرد."
         )
+        if intel is not None:
+            # شبکه لو رفت؛ اطلاعات بی‌ارزش شد
+            from ..database.repositories import commander_intel as intel_repo
+
+            await intel_repo.consume_intel(session, intel)
         await session.flush()
         return result
 
@@ -107,8 +141,15 @@ async def resolve_assassination(
         if target_president
         else ASSASSINATION_BASE_SUCCESS_PCT
     )
-    # بونوس اطلاعاتی مهاجم (فرمانده اطلاعات + ماهواره)
-    chance = min(90.0, base + intel_bonus)
+
+    if target_president:
+        chance = min(90.0, base + intel_bonus)
+    else:
+        # کیفیت اطلاعات ضریب اصلی است:
+        # کیفیت ۳۰ → ×۰.۶۷ | کیفیت ۶۰ → ×۰.۹۴ | کیفیت ۹۰ → ×۱.۲۱
+        intel_factor = INTEL_SUCCESS_FLOOR + (intel_quality / 100.0) * INTEL_SUCCESS_SCALE
+        chance = min(90.0, base * intel_factor + intel_bonus)
+
     success = rng.uniform(0.0, 100.0) <= chance
     result["success"] = success
 
@@ -154,6 +195,16 @@ async def resolve_assassination(
         attacker.public_satisfaction = max(
             0.0, (attacker.public_satisfaction or 0.0) + ASSASSINATION_FAIL_DIPLOMATIC_HIT
         )
+
+    # ---------- ۵) مصرف اطلاعات جاسوسی ----------
+    # پس از هر عملیات (موفق یا ناموفق) هدف جابه‌جا می‌شود و اطلاعات می‌سوزد.
+    if intel is not None:
+        from ..database.repositories import commander_intel as intel_repo
+
+        await intel_repo.consume_intel(session, intel)
+        # در صورت ترور موفق، اطلاعات بقیه‌ی کشورها هم بی‌اعتبار می‌شود
+        if success:
+            await intel_repo.purge_for_commander(session, commander.id)
 
     await session.flush()
     return result

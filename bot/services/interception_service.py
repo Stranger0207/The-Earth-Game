@@ -1,16 +1,20 @@
 """
-سرویس رهگیری محموله (v1.10.6).
+سرویس رهگیری محموله (v1.10.7) — با مکانیک اسکورت.
 
 کشور می‌تواند محموله‌هایی را که از خاک یا آب قلمروش عبور می‌کنند رهگیری کند.
-مسیر عبور با لایه‌ی جغرافیا (`geo_service.route_crosses`) تعیین می‌شود — یعنی
-نمی‌توان محموله‌ای را که هیچ ربطی به قلمرو ما ندارد رهگیری کرد.
+مسیر عبور با لایه‌ی جغرافیا (`geo_service.route_crosses`) تعیین می‌شود.
 
-نتیجه‌ی موفق: مصادره‌ی محموله (منابع به رهگیرنده می‌رسد) یا نابودی آن.
-در هر دو حالت بحران دیپلماتیک با فروشنده و خریدار ایجاد می‌شود.
+**مکانیک اسکورت (v1.10.7):**
+- محموله‌ی بدون اسکورت: رهگیری با شانس بالا (۷۵٪) و بدون تلفات
+- محموله‌ی اسکورت‌دار: باید نیروی رهگیر **۳۵٪ قوی‌تر** از اسکورت باشد،
+  وگرنه اسکورت آن را دفع می‌کند و رهگیر تلفات سنگین می‌دهد.
+
+نتیجه‌ی موفق: مصادره یا نابودی محموله + بحران دیپلماتیک با هر دو طرف.
 """
 
 from __future__ import annotations
 
+import json
 import logging
 import random
 from datetime import datetime, timezone
@@ -18,18 +22,24 @@ from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..constants import (
-    INTERCEPTION_BASE_SUCCESS_PCT,
+    ESCORT_BREAK_RATIO,
+    ESCORT_LOSS_PCT,
     INTERCEPTION_DIPLOMATIC_HIT,
     INTERCEPTION_FAIL_SATISFACTION_HIT,
     INTERCEPTION_SEIZE_PCT,
+    INTERCEPTION_UNESCORTED_SUCCESS_PCT,
+    INTERCEPTOR_LOSS_PCT,
+    INTERCEPTOR_REPULSED_LOSS_PCT,
 )
 from ..database.models import Country, ResourceSale
 from ..database.repositories import countries as countries_repo
+from ..database.repositories import military as mil_repo
 from ..database.repositories import reserves as reserves_repo
 from ..database.repositories import trade as trade_repo
 from ..enums import RESOURCE_FA, RESOURCE_UNIT_FA, ResourceType, TradeStatus
 from . import geo_service as geo
 from . import patrol_service
+from .combat.power import CommittedAsset, strike_power
 
 logger = logging.getLogger(__name__)
 
@@ -42,13 +52,40 @@ def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def parse_escort(sale: ResourceSale) -> list[dict]:
+    """تجهیزات اسکورت یک محموله را از JSON بازمی‌خواند."""
+    try:
+        return json.loads(getattr(sale, "escort_json", "") or "[]")
+    except (ValueError, TypeError):
+        return []
+
+
+def escort_label(escort_power: float) -> str:
+    """برچسب فارسی قدرت اسکورت (برای نمایش به بازیکن)."""
+    if escort_power <= 0:
+        return "🟢 بدون اسکورت"
+    if escort_power < 60:
+        return "🟡 اسکورت سبک"
+    if escort_power < 200:
+        return "🟠 اسکورت متوسط"
+    return "🔴 اسکورت سنگین"
+
+
+def required_power(escort_power: float) -> float:
+    """حداقل قدرتی که برای شکستن اسکورت لازم است."""
+    if escort_power <= 0:
+        return 0.0
+    return escort_power * ESCORT_BREAK_RATIO
+
+
 async def interceptable_shipments(
     session: AsyncSession, country: Country
 ) -> list[dict]:
     """
     محموله‌های در حال حرکتی که مسیرشان از قلمرو این کشور می‌گذرد.
 
-    خروجی: [{"sale_id","seller","buyer","resource_fa","amount","unit"}]
+    خروجی هر آیتم شامل وضعیت اسکورت است تا بازیکن پیش از اقدام بداند
+    چه نیرویی لازم دارد.
     """
     sales = await trade_repo.list_in_transit(session)
     result: list[dict] = []
@@ -74,6 +111,9 @@ async def interceptable_shipments(
         except (ValueError, KeyError):
             resource_fa, unit = sale.resource, ""
 
+        escort_power = float(getattr(sale, "escort_power", 0.0) or 0.0)
+        escort_items = parse_escort(sale)
+
         result.append({
             "sale_id": sale.id,
             "seller": f"{seller.flag} {seller.name_fa}",
@@ -84,9 +124,55 @@ async def interceptable_shipments(
             "resource": sale.resource,
             "amount": sale.amount,
             "unit": unit,
+            "escort_power": escort_power,
+            "escort_label": escort_label(escort_power),
+            "escort_items": escort_items,
+            "required_power": required_power(escort_power),
         })
 
     return result
+
+
+def _distribute(
+    assets: list[CommittedAsset], loss_ratio: float, rng: random.Random
+) -> list[dict]:
+    """
+    پخش تلفات میان اقلام درگیر با نوسان تصادفی مستقل برای هر قلم.
+    (همان الگوی موتور نبرد، تا نتیجه یکنواخت به‌نظر نرسد.)
+    """
+    losses: list[dict] = []
+    if loss_ratio <= 0:
+        return losses
+
+    for asset in assets:
+        if asset.count <= 0:
+            continue
+        lost = asset.count * loss_ratio * rng.uniform(0.85, 1.15)
+        whole = int(lost)
+        if rng.random() < (lost - whole):
+            whole += 1
+        whole = min(whole, asset.count)
+        if whole > 0:
+            losses.append({
+                "name": asset.name,
+                "count": whole,
+                "unit": asset.unit,
+                "category": asset.category,
+            })
+    return losses
+
+
+async def _apply_losses(
+    session: AsyncSession, country_id: int, losses: list[dict]
+) -> None:
+    """کسر تلفات از موجودی واقعی یک کشور."""
+    for item in losses:
+        try:
+            await mil_repo.reduce_count(
+                session, country_id, item.get("name", ""), int(item.get("count", 0))
+            )
+        except Exception as exc:  # noqa: BLE001 — یک قلم خراب نباید کل عملیات را بشکند
+            logger.warning("Failed to apply interception loss: %s", exc)
 
 
 async def resolve_interception(
@@ -94,13 +180,18 @@ async def resolve_interception(
     interceptor: Country,
     sale: ResourceSale,
     *,
+    committed: list[CommittedAsset] | None = None,
     seed: int | None = None,
 ) -> dict:
     """
     اجرای رهگیری یک محموله و اعمال نتیجه.
 
+    `committed`: نیروی رهگیر. برای محموله‌ی **اسکورت‌دار** الزامی است؛
+    برای محموله‌ی بی‌محافظ اختیاری (گشت کفایت می‌کند).
+
     خروجی dict شامل:
-        success, seized, resource_fa, amount, unit, seller, buyer, effect_note
+        success, seized, repulsed, escort_power, attack_power,
+        interceptor_losses, escort_losses, effect_note
     """
     rng = random.Random(seed)
 
@@ -124,44 +215,108 @@ async def resolve_interception(
     except (ValueError, KeyError):
         rtype, resource_fa, unit = None, sale.resource, ""
 
+    escort_power = float(getattr(sale, "escort_power", 0.0) or 0.0)
+    committed = committed or []
+    attack_power = strike_power(committed).total if committed else 0.0
+
     result = {
         "success": False,
         "seized": False,
+        "repulsed": False,
         "resource_fa": resource_fa,
         "amount": sale.amount,
         "unit": unit,
         "seller": f"{seller.flag} {seller.name_fa}",
         "buyer": f"{buyer.flag} {buyer.name_fa}",
+        "escort_power": escort_power,
+        "attack_power": attack_power,
+        "interceptor_losses": [],
+        "escort_losses": [],
         "effect_note": "",
     }
 
-    # ---------- شانس موفقیت ----------
-    chance = INTERCEPTION_BASE_SUCCESS_PCT
-    chance += await patrol_service.intercept_bonus(session, interceptor.id)
-    # گشت دریایی خریدار می‌تواند از محموله محافظت کند
-    guarded = await patrol_service.intercept_bonus(session, buyer.id)
-    chance = max(5.0, min(90.0, chance - guarded))
+    # ============================================================
+    #  مسیر ۱: محموله‌ی بدون اسکورت — رهگیری آسان
+    # ============================================================
+    if escort_power <= 0:
+        chance = INTERCEPTION_UNESCORTED_SUCCESS_PCT
+        chance += await patrol_service.intercept_bonus(session, interceptor.id)
+        # گشت دریایی خریدار کمی از محموله محافظت می‌کند
+        chance -= await patrol_service.intercept_bonus(session, buyer.id)
+        chance = max(15.0, min(95.0, chance))
 
-    if rng.uniform(0.0, 100.0) > chance:
-        # شکست: محموله سالم می‌رسد و رهگیرنده هزینه می‌دهد
-        interceptor.public_satisfaction = max(
-            0.0, (interceptor.public_satisfaction or 0.0) + INTERCEPTION_FAIL_SATISFACTION_HIT
-        )
-        result["effect_note"] = (
-            "❌ عملیات رهگیری ناکام ماند و محموله مسیر خود را ادامه داد."
-        )
-        await session.flush()
-        return result
+        if rng.uniform(0.0, 100.0) > chance:
+            interceptor.public_satisfaction = max(
+                0.0,
+                (interceptor.public_satisfaction or 0.0) + INTERCEPTION_FAIL_SATISFACTION_HIT,
+            )
+            result["effect_note"] = (
+                "❌ محموله از چنگ نیروهای شما گریخت و مسیر خود را ادامه داد."
+            )
+            await session.flush()
+            return result
 
-    # ---------- موفقیت ----------
-    result["success"] = True
+        result["success"] = True
+
+    # ============================================================
+    #  مسیر ۲: محموله‌ی اسکورت‌دار — نبرد واقعی
+    # ============================================================
+    else:
+        if not committed:
+            raise InterceptionError(
+                f"🛡 این محموله <b>{escort_label(escort_power)}</b> دارد "
+                f"(قدرت {escort_power:,.0f}).\n\n"
+                "برای رهگیری آن باید نیروی نظامی اعزام کنید — "
+                f"حداقل قدرت لازم: <b>{required_power(escort_power):,.0f}</b>"
+            )
+
+        needed = required_power(escort_power)
+        # بونوس گشت به‌صورت ضریب قدرت اعمال می‌شود
+        patrol_boost = 1.0 + await patrol_service.intercept_bonus(session, interceptor.id) / 100.0
+        effective_attack = attack_power * patrol_boost * rng.uniform(0.9, 1.1)
+        result["attack_power"] = round(effective_attack, 1)
+
+        if effective_attack < needed:
+            # ---------- اسکورت حمله را دفع کرد ----------
+            result["repulsed"] = True
+            loss_ratio = INTERCEPTOR_REPULSED_LOSS_PCT / 100.0
+            result["interceptor_losses"] = _distribute(committed, loss_ratio, rng)
+            await _apply_losses(session, interceptor.id, result["interceptor_losses"])
+
+            interceptor.public_satisfaction = max(
+                0.0,
+                (interceptor.public_satisfaction or 0.0) + INTERCEPTION_FAIL_SATISFACTION_HIT * 2,
+            )
+            interceptor.stability = max(0.0, (interceptor.stability or 0.0) - 2.0)
+            result["effect_note"] = (
+                f"🛡 اسکورت محموله (قدرت {escort_power:,.0f}) حمله را دفع کرد.\n"
+                f"نیروی شما با قدرت {effective_attack:,.0f} برای شکستن آن کافی نبود "
+                f"(حداقل لازم: {needed:,.0f}).\n"
+                "نیروهای رهگیر تلفات سنگینی دادند."
+            )
+            await session.flush()
+            return result
+
+        # ---------- اسکورت شکسته شد ----------
+        result["success"] = True
+        result["interceptor_losses"] = _distribute(
+            committed, INTERCEPTOR_LOSS_PCT / 100.0, rng
+        )
+        await _apply_losses(session, interceptor.id, result["interceptor_losses"])
+
+        escort_items = [CommittedAsset.from_dict(i) for i in parse_escort(sale)]
+        result["escort_losses"] = _distribute(escort_items, ESCORT_LOSS_PCT / 100.0, rng)
+        await _apply_losses(session, seller.id, result["escort_losses"])
+
+    # ============================================================
+    #  نتیجه‌ی موفقیت (هر دو مسیر)
+    # ============================================================
     sale.status = TradeStatus.REJECTED  # محموله به مقصد نمی‌رسد
 
     seize = rng.uniform(0.0, 100.0) <= INTERCEPTION_SEIZE_PCT
     result["seized"] = seize
 
     if seize and rtype is not None:
-        # مصادره: منابع به ذخایر رهگیرنده اضافه می‌شود
         await reserves_repo.ensure_reserve(session, interceptor.id, sale.resource)
         await reserves_repo.add_amount(session, interceptor.id, rtype, sale.amount)
         result["effect_note"] = (
@@ -170,6 +325,9 @@ async def resolve_interception(
         )
     else:
         result["effect_note"] = "💥 محموله در مسیر نابود شد و به دست هیچ‌کس نرسید."
+
+    if result["escort_losses"]:
+        result["effect_note"] += "\n🛡 اسکورت محموله در نبرد تلفات داد."
 
     # ---------- هزینه‌ی دیپلماتیک ----------
     interceptor.public_satisfaction = max(

@@ -27,6 +27,52 @@ class OperationForm(StatesGroup):
     choosing_shipment = State()    # رهگیری: انتخاب محموله‌ی عبوری
 
 
+class EspionageForm(StatesGroup):
+    """
+    فرم عملیات جاسوسی (v1.10.7) — پیش‌نیاز ترور.
+
+    جریان: کشور هدف → فرمانده هدف → تأیید
+    """
+
+    choosing_country = State()
+    choosing_commander = State()
+    confirming = State()
+
+
+class AssassinationForm(StatesGroup):
+    """
+    فرم عملیات ترور (v1.10.7).
+
+    جریان: کشور هدف → هدف (فرمانده دارای اطلاعات یا رئیس‌جمهور) → تأیید
+    """
+
+    choosing_country = State()
+    choosing_target = State()
+    confirming = State()
+
+
+class InterceptionForm(StatesGroup):
+    """
+    فرم رهگیری محموله (v1.10.7).
+
+    جریان: انتخاب محموله → (اگر اسکورت دارد) انتخاب نیرو → تأیید
+    """
+
+    choosing_shipment = State()
+    selecting_assets = State()
+    entering_asset_count = State()
+    confirming = State()
+
+
+class EscortForm(StatesGroup):
+    """
+    فرم تخصیص اسکورت به یک محموله‌ی در حال ارسال (v1.10.7).
+    """
+
+    selecting_assets = State()
+    entering_asset_count = State()
+
+
 class PatrolForm(StatesGroup):
     """فرم ثبت گشت دفاعی: نوع گشت → منطقه → تجهیزات → تأیید."""
 

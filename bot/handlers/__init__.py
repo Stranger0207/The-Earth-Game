@@ -10,10 +10,12 @@ from . import (
     battle,
     claim,
     command_center,
+    covert_ops,
     deployment,
     diplomacy,
     economy,
     god_operations,
+    interception,
     godmode,
     governance,
     investment,
@@ -54,6 +56,8 @@ def register_all_routers(dp: Dispatcher) -> None:
     dp.include_router(battle.router)
     dp.include_router(command_center.router)
     dp.include_router(operations.router)
+    dp.include_router(covert_ops.router)
+    dp.include_router(interception.router)
     dp.include_router(patrol_drill.router)
     dp.include_router(military.router)
     dp.include_router(military_base.router)

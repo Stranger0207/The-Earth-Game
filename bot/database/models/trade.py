@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, Float, ForeignKey, Integer, String
+from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from ..base import Base
@@ -40,6 +40,13 @@ class ResourceSale(Base):
         String(16), default=TradeStatus.PENDING, nullable=False
     )
     # زمان تخمینی رسیدن محموله (تخمین AI)
+    # --- اسکورت محموله (v1.10.7) ---
+    # فروشنده می‌تواند نیروی محافظ همراه محموله بفرستد تا از رهگیری جلوگیری کند.
+    # قدرت اسکورت از تجهیزات اختصاص‌داده‌شده محاسبه و اینجا کش می‌شود.
+    escort_power: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    # تجهیزات اسکورت: [{"name","count","unit"}]
+    escort_json: Mapped[str] = mapped_column(Text, default="[]", nullable=False)
+
     ship_eta: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )

@@ -70,6 +70,11 @@ _COLUMN_MIGRATIONS = [
     ("countries", "readiness", "DOUBLE PRECISION NOT NULL DEFAULT 0"),
     ("countries", "last_readiness_decay_at", "TIMESTAMP WITH TIME ZONE"),
     ("countries", "leadership_crisis_until", "TIMESTAMP WITH TIME ZONE"),
+    # v1.10.7 — اسکورت محموله‌ها
+    ("resource_sales", "escort_power", "DOUBLE PRECISION NOT NULL DEFAULT 0"),
+    ("resource_sales", "escort_json", "TEXT NOT NULL DEFAULT '[]'"),
+    ("military_sales", "escort_power", "DOUBLE PRECISION NOT NULL DEFAULT 0"),
+    ("military_sales", "escort_json", "TEXT NOT NULL DEFAULT '[]'"),
 ]
 
 

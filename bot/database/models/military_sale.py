@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, Float, ForeignKey, Integer, String
+from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from ..base import Base
@@ -43,6 +43,10 @@ class MilitarySale(Base):
     status: Mapped[str] = mapped_column(
         String(16), default=TradeStatus.PENDING, nullable=False
     )
+    # --- اسکورت محموله (v1.10.7) ---
+    escort_power: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    escort_json: Mapped[str] = mapped_column(Text, default="[]", nullable=False)
+
     ship_eta: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )

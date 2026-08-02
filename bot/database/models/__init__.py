@@ -9,6 +9,7 @@ from .battle import Battle, WarDeclaration
 from .bot_state import BotState
 from .claim import ClaimRequest
 from .commander import Commander
+from .commander_intel import CommanderIntel
 from .cooldown import Cooldown
 from .country import Country
 from .deployment import Deployment
@@ -58,6 +59,7 @@ __all__ = [
     "BotState",
     "ClaimRequest",
     "Commander",
+    "CommanderIntel",
     "Contract",
     "Cooldown",
     "Country",

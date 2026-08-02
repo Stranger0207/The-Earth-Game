@@ -28,7 +28,15 @@ from .forms import (
     TariffForm,
 )
 from .military_base import MilitaryBaseForm
-from .operations import DrillForm, OperationForm, PatrolForm
+from .operations import (
+    AssassinationForm,
+    DrillForm,
+    EscortForm,
+    EspionageForm,
+    InterceptionForm,
+    OperationForm,
+    PatrolForm,
+)
 from .satellite import SatelliteForm
 
 __all__ = [
@@ -39,14 +47,18 @@ __all__ = [
     "BankTransferForm",
     "BattleForm",
     "CallForm",
+    "AssassinationForm",
     "ClaimForm",
     "ContractForm",
     "DebtPayForm",
     "DeploymentForm",
     "DrillForm",
+    "EscortForm",
+    "EspionageForm",
     "FacilityForm",
     "GodForm",
     "GovernanceForm",
+    "InterceptionForm",
     "InvestForm",
     "JointFacilityForm",
     "LetterForm",

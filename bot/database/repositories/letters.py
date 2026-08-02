@@ -31,10 +31,15 @@ async def get_letter(session: AsyncSession, letter_id: int) -> Letter | None:
 
 
 async def list_inbox(session: AsyncSession, country_id: int) -> list[Letter]:
-    """نامه‌های دریافتیِ یک کشور (جدیدترین اول). پاسخ‌ها (parent_id != None) را شامل نمی‌شود."""
+    """
+    نامه‌های دریافتیِ یک کشور (جدیدترین اول).
+
+    (v1.11.1) پاسخ‌ها (`parent_id != None`) هم شامل می‌شوند تا بازیکن بتواند
+    از صندوق پستی به یک پاسخ هم پاسخ بدهد و زنجیره‌ی گفتگو قطع نشود.
+    """
     result = await session.execute(
         select(Letter)
-        .where(Letter.recipient_country == country_id, Letter.parent_id.is_(None))
+        .where(Letter.recipient_country == country_id)
         .order_by(Letter.id.desc())
     )
     return list(result.scalars().all())

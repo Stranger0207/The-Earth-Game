@@ -12,6 +12,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..database.models import User
+from ..database.repositories import alliances as alliances_repo
 from ..database.repositories import countries as countries_repo
 from ..database.repositories import letters as letters_repo
 from ..loader import bot
@@ -19,7 +20,7 @@ from ..services.news_service import send_log
 from ..states import MailForm
 from ..utils.numbers import fa_number
 from ..utils.screens import safe_edit
-from ..utils.ui import PICK_OFF, PICK_ON, STYLE_MAIN, STYLE_OK
+from ..utils.ui import DIVIDER, PICK_OFF, PICK_ON, STYLE_MAIN, STYLE_OK
 from .deps import NO_COUNTRY_TEXT, get_player_country
 
 router = Router(name="mail")
@@ -29,6 +30,7 @@ def _mail_menu_kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="✉️ نامه به یک کشور", callback_data="mail:single", style=STYLE_MAIN)],
         [InlineKeyboardButton(text="📨 نامه به چند کشور", callback_data="mail:multi", style=STYLE_MAIN)],
+        [InlineKeyboardButton(text="🤝 نامه به متحدان", callback_data="mail:allies", style=STYLE_MAIN)],
         [InlineKeyboardButton(text="📬 صندوق پستی", callback_data="mail:inbox", style=STYLE_MAIN)],
         [InlineKeyboardButton(text="🔙 بازگشت", callback_data="menu:diplomacy", style=STYLE_MAIN)],
     ])
@@ -41,6 +43,12 @@ def _back_mail_kb() -> InlineKeyboardMarkup:
 
 
 def _reply_kb(letter_id: int) -> InlineKeyboardMarkup:
+    """
+    دکمه‌ی پاسخ زیر هر نامه‌ی دریافتی.
+
+    (v1.11.1) این دکمه روی **همه‌ی** نامه‌های دریافتی — از جمله پاسخ‌ها — قرار
+    می‌گیرد تا گفتگو بدون نیاز به پیداکردن دوباره‌ی کشور ادامه پیدا کند.
+    """
     return InlineKeyboardMarkup(inline_keyboard=[[
         InlineKeyboardButton(text="📩 پاسخ به نامه", callback_data=f"mail_reply:{letter_id}", style=STYLE_OK)
     ]])
@@ -145,16 +153,76 @@ async def cb_mail_multi_next(call: CallbackQuery, state: FSMContext) -> None:
     )
 
 
+# ----- نامه به متحدان (v1.11.1) -----
+@router.callback_query(F.data == "mail:allies")
+async def cb_mail_allies(
+    call: CallbackQuery, state: FSMContext, session: AsyncSession, db_user: User
+) -> None:
+    """
+    نامه به همه‌ی اعضای اتحادِ کشور (به‌جز خودش).
+
+    اگر کشور در هیچ اتحادی نباشد، پیام راهنما نشان داده می‌شود.
+    """
+    await call.answer()
+    country = await get_player_country(session, db_user)
+    if country is None:
+        await safe_edit(call, NO_COUNTRY_TEXT)
+        return
+
+    membership = await alliances_repo.get_membership(session, country.id)
+    if membership is None:
+        await safe_edit(
+            call,
+            "🤝 شما در هیچ اتحادی عضو نیستید.\n\n"
+            "<i>برای ارسال نامه به متحدان، ابتدا باید در یک اتحاد عضو شوید "
+            "(بخش دیپلماسی → اتحاد).</i>",
+            reply_markup=_back_mail_kb(),
+        )
+        return
+
+    members = await alliances_repo.list_members(session, membership.alliance_id)
+    recipients = [m.country_id for m in members if m.country_id != country.id]
+    if not recipients:
+        await safe_edit(
+            call,
+            "🤝 در حال حاضر متحد دیگری در اتحاد شما وجود ندارد.",
+            reply_markup=_back_mail_kb(),
+        )
+        return
+
+    alliance = await alliances_repo.get_alliance(session, membership.alliance_id)
+    names = []
+    for rid in recipients:
+        target = await countries_repo.get_country(session, rid)
+        if target is not None:
+            names.append(f"{target.flag} {target.name_fa}")
+
+    await state.set_state(MailForm.writing_body)
+    await state.update_data(recipients=recipients, to_allies=True)
+    await safe_edit(
+        call,
+        f"🤝 <b>نامه به متحدان</b>\n{DIVIDER}\n"
+        f"اتحاد: <b>{alliance.name if alliance else '—'}</b>\n"
+        f"گیرندگان ({fa_number(len(recipients))}): {'، '.join(names) or '—'}\n\n"
+        "📝 متن نامه را بنویسید:",
+        reply_markup=_back_mail_kb(),
+    )
+
+
 # ----- نوشتن و ارسال متن نامه -----
 @router.message(MailForm.writing_body, F.text)
 async def msg_mail_body(message: Message, state: FSMContext, session: AsyncSession, db_user: User) -> None:
     data = await state.get_data()
     recipients = data.get("recipients", [])
+    to_allies = bool(data.get("to_allies"))
     country = await get_player_country(session, db_user)
     await state.clear()
     if country is None or not recipients:
         await message.answer("خطا در ارسال نامه.")
         return
+    # سرخط نامه‌ی متحدان با بقیه فرق دارد تا گیرنده بداند نامه‌ی جمعیِ اتحاد است
+    title = "نامه به متحدان" if to_allies else "نامه"
+    emoji = "🤝" if to_allies else "✉️"
     sent_names = []
     for rid in recipients:
         target = await countries_repo.get_country(session, rid)
@@ -166,7 +234,7 @@ async def msg_mail_body(message: Message, state: FSMContext, session: AsyncSessi
             try:
                 await bot.send_message(
                     target.owner_user_id,
-                    f"✉️ <b>نامه از {country.flag} {country.name_fa}</b>\n\n{message.text}",
+                    f"{emoji} <b>{title} از {country.flag} {country.name_fa}</b>\n\n{message.text}",
                     reply_markup=_reply_kb(letter.id),
                 )
             except Exception:  # noqa: BLE001
@@ -177,7 +245,7 @@ async def msg_mail_body(message: Message, state: FSMContext, session: AsyncSessi
     )
     await send_log(
         bot,
-        f"✉️ <b>نامه</b>\nفرستنده: {country.flag} {country.name_fa}\n"
+        f"{emoji} <b>{title}</b>\nفرستنده: {country.flag} {country.name_fa}\n"
         f"گیرنده(ها): {('، '.join(sent_names)) or '—'}\n\n📝 متن:\n{message.text}",
     )
 
@@ -208,13 +276,18 @@ async def msg_mail_reply(message: Message, state: FSMContext, session: AsyncSess
         return
     original_sender = await countries_repo.get_country(session, letter.sender_country)
     # ثبت پاسخ و علامت‌گذاری نامه‌ی اصلی به‌عنوان پاسخ‌داده‌شده
-    await letters_repo.add_letter(session, country.id, letter.sender_country, message.text, parent_id=letter.id)
+    reply_letter = await letters_repo.add_letter(
+        session, country.id, letter.sender_country, message.text, parent_id=letter.id
+    )
     letter.replied = True
     if original_sender and original_sender.owner_user_id:
         try:
+            # (v1.11.1) روی خودِ پاسخ هم دکمه‌ی پاسخ می‌گذاریم تا زنجیره‌ی گفتگو
+            # ادامه پیدا کند و طرف مقابل مجبور نباشد از اول کشور را پیدا کند.
             await bot.send_message(
                 original_sender.owner_user_id,
                 f"📩 <b>پاسخ نامه از {country.flag} {country.name_fa}</b>\n\n{message.text}",
+                reply_markup=_reply_kb(reply_letter.id),
             )
         except Exception:  # noqa: BLE001
             pass
@@ -246,15 +319,16 @@ async def cb_mail_inbox(call: CallbackQuery, session: AsyncSession, db_user: Use
         sender = await countries_repo.get_country(session, ltr.sender_country)
         who = f"{sender.flag} {sender.name_fa}" if sender else "?"
         status = "✅ پاسخ داده شد" if ltr.replied else "🕒 بی‌پاسخ"
+        kind = "📩 پاسخ" if ltr.parent_id else "✉️ نامه"
         preview = (ltr.body or "")[:60]
-        lines.append(f"{fa_number(idx)}. از {who} — {status}\n   «{preview}»")
-        # دکمه‌ی پاسخ فقط برای نامه‌های بی‌پاسخ؛ پس از پاسخ، دکمه حذف می‌شود (v1.10.1)
-        if not ltr.replied:
-            builder.button(
-                text=f"📩 پاسخ به نامه‌ی {fa_number(idx)} ({sender.name_fa if sender else '?'})",
-                callback_data=f"mail_reply:{ltr.id}",
-                style=STYLE_OK,
-            )
+        lines.append(f"{fa_number(idx)}. {kind} از {who} — {status}\n   «{preview}»")
+        # (v1.11.1) دکمه‌ی پاسخ روی **همه‌ی** نامه‌ها — حتی پاسخ‌داده‌شده‌ها — تا
+        # بازیکن بتواند گفتگو را ادامه دهد و مجبور نباشد از اول کشور را پیدا کند.
+        builder.button(
+            text=f"📩 پاسخ به نامه‌ی {fa_number(idx)} ({sender.name_fa if sender else '?'})",
+            callback_data=f"mail_reply:{ltr.id}",
+            style=STYLE_OK,
+        )
     builder.button(text="🔙 بازگشت", callback_data="dip:letter", style=STYLE_MAIN)
     builder.adjust(1)
     await safe_edit(call,"\n".join(lines), reply_markup=builder.as_markup())

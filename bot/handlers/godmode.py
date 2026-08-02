@@ -79,6 +79,12 @@ from ..states import GodForm
 router = Router(name="godmode")
 settings = get_settings()
 
+# تعداد تأسیسات در هر صفحه‌ی فهرست پنل گاد (v1.11.1)
+GOD_FACILITY_PAGE_SIZE = 10
+
+# تعداد سرمایه‌گذاری در هر صفحه‌ی فهرست پنل گاد (v1.11.1)
+GOD_INVEST_PAGE_SIZE = 10
+
 
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
@@ -230,8 +236,15 @@ async def cb_god_facilities(call: CallbackQuery, session: AsyncSession) -> None:
     await _render_god_facilities(call, session, int(call.data.split(":")[1]))
 
 
-async def _render_god_facilities(call: CallbackQuery, session: AsyncSession, cid: int) -> None:
-    """بدنه‌ی رندر فهرست تأسیسات/کارخانه‌ها (بدون call.answer تا قابل‌استفاده‌ی مجدد باشد)."""
+async def _render_god_facilities(
+    call: CallbackQuery, session: AsyncSession, cid: int, page: int = 0
+) -> None:
+    """
+    بدنه‌ی رندر فهرست تأسیسات/کارخانه‌ها (بدون call.answer تا قابل‌استفاده‌ی مجدد باشد).
+
+    (v1.11.1) صفحه‌بندی‌شده و به‌تفکیک نوع؛ پیش‌تر با زیادشدن تأسیسات هم متن پیام
+    و هم تعداد دکمه‌ها از حد تلگرام رد می‌شد.
+    """
     country = await countries_repo.get_country(session, cid)
     if country is None:
         await call.message.edit_text("کشور یافت نشد.", reply_markup=_home_kb())
@@ -240,11 +253,35 @@ async def _render_god_facilities(call: CallbackQuery, session: AsyncSession, cid
     facilities = await fac_repo.list_facilities(session, cid)
     factories = await milfac_repo.list_factories(session, cid)
 
+    # شمارش به‌تفکیک نوع (برای دید سریع مدیر)
+    per_type: dict[str, int] = {}
+    for f in facilities:
+        per_type[f.type] = per_type.get(f.type, 0) + 1
+
     lines = [header(f"تأسیسات و کارخانه‌های {country.flag} {country.name_fa}", "🏭"), ""]
 
-    lines.append("🏗 <b>تأسیسات:</b>")
-    if facilities:
-        for f in facilities:
+    lines.append("📊 <b>خلاصه به‌تفکیک نوع:</b>")
+    if per_type:
+        for tval, n in per_type.items():
+            try:
+                label = FACILITY_FA[FacilityType(tval)]
+            except (ValueError, KeyError):
+                label = tval
+            lines.append(f"• {label}: {fa_number(n)} عدد")
+    else:
+        lines.append("—")
+
+    total_pages = max(1, (len(facilities) + GOD_FACILITY_PAGE_SIZE - 1) // GOD_FACILITY_PAGE_SIZE)
+    page = max(0, min(page, total_pages - 1))
+    chunk = facilities[page * GOD_FACILITY_PAGE_SIZE : (page + 1) * GOD_FACILITY_PAGE_SIZE]
+
+    lines.append("")
+    lines.append(
+        f"🏗 <b>تأسیسات</b> ({fa_number(len(facilities))}) — "
+        f"صفحه {fa_number(page + 1)} از {fa_number(total_pages)}:"
+    )
+    if chunk:
+        for idx, f in enumerate(chunk, start=page * GOD_FACILITY_PAGE_SIZE + 1):
             try:
                 label = FACILITY_FA[FacilityType(f.type)]
             except (ValueError, KeyError):
@@ -254,12 +291,12 @@ async def _render_god_facilities(call: CallbackQuery, session: AsyncSession, cid
                     label += f" {RESOURCE_FA[ResourceType(f.resource)]}"
                 except (ValueError, KeyError):
                     pass
-            lines.append(f"• {label} — 📍 {f.location or '—'}")
+            lines.append(f"{fa_number(idx)}. {label} — 📍 {f.location or '—'}")
     else:
         lines.append("—")
 
     lines.append("")
-    lines.append("🏭 <b>کارخانه‌های نظامی:</b>")
+    lines.append(f"🏭 <b>کارخانه‌های نظامی</b> ({fa_number(len(factories))}):")
     if factories:
         for f in factories:
             try:
@@ -270,25 +307,61 @@ async def _render_god_facilities(call: CallbackQuery, session: AsyncSession, cid
     else:
         lines.append("—")
 
-    # دکمه‌ی حذف برای هر تأسیسات/کارخانه + دکمه‌های افزودن (v1.11)
+    # دکمه‌ی حذف فقط برای تأسیسات همین صفحه + ناوبری + دکمه‌های افزودن
     builder = InlineKeyboardBuilder()
-    for f in facilities:
+    for f in chunk:
         try:
             label = FACILITY_FA[FacilityType(f.type)]
         except (ValueError, KeyError):
             label = f.type
-        builder.button(text=f"🗑 {label}", callback_data=f"godfacdel:{cid}:{f.id}", style=STYLE_NO)
+        loc = (f.location or "—")[:18]
+        builder.button(
+            text=f"🗑 {label} — {loc}",
+            callback_data=f"godfacdel:{cid}:{f.id}",
+            style=STYLE_NO,
+        )
     for f in factories:
         try:
             label = MIL_FACTORY_FA[MilitaryFactoryType(f.factory_type)]
         except (ValueError, KeyError):
             label = f.factory_type
         builder.button(text=f"🗑 {label}", callback_data=f"godmfdel:{cid}:{f.id}", style=STYLE_NO)
-    builder.button(text="➕ افزودن تأسیسات", callback_data=f"godfacadd:{cid}", style=STYLE_OK)
-    builder.button(text="➕ افزودن کارخانه", callback_data=f"godmfadd:{cid}", style=STYLE_OK)
-    builder.button(text="🔙 بازگشت", callback_data=f"godc:{cid}", style=STYLE_MAIN)
     builder.adjust(1)
+
+    nav: list[InlineKeyboardButton] = []
+    if page > 0:
+        nav.append(InlineKeyboardButton(
+            text="◀️ صفحه قبلی", callback_data=f"godfacpg:{cid}:{page - 1}", style=STYLE_MAIN
+        ))
+    if page < total_pages - 1:
+        nav.append(InlineKeyboardButton(
+            text="صفحه بعدی ▶️", callback_data=f"godfacpg:{cid}:{page + 1}", style=STYLE_MAIN
+        ))
+    if nav:
+        builder.row(*nav)
+
+    builder.row(
+        InlineKeyboardButton(
+            text="➕ افزودن تأسیسات", callback_data=f"godfacadd:{cid}", style=STYLE_OK
+        ),
+        InlineKeyboardButton(
+            text="➕ افزودن کارخانه", callback_data=f"godmfadd:{cid}", style=STYLE_OK
+        ),
+    )
+    builder.row(
+        InlineKeyboardButton(text="🔙 بازگشت", callback_data=f"godc:{cid}", style=STYLE_MAIN)
+    )
     await call.message.edit_text("\n".join(lines), reply_markup=builder.as_markup())
+
+
+@router.callback_query(F.data.startswith("godfacpg:"))
+async def cb_god_facilities_page(call: CallbackQuery, session: AsyncSession) -> None:
+    """ناوبری صفحه‌های فهرست تأسیسات در پنل گاد (v1.11.1)."""
+    if not await _guard(call):
+        return
+    await call.answer()
+    _, cid_s, page_s = call.data.split(":", 2)
+    await _render_god_facilities(call, session, int(cid_s), int(page_s))
 
 
 # ============================================================
@@ -546,27 +619,76 @@ async def cb_god_invest(call: CallbackQuery, session: AsyncSession) -> None:
     await _render_god_invest(call, session)
 
 
-async def _render_god_invest(call: CallbackQuery, session: AsyncSession) -> None:
+async def _render_god_invest(
+    call: CallbackQuery, session: AsyncSession, page: int = 0
+) -> None:
+    """
+    فهرست سرمایه‌گذاری‌های فعال در پنل گاد.
+
+    (v1.11.1) صفحه‌بندی‌شده؛ با زیادشدن سرمایه‌گذاری‌ها پیام و تعداد دکمه‌ها
+    از حد تلگرام رد می‌شد.
+    """
     items = (await session.execute(
         select(Investment).where(Investment.active.is_(True)).order_by(Investment.id.desc())
     )).scalars().all()
+
+    total_pages = max(1, (len(items) + GOD_INVEST_PAGE_SIZE - 1) // GOD_INVEST_PAGE_SIZE)
+    page = max(0, min(page, total_pages - 1))
+    chunk = items[page * GOD_INVEST_PAGE_SIZE : (page + 1) * GOD_INVEST_PAGE_SIZE]
+
     lines = [header("سرمایه‌گذاری‌های فعال", "📈"), ""]
+    lines.append(
+        f"📊 مجموع: <b>{fa_number(len(items))}</b> | "
+        f"صفحه {fa_number(page + 1)} از {fa_number(total_pages)}"
+    )
+    lines.append("")
+
     builder = InlineKeyboardBuilder()
-    if items:
-        for inv in items:
+    if chunk:
+        for idx, inv in enumerate(chunk, start=page * GOD_INVEST_PAGE_SIZE + 1):
             investor = await countries_repo.get_country(session, inv.investor_country)
             target = await countries_repo.get_country(session, inv.target_country)
             fa, _pct = INVESTMENT_CATEGORIES.get(inv.category, (inv.category, 0.0))
             inv_n = investor.name_fa if investor else "?"
             tgt_n = "داخلی" if inv.investor_country == inv.target_country else (target.name_fa if target else "?")
-            lines.append(f"• {inv_n} → {tgt_n} | {fa}: {fa_money(inv.amount)}")
-            builder.button(text=f"🗑 {inv_n}→{tgt_n} ({fa})", callback_data=f"godinvdel:{inv.id}", style=STYLE_NO)
+            lines.append(f"{fa_number(idx)}. {inv_n} → {tgt_n} | {fa}: {fa_money(inv.amount)}")
+            builder.button(
+                text=f"🗑 {inv_n}→{tgt_n} ({fa})",
+                callback_data=f"godinvdel:{inv.id}",
+                style=STYLE_NO,
+            )
     else:
         lines.append("—")
-    builder.button(text="➕ افزودن سرمایه‌گذاری", callback_data="godinvadd", style=STYLE_OK)
-    builder.button(text="🔙 بازگشت", callback_data="god:home", style=STYLE_MAIN)
     builder.adjust(1)
+
+    nav: list[InlineKeyboardButton] = []
+    if page > 0:
+        nav.append(InlineKeyboardButton(
+            text="◀️ صفحه قبلی", callback_data=f"godinvpg:{page - 1}", style=STYLE_MAIN
+        ))
+    if page < total_pages - 1:
+        nav.append(InlineKeyboardButton(
+            text="صفحه بعدی ▶️", callback_data=f"godinvpg:{page + 1}", style=STYLE_MAIN
+        ))
+    if nav:
+        builder.row(*nav)
+
+    builder.row(InlineKeyboardButton(
+        text="➕ افزودن سرمایه‌گذاری", callback_data="godinvadd", style=STYLE_OK
+    ))
+    builder.row(InlineKeyboardButton(
+        text="🔙 بازگشت", callback_data="god:home", style=STYLE_MAIN
+    ))
     await call.message.edit_text("\n".join(lines), reply_markup=builder.as_markup())
+
+
+@router.callback_query(F.data.startswith("godinvpg:"))
+async def cb_god_invest_page(call: CallbackQuery, session: AsyncSession) -> None:
+    """ناوبری صفحه‌های فهرست سرمایه‌گذاری در پنل گاد (v1.11.1)."""
+    if not await _guard(call):
+        return
+    await call.answer()
+    await _render_god_invest(call, session, int(call.data.split(":")[1]))
 
 
 @router.callback_query(F.data.startswith("godinvdel:"))

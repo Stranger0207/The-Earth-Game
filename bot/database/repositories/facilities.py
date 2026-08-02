@@ -27,6 +27,43 @@ async def list_facilities(
     return list(result.scalars().all())
 
 
+async def count_facilities_by_type(
+    session: AsyncSession, country_id: int, ftype
+) -> int:
+    """
+    تعداد **کل** تأسیسات یک کشور از یک نوع مشخص (بدون پنجره‌ی زمانی) — v1.11.1.
+
+    مبنای سقف کل تأسیسات برای کشورهای غیر VIP.
+    """
+    from sqlalchemy import func
+
+    res = await session.execute(
+        select(func.count()).select_from(Facility).where(
+            Facility.country_id == country_id,
+            Facility.type == getattr(ftype, "value", ftype),
+        )
+    )
+    return res.scalar() or 0
+
+
+async def list_facilities_by_type(
+    session: AsyncSession, country_id: int, ftype, resource=None
+) -> list[Facility]:
+    """
+    فهرست تأسیسات یک کشور از یک نوع مشخص (و در صورت نیاز، یک منبع مشخص) — v1.11.1.
+
+    برای صفحه‌های جداگانه‌ی «لیست معادن به تفکیک نوع» استفاده می‌شود.
+    """
+    stmt = select(Facility).where(
+        Facility.country_id == country_id,
+        Facility.type == getattr(ftype, "value", ftype),
+    )
+    if resource is not None:
+        stmt = stmt.where(Facility.resource == getattr(resource, "value", resource))
+    result = await session.execute(stmt.order_by(Facility.id))
+    return list(result.scalars().all())
+
+
 async def count_builds_since(
     session: AsyncSession, country_id: int, since: datetime
 ) -> int:

@@ -45,10 +45,12 @@ from ..enums import (
     TradeStatus,
 )
 from ..keyboards.common import confirm_cancel_kb, countries_kb
+from ..keyboards.covert import escort_offer_kb
 from ..keyboards.military import (
     military_factory_menu_kb,
     military_factory_types_kb,
     military_menu_kb,
+    military_report_nav_kb,
 )
 from ..loader import bot
 from ..services.ai import evaluators
@@ -56,7 +58,7 @@ from ..services.media import send_photo_news
 from ..services.military_service import apply_losses, format_casualties_log
 from ..services.news_service import send_log
 from ..states import MilitaryFactoryForm, MilitarySaleForm
-from ..utils.formatting import render_military_panel
+from ..utils.formatting import military_branch_pages, render_military_branch
 from ..utils.numbers import fa_money, fa_number, parse_amount
 from ..utils.ui import STYLE_NO, STYLE_OK, header
 from aiogram.utils.keyboard import InlineKeyboardBuilder
@@ -96,18 +98,56 @@ def _back_kb(callback_data: str) -> InlineKeyboardMarkup:
 
 @router.callback_query(F.data == "mil:report")
 async def cb_report(call: CallbackQuery, session: AsyncSession, db_user: User) -> None:
-    """⚔️ پنل گزارش تجهیزات نظامی."""
+    """⚔️ پنل گزارش تجهیزات نظامی — صفحه‌ی اول (v1.11.1)."""
     await call.answer()
+    await _show_military_report(call, session, db_user, page=0)
+
+
+@router.callback_query(F.data.startswith("milrep:"))
+async def cb_report_page(call: CallbackQuery, session: AsyncSession, db_user: User) -> None:
+    """ناوبری صفحه‌های پنل تجهیزات (هر زیربخش یک صفحه)."""
+    await call.answer()
+    try:
+        page = int(call.data.split(":")[1])
+    except (IndexError, ValueError):
+        page = 0
+    await _show_military_report(call, session, db_user, page=page)
+
+
+async def _show_military_report(
+    call: CallbackQuery, session: AsyncSession, db_user: User, *, page: int
+) -> None:
+    """
+    رندر یک صفحه از پنل تجهیزات.
+
+    (v1.11.1) پیش‌تر همه‌ی تجهیزات در یک پیام می‌آمد و از سقف طول پیام تلگرام
+    رد می‌شد (بریده می‌شد). حالا هر زیربخش یک صفحه است: نیروی زمینی، سامانه‌های
+    دفاعی، خودروهای زمینی، نیروی هوایی، نیروی دریایی و سامانه‌های حمله هوایی.
+    """
     country = await get_player_country(session, db_user)
     if country is None:
-        await safe_edit(call,NO_COUNTRY_TEXT)
+        await safe_edit(call, NO_COUNTRY_TEXT)
         return
+
     assets = await mil_repo.list_assets(session, country.id)
-    text = render_military_panel(country, assets)
-    # تلگرام محدودیت طول پیام دارد؛ در صورت نیاز کوتاه می‌شود
-    if len(text) > 3900:
-        text = text[:3900] + "\n..."
-    await safe_edit(call,text, reply_markup=military_menu_kb())
+    pages = military_branch_pages(assets)
+
+    if not pages:
+        await safe_edit(
+            call,
+            "⚠️ کشور شما تجهیزات نظامی ثبت‌شده‌ای ندارد.",
+            reply_markup=military_menu_kb(),
+        )
+        return
+
+    # صفحه‌ی خارج از محدوده را به بازه‌ی معتبر می‌آوریم
+    page = max(0, min(page, len(pages) - 1))
+    text = render_military_branch(
+        country, assets, pages[page], page_index=page, page_total=len(pages)
+    )
+    await safe_edit(
+        call, text, reply_markup=military_report_nav_kb(page, len(pages))
+    )
 
 
 # (مدیریت حملات و نبردها به روتر اختصاصی bot/handlers/battle.py منتقل شد)
@@ -625,11 +665,20 @@ async def cb_milsale_ok(call: CallbackQuery, session: AsyncSession, db_user: Use
         call.message.html_text + f"\n\n✅ <b>تأیید شد</b> — زمان رسیدن: حدود {fa_number(minutes)} دقیقه"
     )
 
+    # (v1.11.1) پیشنهاد اسکورت در همان لحظه‌ی ارسال محموله‌ی نظامی
     if seller.owner_user_id:
         try:
             await bot.send_message(
                 seller.owner_user_id,
-                f"✅ {buyer.flag} {buyer.name_fa} پیشنهاد فروش نظامی شما را پذیرفت. محموله در راه است.",
+                f"✅ {buyer.flag} {buyer.name_fa} پیشنهاد فروش نظامی شما را پذیرفت. "
+                "محموله در راه است.\n\n"
+                f"🚢 <b>محموله:</b> {fa_number(sale.count)} {sale.unit} {sale.name}\n"
+                f"🎯 <b>مقصد:</b> {buyer.flag} {buyer.name_fa}\n"
+                f"⏱ زمان رسیدن: حدود {fa_number(minutes)} دقیقه\n\n"
+                "🛡 <b>آیا می‌خواهید برای این محموله اسکورت بفرستید؟</b>\n"
+                "<i>محموله‌ی بی‌محافظ در مسیر قابل رهگیری است. اسکورت فقط با "
+                "جنگنده انجام می‌شود و سوخت مصرف می‌کند.</i>",
+                reply_markup=escort_offer_kb(sale.id, "mil"),
             )
         except Exception:  # noqa: BLE001
             pass

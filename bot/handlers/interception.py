@@ -163,7 +163,7 @@ async def cb_intercept_pick(
         f"{i.get('name')} ({fa_number(i.get('count', 0))})" for i in escort_items[:4]
     ) or "نامشخص"
 
-    assets = await escort_service.available_escort_assets(session, country.id)
+    assets = await escort_service.available_interceptor_assets(session, country.id)
     if not assets:
         await safe_edit(
             call,
@@ -466,7 +466,7 @@ async def cb_escort_add(
     assets = await escort_service.available_escort_assets(session, country.id)
     if not assets:
         await call.answer(
-            "⚠️ تجهیزات مناسبی برای اسکورت ندارید (نیروی دریایی/هوایی/پدافندی).",
+            "⚠️ جنگنده‌ای برای اسکورت ندارید. اسکورت محموله فقط با جنگنده ممکن است.",
             show_alert=True,
         )
         return
@@ -477,9 +477,11 @@ async def cb_escort_add(
 
     await safe_edit(
         call,
-        header("انتخاب نیروی اسکورت", "🛡") + "\n\n"
-        f"حداکثر {fa_number(ESCORT_MAX_UNITS)} واحد می‌توانید اختصاص دهید.\n"
+        header("انتخاب جنگنده‌های اسکورت", "🛡") + "\n\n"
+        f"حداکثر {fa_number(ESCORT_MAX_UNITS)} فروند می‌توانید اختصاص دهید.\n"
         "هرچه اسکورت قوی‌تر، رهگیری محموله سخت‌تر.\n\n"
+        "✈️ <i>فقط جنگنده‌ها می‌توانند اسکورت محموله باشند "
+        "(موشک، پهپاد، بالگرد و شناور مجاز نیستند).</i>\n"
         "<i>اسکورت سوخت مصرف می‌کند و در صورت نبرد تلفات می‌دهد.</i>",
         reply_markup=asset_picker_kb(assets, {}, page=0),
     )

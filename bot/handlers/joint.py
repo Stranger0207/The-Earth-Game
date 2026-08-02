@@ -13,7 +13,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from datetime import datetime, timedelta, timezone
 
-from ..constants import BUILD_LIMIT_WINDOW_HOURS, FACILITY_COST_USD, JOINT_BUILD_LIMIT
+from ..constants import (
+    BUILD_LIMIT_WINDOW_HOURS,
+    FACILITY_COST_USD,
+    FACILITY_TOTAL_LIMIT_NON_VIP,
+    JOINT_BUILD_LIMIT,
+)
 from ..database.models import JointBuildRequest, User
 from ..database.repositories import countries as countries_repo
 from ..database.repositories import facilities as fac_repo
@@ -85,9 +90,28 @@ async def cb_joint_partner(call: CallbackQuery, state: FSMContext, session: Asyn
 
 
 @router.callback_query(JointFacilityForm.choosing_type, F.data.startswith("joint_type:"))
-async def cb_joint_type(call: CallbackQuery, state: FSMContext) -> None:
+async def cb_joint_type(
+    call: CallbackQuery, state: FSMContext, session: AsyncSession, db_user: User
+) -> None:
     await call.answer()
     ftype = FacilityType(call.data.split(":")[1])
+
+    # سقف کل تأسیسات (v1.11.1) — تأسیسات مشترک هم در سهمیه‌ی سازنده حساب می‌شود
+    # تا مسیر مشترک راه فرار از محدودیت نباشد.
+    country = await get_player_country(session, db_user)
+    if country is not None and not country.is_vip:
+        total_of_type = await fac_repo.count_facilities_by_type(session, country.id, ftype)
+        if total_of_type >= FACILITY_TOTAL_LIMIT_NON_VIP:
+            await state.clear()
+            await call.message.edit_text(
+                f"🚫 سقف ساخت «{FACILITY_FA[ftype]}» پر شده است "
+                f"(حداکثر {fa_number(FACILITY_TOTAL_LIMIT_NON_VIP)} عدد، "
+                f"فعلی: {fa_number(total_of_type)}).\n\n"
+                "<i>فقط کشورهای قدرت‌های بزرگ (VIP) محدودیت تعداد ندارند.</i>",
+                reply_markup=_back_build_kb(),
+            )
+            return
+
     await state.update_data(facility_type=ftype.value)
     cost = FACILITY_COST_USD[ftype]
     if ftype == FacilityType.MINE:

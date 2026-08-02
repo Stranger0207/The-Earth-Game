@@ -15,6 +15,7 @@ import logging
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery
+from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..constants import (
@@ -53,7 +54,7 @@ from ..keyboards.command_center import (
 from ..keyboards.common import back_kb
 from ..utils.numbers import fa_number
 from ..utils.screens import safe_edit, show_menu
-from ..utils.ui import DIVIDER, header
+from ..utils.ui import DIVIDER, STYLE_MAIN, header
 from .deps import NO_COUNTRY_TEXT, get_player_country
 
 logger = logging.getLogger(__name__)
@@ -128,7 +129,7 @@ async def cb_operations_menu(call: CallbackQuery, state: FSMContext) -> None:
 # ============================================================
 @router.callback_query(F.data == "cc:status")
 async def cb_army_status(call: CallbackQuery, session: AsyncSession, db_user: User) -> None:
-    """گزارش وضعیت کلی ارتش: تجهیزات به‌تفکیک شاخه + آمادگی + گشت‌ها."""
+    """گزارش وضعیت کلی ارتش: خلاصه‌ی آمادگی/گشت + سرفصل شاخه‌ها."""
     await call.answer()
     country = await get_player_country(session, db_user)
     if country is None:
@@ -165,18 +166,31 @@ async def cb_army_status(call: CallbackQuery, session: AsyncSession, db_user: Us
     if not by_branch:
         lines.append("⚠️ کشور شما تجهیزات نظامی ثبت‌شده‌ای ندارد.")
     else:
+        # (v1.11.1) اینجا فقط خلاصه‌ی هر شاخه می‌آید؛ فهرست کامل قلم‌به‌قلم در
+        # «گزارش تجهیزات» با صفحه‌بندی زیربخش‌ها نمایش داده می‌شود.
         for branch, items in by_branch.items():
             total = sum(a.count for a in items)
-            lines.append(f"\n<b>{branch}</b> — {fa_number(total)} واحد")
+            lines.append(
+                f"\n<b>{branch}</b> — {fa_number(total)} واحد "
+                f"({fa_number(len(items))} قلم)"
+            )
             for asset in items[:6]:
                 lines.append(f"  • {asset.name}: {fa_number(asset.count)} {asset.unit}")
             if len(items) > 6:
                 lines.append(f"  <i>… و {fa_number(len(items) - 6)} قلم دیگر</i>")
+        lines.append("")
+        lines.append(DIVIDER)
+        lines.append("📄 برای فهرست کامل، «گزارش تجهیزات» را باز کنید.")
 
     text = "\n".join(lines)
     if len(text) > 3900:
         text = text[:3900] + "\n…"
-    await safe_edit(call, text, reply_markup=back_kb("menu:military"))
+
+    builder = InlineKeyboardBuilder()
+    builder.button(text="⚔️ گزارش کامل تجهیزات", callback_data="mil:report", style=STYLE_MAIN)
+    builder.button(text="🔙 بازگشت", callback_data="menu:military", style=STYLE_MAIN)
+    builder.adjust(1)
+    await safe_edit(call, text, reply_markup=builder.as_markup())
 
 
 # ============================================================

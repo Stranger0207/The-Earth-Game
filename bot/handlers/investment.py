@@ -17,6 +17,7 @@ from ..config import get_settings
 from ..constants import (
     BUILD_LIMIT_WINDOW_HOURS,
     FOREIGN_INVEST_NEWS_MIN_USD,
+    INVESTMENT_ACTIVE_LIMIT,
     INVESTMENT_CATEGORIES,
     INVESTMENT_LIMIT,
 )
@@ -28,7 +29,7 @@ from ..keyboards.economy import invest_category_kb, invest_foreign_kb, invest_me
 from ..loader import bot
 from ..services.news_service import send_log
 from ..states import InvestForm
-from ..utils.numbers import fa_money, parse_amount
+from ..utils.numbers import fa_money, fa_number, parse_amount
 from ..utils.screens import safe_edit
 from ..utils.ui import STYLE_MAIN
 from .deps import NO_COUNTRY_TEXT, get_player_country
@@ -36,11 +37,35 @@ from .deps import NO_COUNTRY_TEXT, get_player_country
 router = Router(name="investment")
 settings = get_settings()
 
+# تعداد سرمایه‌گذاری در هر صفحه‌ی فهرست (v1.11.1)
+INVEST_PAGE_SIZE = 10
+
 
 def _back_invest_kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[[
         InlineKeyboardButton(text="🔙 بازگشت", callback_data="econ:invest", style=STYLE_MAIN)
     ]])
+
+
+def _invest_page_kb(kind: str, page: int, total: int) -> InlineKeyboardMarkup:
+    """ناوبری صفحه‌های فهرست سرمایه‌گذاری (v1.11.1)."""
+    nav: list[InlineKeyboardButton] = []
+    if page > 0:
+        nav.append(InlineKeyboardButton(
+            text="◀️ صفحه قبلی", callback_data=f"invpg:{kind}:{page - 1}", style=STYLE_MAIN
+        ))
+    if page < total - 1:
+        nav.append(InlineKeyboardButton(
+            text="صفحه بعدی ▶️", callback_data=f"invpg:{kind}:{page + 1}", style=STYLE_MAIN
+        ))
+
+    rows: list[list[InlineKeyboardButton]] = []
+    if nav:
+        rows.append(nav)
+    rows.append([
+        InlineKeyboardButton(text="🔙 بازگشت", callback_data="econ:invest", style=STYLE_MAIN)
+    ])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def _cat_fa_pct(key: str) -> tuple[str, float]:
@@ -55,9 +80,27 @@ async def _invest_limit_exceeded(session: AsyncSession, country_id: int) -> bool
     return recent >= INVESTMENT_LIMIT
 
 
+async def _invest_cap_reached(session: AsyncSession, country_id: int) -> bool:
+    """
+    آیا کشور به سقف تعداد سرمایه‌گذاری‌های **فعال** رسیده است؟ (v1.11.1)
+
+    برخلاف سقف ۱۲ساعته، این سقف با گذر زمان آزاد نمی‌شود؛ بازیکن باید
+    سرمایه‌گذاری فعال داشته باشد و بیشتر از این نمی‌تواند اضافه کند.
+    """
+    active = await inv_repo.count_active_by_investor(session, country_id)
+    return active >= INVESTMENT_ACTIVE_LIMIT
+
+
 _INVEST_LIMIT_TEXT = (
     f"⏳ شما در هر {BUILD_LIMIT_WINDOW_HOURS} ساعت حداکثر {INVESTMENT_LIMIT} "
     "سرمایه‌گذاری می‌توانید ثبت کنید. لطفاً بعداً تلاش کنید."
+)
+
+_INVEST_CAP_TEXT = (
+    f"🚫 <b>به سقف سرمایه‌گذاری رسیده‌اید</b>\n\n"
+    f"هر کشور حداکثر می‌تواند {INVESTMENT_ACTIVE_LIMIT} سرمایه‌گذاری فعال "
+    "هم‌زمان داشته باشد.\n\n"
+    "<i>برای ثبت سرمایه‌گذاری جدید باید یکی از سرمایه‌گذاری‌های فعلی پایان یابد.</i>"
 )
 
 
@@ -84,6 +127,9 @@ async def cb_invest_internal(call: CallbackQuery, state: FSMContext, session: As
     if country is None:
         await safe_edit(call,NO_COUNTRY_TEXT)
         return
+    if await _invest_cap_reached(session, country.id):
+        await safe_edit(call, _INVEST_CAP_TEXT, reply_markup=invest_menu_kb())
+        return
     if await _invest_limit_exceeded(session, country.id):
         await safe_edit(call,_INVEST_LIMIT_TEXT, reply_markup=invest_menu_kb())
         return
@@ -109,43 +155,104 @@ async def cb_invest_foreign(call: CallbackQuery, state: FSMContext) -> None:
 
 @router.callback_query(F.data == "inv:mine")
 async def cb_invest_mine(call: CallbackQuery, session: AsyncSession, db_user: User) -> None:
+    """فهرست سرمایه‌گذاری‌های من — صفحه‌ی اول (v1.11.1)."""
     await call.answer()
+    await _show_invest_page(call, session, db_user, kind="mine", page=0)
+
+
+@router.callback_query(F.data.startswith("invpg:"))
+async def cb_invest_page(call: CallbackQuery, session: AsyncSession, db_user: User) -> None:
+    """ناوبری صفحه‌های فهرست سرمایه‌گذاری (`invpg:{kind}:{page}`)."""
+    await call.answer()
+    parts = call.data.split(":")
+    kind = parts[1] if len(parts) > 1 else "mine"
+    try:
+        page = int(parts[2])
+    except (IndexError, ValueError):
+        page = 0
+    await _show_invest_page(call, session, db_user, kind=kind, page=page)
+
+
+async def _show_invest_page(
+    call: CallbackQuery, session: AsyncSession, db_user: User, *, kind: str, page: int
+) -> None:
+    """
+    رندر یک صفحه از فهرست سرمایه‌گذاری‌ها (v1.11.1).
+
+    kind: "mine" = سرمایه‌گذاری‌های من | "on_me" = سرمایه‌گذاری‌ها روی کشور من
+
+    پیش‌تر کل فهرست در یک پیام می‌آمد و با زیادشدن سرمایه‌گذاری‌ها از سقف طول
+    پیام تلگرام رد می‌شد و پیام اصلاً نمایش داده نمی‌شد.
+    """
     country = await get_player_country(session, db_user)
     if country is None:
-        await safe_edit(call,NO_COUNTRY_TEXT)
+        await safe_edit(call, NO_COUNTRY_TEXT)
         return
-    items = await inv_repo.list_by_investor(session, country.id)
+
+    if kind == "on_me":
+        items = await inv_repo.list_on_target(session, country.id)
+        title, emoji = "سرمایه‌گذاری‌ها روی کشور من", "📥"
+        empty = "هیچ کشوری روی کشور شما سرمایه‌گذاری نکرده است."
+    else:
+        kind = "mine"
+        items = await inv_repo.list_by_investor(session, country.id)
+        title, emoji = "سرمایه‌گذاری‌های من", "📋"
+        empty = "شما هنوز سرمایه‌گذاری‌ای انجام نداده‌اید."
+
     if not items:
-        await safe_edit(call,"شما هنوز سرمایه‌گذاری‌ای انجام نداده‌اید.", reply_markup=_back_invest_kb())
+        await safe_edit(call, empty, reply_markup=_back_invest_kb())
         return
-    lines = ["📋 <b>سرمایه‌گذاری‌های من</b>", ""]
-    for inv in items:
-        fa, pct = _cat_fa_pct(inv.category)
-        tgt = await countries_repo.get_country(session, inv.target_country)
-        where = "داخلی" if not inv.is_foreign else f"{tgt.flag} {tgt.name_fa}" if tgt else "?"
-        profit = inv.amount * inv.profit_pct / 100.0
-        lines.append(f"• {fa} — {where}\n   اصل: {fa_money(inv.amount)} | سود ۲۴ساعته: {fa_money(profit)}")
-    await safe_edit(call,"\n".join(lines), reply_markup=_back_invest_kb())
+
+    total_pages = max(1, (len(items) + INVEST_PAGE_SIZE - 1) // INVEST_PAGE_SIZE)
+    page = max(0, min(page, total_pages - 1))
+    chunk = items[page * INVEST_PAGE_SIZE : (page + 1) * INVEST_PAGE_SIZE]
+
+    total_amount = sum(i.amount for i in items)
+    lines = [
+        f"{emoji} <b>{title}</b>",
+        "",
+        f"📊 تعداد: <b>{fa_number(len(items))}</b> از سقف {fa_number(INVESTMENT_ACTIVE_LIMIT)}"
+        if kind == "mine"
+        else f"📊 تعداد: <b>{fa_number(len(items))}</b>",
+        f"💰 مجموع سرمایه: {fa_money(total_amount)}",
+        f"📄 صفحه {fa_number(page + 1)} از {fa_number(total_pages)}",
+        "",
+    ]
+
+    for idx, inv in enumerate(chunk, start=page * INVEST_PAGE_SIZE + 1):
+        fa, _pct = _cat_fa_pct(inv.category)
+        if kind == "on_me":
+            investor = await countries_repo.get_country(session, inv.investor_country)
+            who = f"{investor.flag} {investor.name_fa}" if investor else "?"
+            lines.append(
+                f"{fa_number(idx)}. {fa} — سرمایه‌گذار: {who}\n"
+                f"   💵 مبلغ: {fa_money(inv.amount)}"
+            )
+        else:
+            tgt = await countries_repo.get_country(session, inv.target_country)
+            where = (
+                "🏠 داخلی"
+                if not inv.is_foreign
+                else (f"{tgt.flag} {tgt.name_fa}" if tgt else "?")
+            )
+            profit = inv.amount * inv.profit_pct / 100.0
+            lines.append(
+                f"{fa_number(idx)}. {fa} — {where}\n"
+                f"   💵 اصل: {fa_money(inv.amount)} | 📈 سود ۲۴ساعته: {fa_money(profit)}"
+            )
+
+    await safe_edit(
+        call,
+        "\n".join(lines),
+        reply_markup=_invest_page_kb(kind, page, total_pages),
+    )
 
 
 @router.callback_query(F.data == "inv:on_me")
 async def cb_invest_on_me(call: CallbackQuery, session: AsyncSession, db_user: User) -> None:
+    """فهرست سرمایه‌گذاری‌های دیگران روی کشور من — صفحه‌ی اول (v1.11.1)."""
     await call.answer()
-    country = await get_player_country(session, db_user)
-    if country is None:
-        await safe_edit(call,NO_COUNTRY_TEXT)
-        return
-    items = await inv_repo.list_on_target(session, country.id)
-    if not items:
-        await safe_edit(call,"هیچ کشوری روی کشور شما سرمایه‌گذاری نکرده است.", reply_markup=_back_invest_kb())
-        return
-    lines = ["📥 <b>سرمایه‌گذاری‌ها روی کشور من</b>", ""]
-    for inv in items:
-        fa, _ = _cat_fa_pct(inv.category)
-        investor = await countries_repo.get_country(session, inv.investor_country)
-        who = f"{investor.flag} {investor.name_fa}" if investor else "?"
-        lines.append(f"• {fa} — سرمایه‌گذار: {who} | مبلغ: {fa_money(inv.amount)}")
-    await safe_edit(call,"\n".join(lines), reply_markup=_back_invest_kb())
+    await _show_invest_page(call, session, db_user, kind="on_me", page=0)
 
 
 @router.callback_query(F.data == "inv:new_foreign")
@@ -154,6 +261,9 @@ async def cb_invest_new_foreign(call: CallbackQuery, state: FSMContext, session:
     country = await get_player_country(session, db_user)
     if country is None:
         await safe_edit(call,NO_COUNTRY_TEXT)
+        return
+    if await _invest_cap_reached(session, country.id):
+        await safe_edit(call, _INVEST_CAP_TEXT, reply_markup=invest_foreign_kb())
         return
     if await _invest_limit_exceeded(session, country.id):
         await safe_edit(call,_INVEST_LIMIT_TEXT, reply_markup=invest_foreign_kb())
@@ -258,6 +368,10 @@ async def cb_invest_confirm(call: CallbackQuery, state: FSMContext, session: Asy
     # چک نهاییِ محدودیت پیش از کسر بودجه (v1.11)
     if await _invest_limit_exceeded(session, country.id):
         await safe_edit(call,_INVEST_LIMIT_TEXT, reply_markup=_back_invest_kb())
+        return
+    # چک نهاییِ سقف تعداد فعال پیش از کسر بودجه (v1.11.1)
+    if await _invest_cap_reached(session, country.id):
+        await safe_edit(call, _INVEST_CAP_TEXT, reply_markup=_back_invest_kb())
         return
     fa, pct = _cat_fa_pct(key)
     # کسر اصل سرمایه از بودجه

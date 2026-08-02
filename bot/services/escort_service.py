@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..constants import (
     ESCORT_ALLOWED_BRANCHES,
+    ESCORT_ALLOWED_CATEGORIES,
     ESCORT_FUEL_PER_UNIT,
     ESCORT_MAX_UNITS,
 )
@@ -36,7 +37,36 @@ class EscortError(Exception):
 async def available_escort_assets(
     session: AsyncSession, country_id: int
 ) -> list[dict]:
-    """تجهیزاتی که می‌توانند نقش اسکورت بگیرند (دریایی/هوایی/پدافندی)."""
+    """
+    تجهیزاتی که می‌توانند نقش اسکورت بگیرند.
+
+    (v1.11.1) فقط **جنگنده**؛ موشک، پهپاد، بالگرد، ناوچه و پدافند مجاز نیستند.
+    """
+    assets = await mil_repo.list_assets(session, country_id)
+    return [
+        {
+            "name": a.name,
+            "count": a.count,
+            "unit": a.unit,
+            "category": a.category,
+            "branch": a.branch,
+        }
+        for a in assets
+        if a.count > 0
+        and a.branch in ESCORT_ALLOWED_BRANCHES
+        and a.category in ESCORT_ALLOWED_CATEGORIES
+    ]
+
+
+async def available_interceptor_assets(
+    session: AsyncSession, country_id: int
+) -> list[dict]:
+    """
+    تجهیزات مجاز برای **رهگیری** محموله (دریایی/هوایی/پدافندی).
+
+    برخلاف اسکورت، رهگیری با ناوچه و پدافند هم منطقی است؛ بنابراین فقط
+    فیلتر شاخه اعمال می‌شود.
+    """
     assets = await mil_repo.list_assets(session, country_id)
     return [
         {
@@ -102,6 +132,12 @@ async def validate_escort(
             available = asset.count if asset else 0
             raise EscortError(
                 f"موجودی «{item.get('name')}» کافی نیست (موجودی: {available})."
+            )
+        # (v1.11.1) فقط جنگنده مجاز است — بررسی روی داده‌ی دیتابیس، نه ورودی کاربر
+        if asset.category not in ESCORT_ALLOWED_CATEGORIES:
+            raise EscortError(
+                f"⚠️ «{asset.name}» نمی‌تواند اسکورت باشد. "
+                "فقط جنگنده‌ها اجازه‌ی اسکورت محموله دارند."
             )
 
     fuel = escort_fuel_cost(assets)

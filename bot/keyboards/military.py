@@ -2,11 +2,43 @@
 
 from __future__ import annotations
 
-from aiogram.types import InlineKeyboardMarkup
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from ..enums import ATTACK_FA, MIL_FACTORY_FA, AttackType, MilitaryFactoryType
 from ..utils.ui import STYLE_MAIN, STYLE_NO, STYLE_OK
+
+
+def military_report_nav_kb(
+    page: int, total: int, *, back_data: str = "menu:military"
+) -> InlineKeyboardMarkup:
+    """
+    ناوبری صفحه‌های پنل تجهیزات (v1.11.1): صفحه‌ی قبلی / بعدی / بازگشت.
+
+    هر صفحه یک زیربخش نظامی است (زمینی، هوایی، دریایی، موشکی و ...).
+    """
+    builder = InlineKeyboardBuilder()
+
+    nav: list[InlineKeyboardButton] = []
+    if page > 0:
+        nav.append(
+            InlineKeyboardButton(
+                text="◀️ صفحه قبلی", callback_data=f"milrep:{page - 1}", style=STYLE_MAIN
+            )
+        )
+    if page < total - 1:
+        nav.append(
+            InlineKeyboardButton(
+                text="صفحه بعدی ▶️", callback_data=f"milrep:{page + 1}", style=STYLE_MAIN
+            )
+        )
+    if nav:
+        builder.row(*nav)
+
+    builder.row(
+        InlineKeyboardButton(text="🔙 بازگشت", callback_data=back_data, style=STYLE_MAIN)
+    )
+    return builder.as_markup()
 
 
 def military_menu_kb() -> InlineKeyboardMarkup:

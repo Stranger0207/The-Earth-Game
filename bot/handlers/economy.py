@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..constants import (
     BUILD_LIMIT_WINDOW_HOURS,
     FACILITY_COST_USD,
+    FACILITY_TOTAL_LIMIT_NON_VIP,
     RESOURCE_SALE_COOLDOWN_HOURS,
     build_limit_group_for,
 )
@@ -34,10 +35,14 @@ from ..enums import (
     TradeStatus,
 )
 from ..keyboards.common import countries_kb
+from ..keyboards.covert import escort_offer_kb
 from ..keyboards.economy import (
     economy_menu_kb,
+    facility_list_nav_kb,
     facility_types_kb,
+    mine_resource_pages_kb,
     mine_resources_kb,
+    my_facilities_menu_kb,
     sell_resources_kb,
 )
 from ..config import get_settings
@@ -50,11 +55,43 @@ from ..states import FacilityForm, SaleForm, TariffForm
 from ..utils.formatting import render_economy_panel, render_reserves_panel
 from ..utils.numbers import fa_money, fa_number, parse_amount
 from ..utils.screens import safe_edit
-from ..utils.ui import STYLE_MAIN, STYLE_NO, STYLE_OK
+from ..utils.ui import STYLE_MAIN, STYLE_NO, STYLE_OK, header
 from .deps import NO_COUNTRY_TEXT, get_player_country
 
 router = Router(name="economy")
 settings = get_settings()
+
+# تعداد تأسیسات در هر صفحه‌ی فهرست (v1.11.1)
+FACILITY_PAGE_SIZE = 10
+
+
+def _facility_line(facility, index: int) -> str:
+    """یک سطر از فهرست تأسیسات (نوع/منبع، محل، بازدهی و بودجه)."""
+    try:
+        fa = FACILITY_FA[FacilityType(facility.type)]
+    except (ValueError, KeyError):
+        fa = facility.type
+
+    unit = ""
+    if facility.resource:
+        try:
+            rtype = ResourceType(facility.resource)
+            unit = RESOURCE_UNIT_FA[rtype]
+            fa = f"{fa} {RESOURCE_FA[rtype]}"
+        except (ValueError, KeyError):
+            unit = ""
+
+    # تأسیسات مشترک: سهم شریک را هم نشان بده (v1.9)
+    partner_note = ""
+    partner_pct = getattr(facility, "partner_percent", None)
+    if partner_pct:
+        partner_note = f" | 🤝 سهم شریک: {fa_number(partner_pct)}٪"
+
+    return (
+        f"{fa_number(index)}. {fa} — 📍 {facility.location or '—'}\n"
+        f"   🏗 بازدهی: {fa_number(facility.yield_amount)} {unit}/۲۴ساعت "
+        f"| 💰 {fa_money(facility.budget)}{partner_note}"
+    )
 
 
 def _is_usa(country) -> bool:
@@ -109,35 +146,131 @@ async def cb_build(call: CallbackQuery, state: FSMContext) -> None:
 
 @router.callback_query(F.data == "econ:facilities")
 async def cb_my_facilities(call: CallbackQuery, session: AsyncSession, db_user: User) -> None:
-    """فهرست تأسیسات احداث‌شده‌ی کشور (v1.7)."""
+    """
+    منوی «تأسیسات من» (v1.11.1): برای هر نوع تأسیسات یک دکمه با تعداد.
+
+    فهرست کامل هر نوع در صفحه‌ی جداگانه‌ی خودش با صفحه‌بندی نمایش داده می‌شود
+    (پیش‌تر همه‌ی تأسیسات در یک پیام می‌آمد و با زیادشدن، پیام تلگرام می‌شکست).
+    """
     await call.answer()
     country = await get_player_country(session, db_user)
     if country is None:
-        await safe_edit(call,NO_COUNTRY_TEXT)
+        await safe_edit(call, NO_COUNTRY_TEXT)
         return
+
     facilities = await fac_repo.list_facilities(session, country.id)
     if not facilities:
-        await safe_edit(call,
-            "🏭 هنوز تأسیساتی احداث نکرده‌اید.", reply_markup=facility_types_kb()
+        await safe_edit(
+            call, "🏭 هنوز تأسیساتی احداث نکرده‌اید.", reply_markup=facility_types_kb()
         )
         return
-    lines = ["🏭 <b>تأسیسات شما</b>", ""]
+
+    counts: dict[str, int] = {}
     for f in facilities:
-        try:
-            fa = FACILITY_FA[FacilityType(f.type)]
-        except (ValueError, KeyError):
-            fa = f.type
-        unit = ""
-        if f.resource:
-            try:
-                unit = RESOURCE_UNIT_FA[ResourceType(f.resource)]
-            except (ValueError, KeyError):
-                unit = ""
-        lines.append(
-            f"• {fa} — 📍 {f.location or '—'}\n"
-            f"   🏗 بازدهی: {fa_number(f.yield_amount)} {unit}/۲۴ساعت | 💰 {fa_money(f.budget)}"
+        counts[f.type] = counts.get(f.type, 0) + 1
+
+    limit_note = (
+        "♾ کشور شما VIP است: محدودیت تعداد ندارید."
+        if country.is_vip
+        else f"📌 سقف هر نوع تأسیسات: {fa_number(FACILITY_TOTAL_LIMIT_NON_VIP)} عدد."
+    )
+    await safe_edit(
+        call,
+        header("تأسیسات من", "🏭") + "\n\n"
+        f"مجموع تأسیسات: <b>{fa_number(len(facilities))}</b>\n"
+        f"{limit_note}\n\n"
+        "<i>برای دیدن فهرست هر نوع، روی آن بزنید:</i>",
+        reply_markup=my_facilities_menu_kb(counts),
+    )
+
+
+@router.callback_query(F.data.startswith("facl:"))
+async def cb_facility_list(call: CallbackQuery, session: AsyncSession, db_user: User) -> None:
+    """
+    فهرست صفحه‌بندی‌شده‌ی تأسیسات یک نوع (v1.11.1).
+
+    فرمت کال‌بک:
+    - `facl:{type}:{page}` — برای انواع غیرمعدنی
+    - `facl:mine:0` — منوی انتخاب نوع معدن
+    - `facl:mine:{resource}:{page}` — فهرست معادن یک منبع مشخص
+    """
+    await call.answer()
+    country = await get_player_country(session, db_user)
+    if country is None:
+        await safe_edit(call, NO_COUNTRY_TEXT)
+        return
+
+    parts = call.data.split(":")
+    try:
+        ftype = FacilityType(parts[1])
+    except (IndexError, ValueError):
+        await safe_edit(call, "نوع تأسیسات نامعتبر است.", reply_markup=facility_types_kb())
+        return
+
+    # ---------- معدن: ابتدا انتخاب نوع منبع ----------
+    if ftype == FacilityType.MINE and len(parts) == 3:
+        mines = await fac_repo.list_facilities_by_type(session, country.id, ftype)
+        counts: dict[str, int] = {}
+        for m in mines:
+            if m.resource:
+                counts[m.resource] = counts.get(m.resource, 0) + 1
+        await safe_edit(
+            call,
+            header("معادن من", "⛏") + "\n\n"
+            f"مجموع معادن: <b>{fa_number(len(mines))}</b>\n\n"
+            "<i>برای دیدن فهرست هر نوع معدن، روی آن بزنید:</i>",
+            reply_markup=mine_resource_pages_kb(counts),
         )
-    await safe_edit(call,"\n".join(lines), reply_markup=facility_types_kb())
+        return
+
+    # ---------- تعیین منبع/صفحه و عنوان ----------
+    resource: str | None = None
+    if ftype == FacilityType.MINE:
+        resource = parts[2]
+        page = int(parts[3]) if len(parts) > 3 else 0
+        prefix = f"facl:mine:{resource}"
+        back_data = "facl:mine:0"
+        try:
+            rtype = ResourceType(resource)
+            title = f"معادن {RESOURCE_FA[rtype]}"
+        except (ValueError, KeyError):
+            title = "معادن"
+    else:
+        page = int(parts[2]) if len(parts) > 2 else 0
+        prefix = f"facl:{ftype.value}"
+        back_data = "econ:facilities"
+        title = FACILITY_FA[ftype]
+
+    items = await fac_repo.list_facilities_by_type(session, country.id, ftype, resource)
+    if not items:
+        await safe_edit(
+            call,
+            f"🏭 هیچ «{title}» ندارید.",
+            reply_markup=facility_list_nav_kb(0, 1, prefix=prefix, back_data=back_data),
+        )
+        return
+
+    total_pages = max(1, (len(items) + FACILITY_PAGE_SIZE - 1) // FACILITY_PAGE_SIZE)
+    page = max(0, min(page, total_pages - 1))
+    chunk = items[page * FACILITY_PAGE_SIZE : (page + 1) * FACILITY_PAGE_SIZE]
+
+    lines = [
+        header(title, "🏭"),
+        "",
+        f"📦 تعداد: <b>{fa_number(len(items))}</b> "
+        f"| 📄 صفحه {fa_number(page + 1)} از {fa_number(total_pages)}",
+        "",
+    ]
+    for idx, f in enumerate(chunk, start=page * FACILITY_PAGE_SIZE + 1):
+        lines.append(_facility_line(f, idx))
+
+    await safe_edit(
+        call,
+        "\n".join(lines),
+        reply_markup=facility_list_nav_kb(
+            page, total_pages, prefix=prefix, back_data=back_data
+        ),
+    )
 
 
 @router.callback_query(FacilityForm.choosing_type, F.data.startswith("build_type:"))
@@ -216,6 +349,22 @@ async def msg_location(
         await message.answer(NO_COUNTRY_TEXT)
         await state.clear()
         return
+
+    # سقف کل تأسیسات (v1.11.1): کشورهای غیر VIP از هر نوع حداکثر
+    # FACILITY_TOTAL_LIMIT_NON_VIP عدد؛ کشورهای VIP نامحدود می‌سازند.
+    if not country.is_vip:
+        total_of_type = await fac_repo.count_facilities_by_type(session, country.id, ftype)
+        if total_of_type >= FACILITY_TOTAL_LIMIT_NON_VIP:
+            await state.clear()
+            await message.answer(
+                f"🚫 سقف ساخت «{FACILITY_FA[ftype]}» پر شده است.\n\n"
+                f"کشور شما می‌تواند حداکثر {fa_number(FACILITY_TOTAL_LIMIT_NON_VIP)} "
+                f"«{FACILITY_FA[ftype]}» داشته باشد "
+                f"(فعلی: {fa_number(total_of_type)}).\n\n"
+                "<i>فقط کشورهای قدرت‌های بزرگ (VIP) محدودیت تعداد ندارند.</i>",
+                reply_markup=economy_menu_kb(),
+            )
+            return
 
     # محدودیت ساخت به تفکیک نوع تأسیسات (v1.9):
     # معدنی ۵، فولاد ۲، دکل نفت/گاز ۳ (مشترک) — همگی در هر ۱۲ ساعت
@@ -512,6 +661,7 @@ async def cb_sale_accept(
     # تخمین زمان رسیدن محموله توسط AI
     seller = await countries_repo.get_country(session, sale.seller_country)
     rname = RESOURCE_FA[ResourceType(sale.resource)]
+    unit_fa = RESOURCE_UNIT_FA[ResourceType(sale.resource)]
     eta_data = await evaluators.estimate_shipping_time(
         seller.name_fa if seller else "?", buyer.name_fa, rname, sale.amount
     )
@@ -538,11 +688,20 @@ async def cb_sale_accept(
                 f"\n⚠️ تعرفه‌ی {fa_number(sale_info.get('tariff_percent', 0))}٪ آمریکا "
                 f"({fa_money(duty)}) کسر شد. خالص دریافتی: {fa_money(sale_info.get('net_to_seller', 0))}."
             )
+        # (v1.11.1) در همین لحظه‌ی ارسال محموله، از فروشنده می‌پرسیم آیا اسکورت
+        # می‌فرستد یا نه. اسکورت فقط جنگنده است و محموله را از رهگیری حفظ می‌کند.
         try:
             await bot.send_message(
                 seller.owner_user_id,
                 f"✅ {buyer.flag} {buyer.name_fa} پیشنهاد فروش شما را پذیرفت. "
-                f"محموله در راه است.{tariff_note}",
+                f"محموله در راه است.{tariff_note}\n\n"
+                f"🚢 <b>محموله:</b> {fa_number(sale.amount)} {unit_fa} {rname}\n"
+                f"🎯 <b>مقصد:</b> {buyer.flag} {buyer.name_fa}\n"
+                f"⏱ زمان رسیدن: حدود {fa_number(minutes)} دقیقه\n\n"
+                "🛡 <b>آیا می‌خواهید برای این محموله اسکورت بفرستید؟</b>\n"
+                "<i>محموله‌ی بی‌محافظ در مسیر قابل رهگیری است. اسکورت فقط با "
+                "جنگنده انجام می‌شود و سوخت مصرف می‌کند.</i>",
+                reply_markup=escort_offer_kb(sale.id, "res"),
             )
         except Exception:  # noqa: BLE001
             pass

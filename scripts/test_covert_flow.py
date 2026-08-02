@@ -215,15 +215,22 @@ async def main() -> int:
         session.add(sale)
         await session.flush()
 
+        # (v1.11.1) اسکورت فقط جنگنده است؛ ناوشکن/پدافند/پهپاد مجاز نیستند
         allowed = await esc.available_escort_assets(session, seller.id)
         names = {a["name"] for a in allowed}
-        check("تجهیزات دریایی مجاز اسکورت‌اند", "ناوشکن" in names)
-        check("تجهیزات هوایی مجاز اسکورت‌اند", "F-14" in names)
+        check("جنگنده مجاز اسکورت است", "F-14" in names, str(names))
+        check("ناوشکن مجاز اسکورت نیست (v1.11.1)", "ناوشکن" not in names, str(names))
         check("تانک مجاز اسکورت نیست", "T-72" not in names, str(names))
 
+        # رهگیری همچنان با شاخه‌های دریایی/هوایی/پدافندی ممکن است
+        interceptors = await esc.available_interceptor_assets(session, seller.id)
+        inames = {a["name"] for a in interceptors}
+        check("ناوشکن مجاز رهگیری است", "ناوشکن" in inames, str(inames))
+        check("تانک مجاز رهگیری نیست", "T-72" not in inames, str(inames))
+
         escort_payload = [{
-            "name": "ناوشکن", "count": 6, "unit": "فروند",
-            "category": "ناوشکن", "branch": "نیروی دریایی",
+            "name": "F-14", "count": 6, "unit": "فروند",
+            "category": "جنگنده", "branch": "نیروی هوایی",
         }]
         power = await esc.attach_escort(session, seller, sale, escort_payload)
         await session.commit()
@@ -237,12 +244,22 @@ async def main() -> int:
         # سقف اسکورت
         try:
             await esc.validate_escort(session, seller, [{
-                "name": "ناوشکن", "count": ESCORT_MAX_UNITS + 10,
-                "unit": "فروند", "category": "ناوشکن", "branch": "نیروی دریایی",
+                "name": "F-14", "count": ESCORT_MAX_UNITS + 10,
+                "unit": "فروند", "category": "جنگنده", "branch": "نیروی هوایی",
             }])
             check("سقف اسکورت رعایت می‌شود", False, "سقف کار نکرد")
         except esc.EscortError:
             check("سقف اسکورت رعایت می‌شود", True)
+
+        # (v1.11.1) اعتبارسنجی سمت سرور: اسکورت غیرجنگنده رد می‌شود
+        try:
+            await esc.validate_escort(session, seller, [{
+                "name": "ناوشکن", "count": 2,
+                "unit": "فروند", "category": "ناوشکن", "branch": "نیروی دریایی",
+            }])
+            check("اسکورت غیرجنگنده رد می‌شود", False, "ناوشکن پذیرفته شد")
+        except esc.EscortError:
+            check("اسکورت غیرجنگنده رد می‌شود", True)
 
         # ============================================================
         #  ۶) فهرست محموله‌های قابل رهگیری

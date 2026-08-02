@@ -46,6 +46,24 @@ async def all_active(session: AsyncSession) -> list[Investment]:
     return list(result.scalars().all())
 
 
+async def count_active_by_investor(session: AsyncSession, investor_id: int) -> int:
+    """
+    تعداد سرمایه‌گذاری‌های **فعال** یک کشور (v1.11.1).
+
+    مبنای سقف `INVESTMENT_ACTIVE_LIMIT`؛ برخلاف `count_by_investor_since`
+    پنجره‌ی زمانی ندارد و فقط ردیف‌های فعال را می‌شمارد.
+    """
+    from sqlalchemy import func
+
+    res = await session.execute(
+        select(func.count()).select_from(Investment).where(
+            Investment.investor_country == investor_id,
+            Investment.active.is_(True),
+        )
+    )
+    return res.scalar() or 0
+
+
 async def count_by_investor_since(
     session: AsyncSession, investor_id: int, since
 ) -> int:

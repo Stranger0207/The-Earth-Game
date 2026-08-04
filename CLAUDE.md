@@ -420,6 +420,35 @@ python -m scripts.seed_commanders   # ساخت فرماندهان (یک‌بار
 ستون‌های جدید `countries` (`readiness`, `last_readiness_decay_at`,
 `leadership_crisis_until`) خودکار توسط `init_db` اضافه می‌شوند.
 
+## رفع باگ `/endseason` (v1.11.3)
+
+- **باگ:** `/endseason` روی PostgreSQL کاملاً می‌شکست:
+  `ForeignKeyViolationError ... "commanders" violates "commander_intel_commander_id_fkey"`.
+  `reset_season` جدول `commanders` را پاک می‌کرد ولی `commander_intel` را نه —
+  و چون `commander_intel.commander_id` کلید خارجی دارد، `DELETE FROM commanders`
+  رد می‌شد و کل ریست فصل با تراکنشِ برگشت‌خورده متوقف می‌ماند. جدول
+  `commander_intel` در v1.10.7 (سیستم شناسایی پیش از ترور) اضافه شده بود ولی
+  به `season_service` وصل نشد.
+- **رفع:** `delete(CommanderIntel)` **قبل از** `delete(Commander)` در `reset_season`.
+- **قاعده‌ی کلی:** هر مدل جدیدی که `ForeignKey` به جدولی دارد که ریست فصل پاکش
+  می‌کند، باید خودش هم در `reset_season` و **پیش از والدش** پاک شود. (روی SQLite
+  دیده نمی‌شود چون اجبار کلید خارجی پیش‌فرض خاموش است — فقط روی production می‌ترکد.)
+- **مقاوم‌سازی هندلر:** `cb_season_confirm` در `admin.py` حالا `try/except` دارد:
+  خطا → `rollback` + نمایش پیام خطا به مالک + ثبت در گروه لاگ. پیش‌تر پیام روی
+  «⏳ در حال ریست...» می‌ماند و مالک هیچ نمی‌فهمید. در حالت موفق هم تعداد
+  فرماندهان بازسازی‌شده گزارش و در لاگ ثبت می‌شود.
+
+### 🧪 تست
+```bash
+python -m scripts.test_season_reset   # ۳۳ بررسی
+```
+سه لایه دارد و از **همه‌ی** مدل‌های آینده هم محافظت می‌کند:
+1. **ساختاری** — ترتیب حذف را از سورس `reset_season` می‌خواند و با گراف کلید
+   خارجیِ `Base.metadata` می‌سنجد: هر جدول ارجاع‌دهنده باید پاک شود و *قبل* از والدش.
+2. **پوشش** — هیچ جدولی از قلم نیفتاده باشد (استثناهای عمدی در `_PRESERVED`).
+3. **انتها-به-انتها** — ریست واقعی با `PRAGMA foreign_keys=ON` تا SQLite رفتار
+   PostgreSQL را بازتولید کند (بدون این، تست باگ را نمی‌دید).
+
 ## قواعد ظاهری UI (v1.8)
 
 - رنگ دکمه‌ها از طریق فیلد `style` در `InlineKeyboardButton` (Bot API 9.4+) اعمال می‌شود.

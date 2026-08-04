@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+
 from aiogram import F, Router
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
@@ -32,6 +34,7 @@ from ..utils.ui import PICK_OFF, PICK_ON, STYLE_MAIN, STYLE_OK
 
 router = Router(name="admin")
 settings = get_settings()
+logger = logging.getLogger(__name__)
 
 
 def _is_owner(user_id: int) -> bool:
@@ -373,11 +376,29 @@ async def cb_season_confirm(
     await call.answer("در حال ریست فصل...")
     await call.message.edit_text("⏳ در حال ریست کامل بازی... لطفاً صبر کنید.")
 
-    result = await reset_season(session)
+    try:
+        result = await reset_season(session)
+    except Exception as exc:  # noqa: BLE001 — خطا باید به مالک نمایش داده شود، نه اینکه پیام روی «⏳» بماند
+        logger.exception("Season reset failed")
+        await session.rollback()
+        await call.message.edit_text(
+            "❌ <b>ریست فصل انجام نشد.</b>\n\n"
+            "هیچ تغییری روی دیتابیس اعمال نشد (تراکنش برگشت خورد).\n\n"
+            f"<b>خطا:</b> <code>{type(exc).__name__}: {exc}</code>"
+        )
+        await send_log(bot, f"❌ <b>خطا در ریست فصل</b>\n<code>{type(exc).__name__}: {exc}</code>")
+        return
 
     await call.message.edit_text(
         "🎉 <b>فصل با موفقیت به پایان رسید و بازی ریست شد.</b>\n\n"
-        f"✅ {result['countries_reset']} کشور به حالت اولیه بازگشتند.\n"
+        f"✅ {fa_number(result['countries_reset'])} کشور به حالت اولیه بازگشتند.\n"
+        f"🎖 {fa_number(result['commanders_created'])} فرمانده بازسازی شد.\n"
         "همه‌ی کشورها اکنون آزاد هستند و بازیکن‌ها می‌توانند برای فصل جدید "
         "کشورگیری کنند. (/claim)"
+    )
+    await send_log(
+        bot,
+        "♻️ <b>پایان فصل (مالک)</b>\n"
+        f"کشورهای ریست‌شده: {result['countries_reset']} | "
+        f"فرماندهان بازسازی‌شده: {result['commanders_created']}",
     )

@@ -44,6 +44,7 @@ from ..database.models import (
     AllianceMember,
     Battle,
     Commander,
+    CommanderIntel,
     Drill,
     NewsFingerprint,
     Operation,
@@ -125,6 +126,9 @@ async def reset_season(session: AsyncSession) -> dict[str, int]:
     await session.execute(delete(Operation))
     await session.execute(delete(Patrol))
     await session.execute(delete(Drill))
+    # اطلاعات جاسوسی روی فرماندهان باید *قبل* از خود فرماندهان پاک شود،
+    # وگرنه کلید خارجی commander_intel.commander_id ریست فصل را می‌شکند.
+    await session.execute(delete(CommanderIntel))
     await session.execute(delete(Commander))
     await session.execute(delete(NewsFingerprint))
     await session.execute(delete(Deployment))

@@ -61,8 +61,9 @@ def _ops_menu_kb() -> InlineKeyboardMarkup:
     builder.button(text="🛩 گشت‌های فعال", callback_data="god:ops_patrols", style=STYLE_MAIN)
     builder.button(text="🎪 رزمایش‌های جاری", callback_data="god:ops_drills", style=STYLE_MAIN)
     builder.button(text="🎖 فرماندهان", callback_data="god:ops_commanders", style=STYLE_MAIN)
+    builder.button(text="👤 بحران رهبری", callback_data="god:ops_crisis", style=STYLE_OK)
     builder.button(text="🔙 بازگشت", callback_data="god:home", style=STYLE_MAIN)
-    builder.adjust(2, 2, 1, 1)
+    builder.adjust(2, 2, 2, 1)
     return builder.as_markup()
 
 
@@ -493,3 +494,125 @@ async def cb_cmd_revive(call: CallbackQuery, session: AsyncSession) -> None:
 
     await call.answer("فرمانده احیا شد ♻️", show_alert=True)
     await _render_commanders(call, session, commander.country_id)
+
+
+# ============================================================
+#  بحران رهبری: احیای رئیس‌جمهور (v2.1)
+# ============================================================
+#
+# پس از ترور موفق رئیس‌جمهور، کشور هدف تا LEADERSHIP_CRISIS_HOURS ساعت
+# نمی‌تواند عملیات نظامی ثبت کند (`operation_service.assert_can_operate`).
+# پیش از v2.1 هیچ راه دستی برای رفع این قفل نبود و مالک باید صبر می‌کرد.
+
+def _crisis_remaining_min(country) -> int:
+    """چند دقیقه از بحران رهبری این کشور باقی مانده است؟ (صفر = بحرانی نیست)"""
+    until = getattr(country, "leadership_crisis_until", None)
+    if until is None:
+        return 0
+    if until.tzinfo is None:
+        until = until.replace(tzinfo=timezone.utc)
+    remaining = (until - datetime.now(timezone.utc)).total_seconds()
+    return max(0, int(remaining // 60))
+
+
+async def _render_crisis_list(call: CallbackQuery, session: AsyncSession) -> None:
+    """فهرست کشورهای در «بحران رهبری» با دکمه‌ی احیای رئیس‌جمهور."""
+    countries = await countries_repo.list_countries(session)
+    in_crisis = [(c, _crisis_remaining_min(c)) for c in countries]
+    in_crisis = [(c, m) for c, m in in_crisis if m > 0]
+
+    builder = InlineKeyboardBuilder()
+    lines = [header("بحران رهبری", "👤"), ""]
+
+    if not in_crisis:
+        lines.append("🟢 هیچ کشوری در بحران رهبری نیست.")
+        lines.append(
+            "\n<i>بحران رهبری پس از ترور موفق رئیس‌جمهور رخ می‌دهد و تا چند ساعت "
+            "کشور را از ثبت عملیات نظامی محروم می‌کند.</i>"
+        )
+    else:
+        lines.append(
+            "کشورهای زیر پس از ترور رئیس‌جمهور در بحران رهبری‌اند و نمی‌توانند "
+            "عملیات نظامی ثبت کنند.\n"
+        )
+        for country, minutes in in_crisis:
+            hours, mins = divmod(minutes, 60)
+            remaining = (
+                f"{fa_number(hours)} ساعت و {fa_number(mins)} دقیقه"
+                if hours
+                else f"{fa_number(mins)} دقیقه"
+            )
+            lines.append(
+                f"🔴 {country.flag} <b>{country.name_fa}</b> — باقی‌مانده: {remaining}"
+            )
+            builder.button(
+                text=f"♻️ احیای رئیس‌جمهور {country.name_fa}",
+                callback_data=f"god_pres_revive:{country.id}",
+                style=STYLE_OK,
+            )
+        builder.adjust(1)
+
+    builder.row(
+        InlineKeyboardButton(text="🔙 بازگشت", callback_data="god:ops", style=STYLE_MAIN)
+    )
+    await call.message.edit_text("\n".join(lines), reply_markup=builder.as_markup())
+
+
+@router.callback_query(F.data == "god:ops_crisis")
+async def cb_crisis_list(call: CallbackQuery, state: FSMContext, session: AsyncSession) -> None:
+    """پنل بحران رهبری."""
+    if not await _guard(call):
+        return
+    await call.answer()
+    await state.clear()
+    await _render_crisis_list(call, session)
+
+
+@router.callback_query(F.data.startswith("god_pres_revive:"))
+async def cb_pres_revive(call: CallbackQuery, session: AsyncSession) -> None:
+    """
+    احیای دستی رئیس‌جمهور: پایان‌دادن فوری به بحران رهبری.
+
+    فقط قفل عملیات (`leadership_crisis_until`) برداشته می‌شود؛ افت ثبات و
+    رضایت عمومی که اثر جداگانه‌ی ترور بودند دست‌نخورده می‌مانند تا نتیجه‌ی
+    عملیات مهاجم بی‌اثر نشود.
+    """
+    if not await _guard(call):
+        return
+
+    cid = int(call.data.split(":")[1])
+    country = await countries_repo.get_country(session, cid)
+    if country is None:
+        await call.answer("کشور یافت نشد.", show_alert=True)
+        return
+
+    if _crisis_remaining_min(country) <= 0:
+        await call.answer("این کشور در بحران رهبری نیست.", show_alert=True)
+        await _render_crisis_list(call, session)
+        return
+
+    country.leadership_crisis_until = None
+    await session.commit()
+
+    await call.answer("رئیس‌جمهور احیا شد ♻️", show_alert=True)
+    await send_log(
+        bot,
+        f"♻️ <b>احیای دستی رئیس‌جمهور</b>\n"
+        f"کشور: {country.flag} {country.name_fa}\n"
+        "بحران رهبری پایان یافت و محدودیت ثبت عملیات برداشته شد.\n"
+        "👤 توسط مدیریت بازی",
+    )
+
+    if country.owner_user_id:
+        try:
+            await bot.send_message(
+                country.owner_user_id,
+                "▶️ <b>بحران رهبری کشور شما پایان یافت.</b>\n\n"
+                "رئیس‌جمهور جدید مستقر شد و اکنون می‌توانید دوباره عملیات "
+                "نظامی ثبت کنید.",
+            )
+        except Exception:  # noqa: BLE001 — خطای ارسال نباید جریان را متوقف کند
+            pass
+
+    await _render_crisis_list(call, session)
+

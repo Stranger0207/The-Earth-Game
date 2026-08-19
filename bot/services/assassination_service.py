@@ -8,6 +8,10 @@
 
 گشت فعال کشور هدف می‌تواند عملیات را خنثی کند. شکست عملیات به احتمال زیاد
 افشا می‌شود و بحران دیپلماتیک برای مهاجم می‌سازد.
+
+**(v2.1) نامتقارن‌سازی:** شانس هر دو نوع ترور به اختلاف «قدرت اطلاعاتی» دو
+کشور وابسته شد (`intel_power_service`) و کشورهای با سرویس ضعیف اصلاً نمی‌توانند
+قدرت‌های اطلاعاتی را هدف بگیرند.
 """
 
 from __future__ import annotations
@@ -34,6 +38,7 @@ from ..constants import (
 from ..database.models import Commander, Country
 from ..database.repositories import commanders as cmd_repo
 from ..enums import COMMANDER_ROLE_FA, CommanderRole
+from . import intel_power_service as intel_power
 from . import patrol_service
 
 logger = logging.getLogger(__name__)
@@ -45,6 +50,55 @@ class AssassinationError(Exception):
 
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def commander_chance(
+    attacker: Country,
+    target_country: Country,
+    intel_quality: float,
+    intel_bonus: float = 0.0,
+) -> float:
+    """
+    (v2.1) شانس نهایی ترور یک فرمانده (درصد).
+
+    سه عامل: شانس پایه × ضریب کیفیت اطلاعات × ضریب رده‌ی اطلاعاتی + بونوس.
+    یک‌جا محاسبه می‌شود تا عددی که در صفحه‌ی تأیید به بازیکن نشان داده می‌شود
+    دقیقاً همان عددی باشد که تاس با آن انداخته می‌شود.
+    """
+    intel_factor = INTEL_SUCCESS_FLOOR + (intel_quality / 100.0) * INTEL_SUCCESS_SCALE
+    tier_factor = intel_power.assassination_tier_factor(
+        attacker.name_en, target_country.name_en
+    )
+    raw = ASSASSINATION_BASE_SUCCESS_PCT * intel_factor * tier_factor + intel_bonus
+    return min(90.0, max(0.0, raw))
+
+
+def president_chance(
+    attacker: Country, target_country: Country, intel_bonus: float = 0.0
+) -> float:
+    """(v2.1) شانس نهایی ترور رئیس‌جمهور (درصد)."""
+    raw = (
+        ASSASSINATION_PRESIDENT_SUCCESS_PCT
+        + intel_power.president_gap_bonus(attacker.name_en, target_country.name_en)
+        + intel_bonus
+    )
+    return min(90.0, max(0.0, raw))
+
+
+def assert_target_reachable(attacker: Country, target_country: Country) -> None:
+    """
+    (v2.1) کشور با سرویس اطلاعاتی ضعیف نمی‌تواند روی قدرت‌ها عملیات ترور کند.
+
+    برای ترور رئیس‌جمهور هم اعمال می‌شود (پیش‌تر تنها ترمزش شانس پایین بود).
+    """
+    allowed, reason = intel_power.can_spy_on(
+        attacker.name_en,
+        target_country.name_en,
+        spy_fa=attacker.name_fa,
+        target_fa=f"{target_country.flag} {target_country.name_fa}",
+    )
+    if not allowed:
+        raise AssassinationError(reason)
 
 
 async def list_targets(session: AsyncSession, target_country_id: int) -> list[Commander]:
@@ -93,9 +147,13 @@ async def resolve_assassination(
         "target_label": target_label,
         "effect_note": "",
         "intel_quality": 0.0,
+        "chance": 0.0,
     }
 
     # ---------- ۰) بررسی اطلاعات جاسوسی (فقط برای فرماندهان) ----------
+    # (v2.1) پیش از هر چیز: اختلاف قدرت اطلاعاتی باید اجازه‌ی عملیات بدهد.
+    assert_target_reachable(attacker, target_country)
+
     intel = None
     intel_quality = 0.0
     if not target_president:
@@ -136,22 +194,20 @@ async def resolve_assassination(
         return result
 
     # ---------- ۲) تاس موفقیت ----------
-    base = (
-        ASSASSINATION_PRESIDENT_SUCCESS_PCT
-        if target_president
-        else ASSASSINATION_BASE_SUCCESS_PCT
-    )
-
+    # (v2.1) محاسبه در توابع مشترک `president_chance`/`commander_chance` انجام
+    # می‌شود تا عدد نمایش‌داده‌شده در صفحه‌ی تأیید با عدد واقعی یکی باشد.
     if target_president:
-        chance = min(90.0, base + intel_bonus)
+        chance = president_chance(attacker, target_country, intel_bonus)
     else:
-        # کیفیت اطلاعات ضریب اصلی است:
-        # کیفیت ۳۰ → ×۰.۶۷ | کیفیت ۶۰ → ×۰.۹۴ | کیفیت ۹۰ → ×۱.۲۱
-        intel_factor = INTEL_SUCCESS_FLOOR + (intel_quality / 100.0) * INTEL_SUCCESS_SCALE
-        chance = min(90.0, base * intel_factor + intel_bonus)
+        # کیفیت اطلاعات ضریب اصلی است و ضریب رده‌ی اطلاعاتی روی آن اعمال می‌شود:
+        # نخبه علیه ضعیف تا +۳۵٪ تقویت، ضعیف علیه نخبه تا −۴۵٪ تضعیف.
+        chance = commander_chance(
+            attacker, target_country, intel_quality, intel_bonus
+        )
 
     success = rng.uniform(0.0, 100.0) <= chance
     result["success"] = success
+    result["chance"] = chance
 
     # ---------- ۳) افشا ----------
     exposure_chance = (

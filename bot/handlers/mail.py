@@ -1,9 +1,14 @@
 """
 هندلر سیستم نامه‌رسان (v1.9): نامه به یک کشور، نامه به چند کشور و صندوق پستی.
 هر نامه‌ی دریافتی یک دکمه‌ی «پاسخ به نامه» دارد و صندوق پستی وضعیت پاسخ را نشان می‌دهد.
+
+(v2.1) گزینه‌ی «نامه به تمام کشورها» اضافه شد: با یک کلیک و نوشتن متن، نامه
+برای همه‌ی کشورها ارسال می‌شود.
 """
 
 from __future__ import annotations
+
+import asyncio
 
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
@@ -21,7 +26,7 @@ from ..states import MailForm
 from ..utils.numbers import fa_number
 from ..utils.screens import safe_edit
 from ..utils.ui import DIVIDER, PICK_OFF, PICK_ON, STYLE_MAIN, STYLE_OK
-from .deps import NO_COUNTRY_TEXT, get_player_country
+from .deps import NO_COUNTRY_TEXT, assert_feature, get_player_country
 
 router = Router(name="mail")
 
@@ -30,6 +35,7 @@ def _mail_menu_kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="✉️ نامه به یک کشور", callback_data="mail:single", style=STYLE_MAIN)],
         [InlineKeyboardButton(text="📨 نامه به چند کشور", callback_data="mail:multi", style=STYLE_MAIN)],
+        [InlineKeyboardButton(text="🌍 نامه به تمام کشورها", callback_data="mail:all", style=STYLE_MAIN)],
         [InlineKeyboardButton(text="🤝 نامه به متحدان", callback_data="mail:allies", style=STYLE_MAIN)],
         [InlineKeyboardButton(text="📬 صندوق پستی", callback_data="mail:inbox", style=STYLE_MAIN)],
         [InlineKeyboardButton(text="🔙 بازگشت", callback_data="menu:diplomacy", style=STYLE_MAIN)],
@@ -75,9 +81,14 @@ def _multi_select_kb(others, selected: set[int]) -> InlineKeyboardMarkup:
 #  منوی نامه
 # ============================================================
 @router.callback_query(F.data == "dip:letter")
-async def cb_mail(call: CallbackQuery, state: FSMContext) -> None:
+async def cb_mail(
+    call: CallbackQuery, state: FSMContext, session: AsyncSession, db_user: User
+) -> None:
     await state.clear()
     await call.answer()
+    country = await get_player_country(session, db_user)
+    if not await assert_feature(call, session, country, "dip.letter"):
+        return
     await safe_edit(call,"✉️ <b>سیستم نامه‌رسان</b>\n\nیک گزینه را انتخاب کنید:", reply_markup=_mail_menu_kb())
 
 
@@ -209,21 +220,60 @@ async def cb_mail_allies(
     )
 
 
+# ----- نامه به تمام کشورها (v2.1) -----
+@router.callback_query(F.data == "mail:all")
+async def cb_mail_all(
+    call: CallbackQuery, state: FSMContext, session: AsyncSession, db_user: User
+) -> None:
+    """
+    نامه‌ی سراسری به همه‌ی کشورها (به‌جز خودی) — بدون مرحله‌ی انتخاب.
+
+    بازیکن فقط متن را می‌نویسد و نامه برای همه ارسال می‌شود.
+    """
+    await call.answer()
+    country = await get_player_country(session, db_user)
+    if country is None:
+        await safe_edit(call, NO_COUNTRY_TEXT)
+        return
+
+    countries = await countries_repo.list_countries(session)
+    recipients = [c.id for c in countries if c.id != country.id]
+    if not recipients:
+        await safe_edit(call, "کشور دیگری برای ارسال نامه وجود ندارد.", reply_markup=_back_mail_kb())
+        return
+
+    await state.set_state(MailForm.writing_body)
+    await state.update_data(recipients=recipients, to_all=True)
+    await safe_edit(
+        call,
+        f"🌍 <b>نامه به تمام کشورها</b>\n{DIVIDER}\n"
+        f"گیرندگان: <b>همه‌ی کشورها</b> ({fa_number(len(recipients))} کشور)\n\n"
+        "📝 متن نامه را بنویسید:",
+        reply_markup=_back_mail_kb(),
+    )
+
+
 # ----- نوشتن و ارسال متن نامه -----
 @router.message(MailForm.writing_body, F.text)
 async def msg_mail_body(message: Message, state: FSMContext, session: AsyncSession, db_user: User) -> None:
     data = await state.get_data()
     recipients = data.get("recipients", [])
     to_allies = bool(data.get("to_allies"))
+    to_all = bool(data.get("to_all"))
     country = await get_player_country(session, db_user)
     await state.clear()
     if country is None or not recipients:
         await message.answer("خطا در ارسال نامه.")
         return
-    # سرخط نامه‌ی متحدان با بقیه فرق دارد تا گیرنده بداند نامه‌ی جمعیِ اتحاد است
-    title = "نامه به متحدان" if to_allies else "نامه"
-    emoji = "🤝" if to_allies else "✉️"
+    # سرخط نامه با نوع ارسال فرق دارد تا گیرنده بداند نامه‌ی جمعی است یا شخصی
+    if to_all:
+        title, emoji = "نامه سراسری", "🌍"
+    elif to_allies:
+        title, emoji = "نامه به متحدان", "🤝"
+    else:
+        title, emoji = "نامه", "✉️"
     sent_names = []
+    sent_count = 0
     for rid in recipients:
         target = await countries_repo.get_country(session, rid)
         if target is None:
@@ -237,16 +287,29 @@ async def msg_mail_body(message: Message, state: FSMContext, session: AsyncSessi
                     f"{emoji} <b>{title} از {country.flag} {country.name_fa}</b>\n\n{message.text}",
                     reply_markup=_reply_kb(letter.id),
                 )
+                sent_count += 1
             except Exception:  # noqa: BLE001
                 pass
+            # نامه‌ی سراسری ده‌ها پیام پشت‌سرهم می‌فرستد؛ وقفه‌ی کوتاه از
+            # برخورد با محدودیت نرخ تلگرام جلوگیری می‌کند.
+            if to_all:
+                await asyncio.sleep(0.05)
     from ..keyboards.diplomacy import diplomacy_menu_kb
-    await message.answer(
-        f"✅ نامه برای {('، '.join(sent_names)) or '—'} ارسال شد.", reply_markup=diplomacy_menu_kb()
-    )
+    # در نامه‌ی سراسری فهرست ۳۸ نامی خوانا نیست؛ فقط تعداد گزارش می‌شود.
+    if to_all:
+        summary = (
+            f"✅ نامه‌ی سراسری برای {fa_number(len(sent_names))} کشور ثبت شد "
+            f"({fa_number(sent_count)} کشور دارای رهبر، پیام را دریافت کردند)."
+        )
+        recipients_log = f"همه‌ی کشورها ({fa_number(len(sent_names))} کشور)"
+    else:
+        summary = f"✅ نامه برای {('، '.join(sent_names)) or '—'} ارسال شد."
+        recipients_log = ("، ".join(sent_names)) or "—"
+    await message.answer(summary, reply_markup=diplomacy_menu_kb())
     await send_log(
         bot,
         f"{emoji} <b>{title}</b>\nفرستنده: {country.flag} {country.name_fa}\n"
-        f"گیرنده(ها): {('، '.join(sent_names)) or '—'}\n\n📝 متن:\n{message.text}",
+        f"گیرنده(ها): {recipients_log}\n\n📝 متن:\n{message.text}",
     )
 
 

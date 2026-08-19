@@ -39,7 +39,7 @@ from ..services.news_service import send_log
 from ..states import DeploymentForm
 from ..utils.numbers import fa_number, parse_amount
 from ..utils.ui import STYLE_MAIN, STYLE_NO, STYLE_OK, header
-from .deps import NO_COUNTRY_TEXT, get_player_country
+from .deps import NO_COUNTRY_TEXT, assert_feature, get_player_country
 
 router = Router(name="deployment")
 settings = get_settings()
@@ -70,6 +70,8 @@ async def cb_deploy_menu(call: CallbackQuery, state: FSMContext, session: AsyncS
     country = await get_player_country(session, db_user)
     if country is None:
         await call.message.edit_text(NO_COUNTRY_TEXT)
+        return
+    if not await assert_feature(call, session, country, "military.deploy"):
         return
     if not country.is_vip:
         await call.message.edit_text(

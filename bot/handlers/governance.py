@@ -56,7 +56,7 @@ from ..states import GovernanceForm, LawForm
 from ..utils.numbers import fa_money, fa_number, parse_amount
 from ..utils.screens import safe_edit
 from ..utils.ui import STYLE_MAIN, STYLE_NO, STYLE_OK, header
-from .deps import NO_COUNTRY_TEXT, get_player_country
+from .deps import NO_COUNTRY_TEXT, assert_feature, get_player_country
 
 router = Router(name="governance")
 settings = get_settings()
@@ -88,6 +88,8 @@ async def cb_system_menu(
     country = await get_player_country(session, db_user)
     if country is None:
         await safe_edit(call, NO_COUNTRY_TEXT)
+        return
+    if not await assert_feature(call, session, country, "gov.system"):
         return
 
     has_govt = bool(country.government_type)
@@ -501,8 +503,13 @@ async def cb_protest_history(
 # ============================================================
 
 @router.callback_query(F.data == "gov:legislation")
-async def cb_legislation(call: CallbackQuery) -> None:
+async def cb_legislation(
+    call: CallbackQuery, session: AsyncSession, db_user: User
+) -> None:
     await call.answer()
+    country = await get_player_country(session, db_user)
+    if not await assert_feature(call, session, country, "gov.legislation"):
+        return
     await safe_edit(call, header("قانونگذاری", "📜"), reply_markup=legislation_menu_kb())
 
 
@@ -540,9 +547,14 @@ async def cb_tax_info(call: CallbackQuery) -> None:
 
 
 @router.callback_query(F.data == "gov:set_tax")
-async def cb_set_tax(call: CallbackQuery, state: FSMContext) -> None:
+async def cb_set_tax(
+    call: CallbackQuery, state: FSMContext, session: AsyncSession, db_user: User
+) -> None:
     """شروع فرم تعیین نرخ مالیات."""
     await call.answer()
+    country = await get_player_country(session, db_user)
+    if not await assert_feature(call, session, country, "gov.tax"):
+        return
     await state.set_state(GovernanceForm.entering_tax_rate)
     await safe_edit(
         call,

@@ -94,6 +94,39 @@ def confirm_kb(confirm_data: str, back_data: str) -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
+def intel_targets_kb(
+    rows: list[dict], *, prefix: str, back_data: str
+) -> InlineKeyboardMarkup:
+    """
+    (v2.1) فهرست کشورهای هدف برای جاسوسی/ترور با نمایش رده‌ی اطلاعاتی.
+
+    rows: خروجی `espionage_service.target_rows` —
+          [{"country", "tier", "blocked", "chance"}]
+
+    کشورهایی که اختلاف قدرت اطلاعاتی اجازه‌ی نفوذ به آن‌ها را نمی‌دهد با ⛔️
+    نشان داده می‌شوند و کلیک روی‌شان به‌جای شروع فرم، دلیل را توضیح می‌دهد.
+    """
+    from ..utils.numbers import fa_number
+
+    builder = InlineKeyboardBuilder()
+    for row in rows:
+        country = row["country"]
+        if row["blocked"]:
+            builder.button(
+                text=f"⛔️ {country.flag} {country.name_fa} — {row['tier']}",
+                callback_data=f"{prefix}_blocked:{country.id}",
+            )
+            continue
+        builder.button(
+            text=f"{country.flag} {country.name_fa} — {row['tier']} · {fa_number(row['chance'], 0)}٪",
+            callback_data=f"{prefix}:{country.id}",
+            style=STYLE_MAIN,
+        )
+    builder.adjust(1)
+    builder.row(InlineKeyboardButton(text="🔙 بازگشت", callback_data=back_data, style=STYLE_MAIN))
+    return builder.as_markup()
+
+
 def shipments_kb(shipments: list[dict], back_data: str) -> InlineKeyboardMarkup:
     """
     فهرست محموله‌های قابل رهگیری با نمایش وضعیت اسکورت.

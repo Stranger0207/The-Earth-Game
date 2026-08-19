@@ -75,6 +75,8 @@ _COLUMN_MIGRATIONS = [
     ("resource_sales", "escort_json", "TEXT NOT NULL DEFAULT '[]'"),
     ("military_sales", "escort_power", "DOUBLE PRECISION NOT NULL DEFAULT 0"),
     ("military_sales", "escort_json", "TEXT NOT NULL DEFAULT '[]'"),
+    # v2.1 — انجماد سراسری پلیرها
+    ("bot_state", "global_freeze", "BOOLEAN NOT NULL DEFAULT FALSE"),
 ]
 
 

@@ -25,6 +25,7 @@ from .diplomacy import (
     Speech,
 )
 from .facility import Facility
+from .feature_lock import FeatureLock
 from .governance import Law, Protest, VisaRequirement
 from .investment import Investment
 from .joint_request import JointBuildRequest
@@ -66,6 +67,7 @@ __all__ = [
     "Deployment",
     "Drill",
     "Facility",
+    "FeatureLock",
     "Investment",
     "JointBuildRequest",
     "Law",

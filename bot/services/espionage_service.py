@@ -5,8 +5,12 @@
 جاسوسی اجرا کنی تا محل و برنامه‌ی روزانه‌ی او را پیدا کنی. کیفیت اطلاعاتی
 که به دست می‌آوری مستقیماً روی شانس موفقیت ترور اثر می‌گذارد.
 
-اطلاعات بعد از ۴۸ ساعت منقضی می‌شود (هدف جابه‌جا می‌شود) و پس از استفاده
+اطلاعات بعد از مدت مشخصی منقضی می‌شود (هدف جابه‌جا می‌شود) و پس از استفاده
 در ترور مصرف می‌گردد.
+
+**(v2.1) نامتقارن‌سازی:** شانس موفقیت و کیفیت اطلاعات دیگر ثابت نیست؛ از
+اختلاف «قدرت اطلاعاتی» دو کشور محاسبه می‌شود (`intel_power_service`). کشور
+با سرویس اطلاعاتی ضعیف نمی‌تواند قدرت‌های اطلاعاتی را هدف بگیرد.
 """
 
 from __future__ import annotations
@@ -18,23 +22,25 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..constants import (
-    ESPIONAGE_BASE_SUCCESS_PCT,
     ESPIONAGE_COMMANDER_QUALITY_FACTOR,
     ESPIONAGE_COOLDOWN_HOURS,
     ESPIONAGE_COST_USD,
     ESPIONAGE_DETECTION_BASE_PCT,
     ESPIONAGE_INTEL_VALID_HOURS,
-    ESPIONAGE_QUALITY_MAX,
-    ESPIONAGE_QUALITY_MIN,
     ESPIONAGE_SATELLITE_QUALITY_BONUS,
 )
 from ..database.models import Commander, CommanderIntel, Country
 from ..database.repositories import commander_intel as intel_repo
 from ..database.repositories import commanders as cmd_repo
+from ..database.repositories import cooldowns as cd_repo
 from ..enums import CommanderRole
+from . import intel_power_service as intel_power
 from . import patrol_service
 
 logger = logging.getLogger(__name__)
+
+# کلید کول‌داون جاسوسی در جدول cooldowns (هر تلاش، موفق یا ناموفق)
+ESPIONAGE_COOLDOWN_ACTION = "espionage"
 
 
 class EspionageError(Exception):
@@ -122,6 +128,23 @@ async def _intel_bonus(session: AsyncSession, country_id: int) -> float:
 
 async def assert_can_spy(session: AsyncSession, country: Country) -> None:
     """بررسی مجوز اجرای عملیات جاسوسی (کول‌داون و بودجه)."""
+    # (v2.1) کول‌داون بر پایه‌ی «هر تلاش» — نه فقط تلاش موفق.
+    # پیش‌تر کول‌داون از ردیف‌های CommanderIntel استنباط می‌شد که فقط در موفقیت
+    # ساخته می‌شوند؛ یعنی بازیکن می‌توانست پس از هر شکست فوراً دوباره تلاش کند.
+    # با سخت‌ترشدن جاسوسی در v2.1 (شانس تا ۵٪) این راه فرار، سختی را بی‌اثر
+    # می‌کرد. اکنون از repo کول‌داون‌ها استفاده می‌شود که در هر تلاش ثبت می‌گردد.
+    remaining = await cd_repo.remaining_seconds(
+        session, country.id, ESPIONAGE_COOLDOWN_ACTION, ESPIONAGE_COOLDOWN_HOURS
+    )
+    if remaining > 0:
+        minutes = int(remaining // 60) + 1
+        raise EspionageError(
+            f"⏳ سرویس اطلاعاتی شما در حال بازسازی شبکه است.\n\n"
+            f"هر {ESPIONAGE_COOLDOWN_HOURS} ساعت یک عملیات جاسوسی ممکن است — "
+            f"زمان باقی‌مانده: <b>{minutes}</b> دقیقه."
+        )
+
+    # سازگاری با داده‌ی قبل از v2.1 (کول‌داونِ استنباطی از اطلاعات موفق)
     recent = await intel_repo.count_recent_operations(
         session, country.id, ESPIONAGE_COOLDOWN_HOURS
     )
@@ -136,6 +159,24 @@ async def assert_can_spy(session: AsyncSession, country: Country) -> None:
             f"💰 بودجه‌ی کافی ندارید. هزینه‌ی عملیات جاسوسی "
             f"{ESPIONAGE_COST_USD / 1e9:,.1f} میلیارد دلار است."
         )
+
+
+def assert_target_reachable(spy: Country, target: Country) -> None:
+    """
+    (v2.1) بررسی اینکه اختلاف قدرت اطلاعاتی اجازه‌ی نفوذ به این هدف را می‌دهد.
+
+    جدا از `assert_can_spy` است چون هنگام ورود به فرم، هدف هنوز انتخاب نشده.
+    در هندلر پس از انتخاب کشور صدا زده می‌شود و در `run_espionage` هم به‌عنوان
+    اعتبارسنجی سمت سرور تکرار می‌شود (تا کال‌بک قدیمی راه فرار نباشد).
+    """
+    allowed, reason = intel_power.can_spy_on(
+        spy.name_en,
+        target.name_en,
+        spy_fa=spy.name_fa,
+        target_fa=f"{target.flag} {target.name_fa}",
+    )
+    if not allowed:
+        raise EspionageError(reason)
 
 
 async def run_espionage(
@@ -161,8 +202,16 @@ async def run_espionage(
     if not commander.is_alive:
         raise EspionageError("این فرمانده پیش‌تر ترور شده است.")
 
+    # (v2.1) اعتبارسنجی سمت سرور: کشور ضعیف نمی‌تواند قدرت اطلاعاتی را هدف بگیرد.
+    # پیش از کسر بودجه چک می‌شود تا هزینه‌ی عملیاتِ ناممکن گرفته نشود.
+    assert_target_reachable(spy, target_country)
+
     # هزینه در هر حالت پرداخت می‌شود
     spy.budget = max(0.0, (spy.budget or 0.0) - ESPIONAGE_COST_USD)
+
+    # (v2.1) کول‌داون در هر تلاش ثبت می‌شود — موفق یا ناموفق. وگرنه بازیکن
+    # می‌توانست پس از هر شکست فوراً دوباره تلاش کند و سختی بی‌اثر می‌شد.
+    await cd_repo.touch(session, spy.id, ESPIONAGE_COOLDOWN_ACTION)
 
     bonus = await _intel_bonus(session, spy.id)
 
@@ -186,7 +235,10 @@ async def run_espionage(
         return result
 
     # ---------- تاس موفقیت ----------
-    chance = min(92.0, ESPIONAGE_BASE_SUCCESS_PCT + bonus * 0.5)
+    # (v2.1) شانس پایه از اختلاف قدرت اطلاعاتی دو کشور می‌آید؛ بونوس فرمانده و
+    # ماهواره روی همان اعمال می‌شود تا مسیر ارتقا برای کشورهای متوسط باز بماند.
+    base_chance = intel_power.espionage_chance(spy.name_en, target_country.name_en)
+    chance = min(92.0, base_chance + bonus * 0.5)
     if rng.uniform(0.0, 100.0) > chance:
         # ناموفق — ممکن است لو هم برود
         result["detected"] = rng.uniform(0.0, 100.0) <= ESPIONAGE_DETECTION_BASE_PCT
@@ -196,7 +248,10 @@ async def run_espionage(
         return result
 
     # ---------- موفقیت: تولید اطلاعات ----------
-    quality = rng.uniform(ESPIONAGE_QUALITY_MIN, ESPIONAGE_QUALITY_MAX) + bonus
+    # بازه‌ی کیفیت هم به اختلاف قدرت وابسته است: نفوذ به کشور قوی‌تر حتی در
+    # موفقیت، اطلاعات ناقص‌تری می‌دهد.
+    q_min, q_max = intel_power.quality_range(spy.name_en, target_country.name_en)
+    quality = rng.uniform(q_min, q_max) + bonus
     quality = max(0.0, min(100.0, quality))
 
     locations = _LOCATIONS.get(commander.role) or _LOCATIONS[CommanderRole.GROUND.value]
@@ -270,3 +325,22 @@ async def targets_with_intel_status(
 def quality_label(quality: float) -> str:
     """برچسب عمومی کیفیت (برای استفاده در هندلرها)."""
     return _quality_label(quality)
+
+
+def target_rows(spy: Country, targets: list[Country]) -> list[dict]:
+    """
+    (v2.1) فهرست کشورهای هدف همراه با رده‌ی اطلاعاتی و وضعیت دسترسی.
+
+    خروجی هر ردیف: {"country", "tier", "blocked", "chance"}
+    برای ساخت کیبورد `keyboards/covert.intel_targets_kb` استفاده می‌شود تا
+    بازیکن پیش از خرج‌کردن بودجه بداند کدام هدف برایش شدنی است.
+    """
+    rows: list[dict] = []
+    for target in targets:
+        rows.append({
+            "country": target,
+            "tier": intel_power.tier_label(target.name_en),
+            "blocked": intel_power.is_blocked(spy.name_en, target.name_en),
+            "chance": intel_power.espionage_chance(spy.name_en, target.name_en),
+        })
+    return rows

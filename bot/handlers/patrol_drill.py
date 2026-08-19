@@ -47,7 +47,7 @@ from ..states import DrillForm, PatrolForm
 from ..utils.numbers import fa_money, fa_number, parse_amount
 from ..utils.screens import safe_edit
 from ..utils.ui import DIVIDER, header
-from .deps import NO_COUNTRY_TEXT, get_player_country
+from .deps import NO_COUNTRY_TEXT, assert_feature, get_player_country
 
 logger = logging.getLogger(__name__)
 router = Router(name="patrol_drill")
@@ -81,6 +81,8 @@ async def cb_patrol_menu(call: CallbackQuery, state: FSMContext, session: AsyncS
     country = await get_player_country(session, db_user)
     if country is None:
         await safe_edit(call, NO_COUNTRY_TEXT)
+        return
+    if not await assert_feature(call, session, country, "military.patrol"):
         return
 
     active = await patrol_repo.count_active(session, country.id)
@@ -344,6 +346,8 @@ async def cb_drill_menu(call: CallbackQuery, state: FSMContext, session: AsyncSe
     country = await get_player_country(session, db_user)
     if country is None:
         await safe_edit(call, NO_COUNTRY_TEXT)
+        return
+    if not await assert_feature(call, session, country, "military.drill"):
         return
 
     readiness = float(getattr(country, "readiness", 0.0) or 0.0)

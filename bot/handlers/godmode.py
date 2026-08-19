@@ -134,6 +134,7 @@ def _home_kb() -> InlineKeyboardMarkup:
     builder.button(text="☢️ برنامه‌های هسته‌ای", callback_data="god:nuclear", style=STYLE_MAIN)
     builder.button(text="⚔️ عملیات نظامی", callback_data="god:ops", style=STYLE_NO)
     builder.button(text="💥 سیستم تلفات", callback_data="god:casualty", style=STYLE_NO)
+    builder.button(text="🔒 غیرفعال‌کردن آپشن", callback_data="god:locks", style=STYLE_NO)
     builder.adjust(1)
     return builder.as_markup()
 

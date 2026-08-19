@@ -42,10 +42,15 @@ def command_center_kb(is_vip: bool = False) -> InlineKeyboardMarkup:
 
 
 def operations_menu_kb() -> InlineKeyboardMarkup:
-    """منوی انواع عملیات."""
+    """
+    منوی انواع عملیات.
+
+    (v2.1) «حمله نظامی» و «خرابکاری» از داخل ربات غیرفعال شده‌اند؛ دکمه‌ها
+    نگه داشته شده‌اند تا بازیکن پیام راهنمای ارسال رول به پشتیبانی را ببیند.
+    """
     builder = InlineKeyboardBuilder()
-    builder.button(text="💥 حمله نظامی", callback_data="op:attack", style=STYLE_NO)
-    builder.button(text="🕵️ خرابکاری", callback_data="op:new:sabotage", style=STYLE_NO)
+    builder.button(text="🔒 حمله نظامی", callback_data="op:disabled:attack")
+    builder.button(text="🔒 خرابکاری", callback_data="op:disabled:sabotage")
     builder.button(text="🕵️ جاسوسی و ترور", callback_data="op:covert", style=STYLE_NO)
     builder.button(text="⚓ رهگیری محموله", callback_data="op:intercept", style=STYLE_NO)
     builder.button(text="🛩 گشت دفاعی", callback_data="op:patrol", style=STYLE_OK)

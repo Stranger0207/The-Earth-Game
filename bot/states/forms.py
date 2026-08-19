@@ -124,6 +124,12 @@ class GodForm(StatesGroup):
     entering_value = State()  # وارد کردن مقدار جدید (اقتصاد/ذخیره/تجهیزات)
 
 
+class GodLockForm(StatesGroup):
+    """فرم قفل‌کردن آپشن‌ها برای چند کشور (v2.1)."""
+
+    selecting_countries = State()  # انتخاب چندتایی کشورهای هدف قفل
+
+
 class BankTransferForm(StatesGroup):
     """فرم انتقال وجه بانکی به کشور دیگر (v1.9)."""
 

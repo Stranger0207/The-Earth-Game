@@ -45,7 +45,7 @@ from ..states import CallForm, ContractForm, MeetingForm, SanctionForm, SpeechFo
 from ..utils.numbers import fa_number
 from ..utils.screens import safe_edit
 from ..utils.ui import STYLE_MAIN, STYLE_NO, STYLE_OK, header
-from .deps import NO_COUNTRY_TEXT, get_player_country
+from .deps import NO_COUNTRY_TEXT, assert_feature, get_player_country
 
 settings = get_settings()
 # نام کاربری ربات برای ساخت deep-link نقل قول (یک‌بار کش می‌شود)
@@ -157,6 +157,8 @@ async def cb_call(call: CallbackQuery, state: FSMContext, session: AsyncSession,
     country = await get_player_country(session, db_user)
     if country is None:
         await safe_edit(call,NO_COUNTRY_TEXT)
+        return
+    if not await assert_feature(call, session, country, "dip.call"):
         return
     # کول‌داون تماس: هر ۳۰ دقیقه ۱ تماس (v1.9)
     mins = await _cooldown_remaining_min(
@@ -525,6 +527,8 @@ async def cb_meeting(call: CallbackQuery, state: FSMContext, session: AsyncSessi
     country = await get_player_country(session, db_user)
     if country is None:
         await safe_edit(call,NO_COUNTRY_TEXT)
+        return
+    if not await assert_feature(call, session, country, "dip.meeting"):
         return
     # نکته (v1.10.1): کول‌داون اینجا چک نمی‌شود تا کاربر همیشه به «نشست‌های اخیر» دسترسی
     # داشته باشد و بتواند نشست گیرکرده را پایان دهد. کول‌داون در مرحله‌ی ساخت نشست اعمال می‌شود.
@@ -1196,6 +1200,8 @@ async def cb_contracts(call: CallbackQuery, session: AsyncSession, db_user: User
     if country is None:
         await safe_edit(call,NO_COUNTRY_TEXT)
         return
+    if not await assert_feature(call, session, country, "dip.contract"):
+        return
     contracts = await dip_repo.list_contracts_for_country(session, country.id, only_active=True)
     if not contracts:
         await safe_edit(call,"📜 قرارداد فعالی ندارید.", reply_markup=diplomacy_menu_kb())
@@ -1225,10 +1231,15 @@ SANCTION_IMAGE_STEM: dict[SanctionType, str] = {
 
 
 @router.callback_query(F.data == "dip:sanction")
-async def cb_sanction(call: CallbackQuery, state: FSMContext) -> None:
+async def cb_sanction(
+    call: CallbackQuery, state: FSMContext, session: AsyncSession, db_user: User
+) -> None:
     """منوی تحریم (v1.7)."""
     await call.answer()
     await state.clear()
+    country = await get_player_country(session, db_user)
+    if not await assert_feature(call, session, country, "dip.sanction"):
+        return
     await safe_edit(call,
         header("تحریم", "🚫") + "\n\nیک گزینه را انتخاب کنید:", reply_markup=sanction_menu_kb()
     )
@@ -1549,6 +1560,8 @@ async def cb_speech(call: CallbackQuery, state: FSMContext, session: AsyncSessio
     country = await get_player_country(session, db_user)
     if country is None:
         await safe_edit(call,NO_COUNTRY_TEXT)
+        return
+    if not await assert_feature(call, session, country, "dip.speech"):
         return
     # کول‌داون بیانیه: هر ۱۰ دقیقه ۱ بیانیه (v1.9)
     mins = await _cooldown_remaining_min(

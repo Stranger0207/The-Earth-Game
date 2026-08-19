@@ -62,7 +62,7 @@ from ..states.nuclear import NuclearForm
 from ..utils.numbers import fa_money, fa_number
 from ..utils.screens import safe_edit
 from ..utils.ui import STYLE_MAIN, STYLE_NO, STYLE_OK, header
-from .deps import NO_COUNTRY_TEXT, get_player_country
+from .deps import NO_COUNTRY_TEXT, assert_feature, get_player_country
 
 router = Router(name="nuclear")
 
@@ -107,6 +107,8 @@ async def cb_nuclear_menu(call: CallbackQuery, state: FSMContext, session: Async
     await state.clear()
     country = await _vip_country_or_none(call, session, db_user)
     if country is None:
+        return
+    if not await assert_feature(call, session, country, "military.nuclear"):
         return
 
     program = await nuc_repo.get_program(session, country.id)

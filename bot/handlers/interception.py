@@ -33,7 +33,7 @@ from ..states import EscortForm, InterceptionForm
 from ..utils.numbers import fa_number, parse_amount
 from ..utils.screens import safe_edit
 from ..utils.ui import DIVIDER, header
-from .deps import NO_COUNTRY_TEXT, get_player_country
+from .deps import NO_COUNTRY_TEXT, assert_feature, get_player_country
 
 logger = logging.getLogger(__name__)
 router = Router(name="interception")
@@ -88,6 +88,8 @@ async def cb_intercept_start(
     country = await get_player_country(session, db_user)
     if country is None:
         await safe_edit(call, NO_COUNTRY_TEXT)
+        return
+    if not await assert_feature(call, session, country, "military.interception"):
         return
 
     try:

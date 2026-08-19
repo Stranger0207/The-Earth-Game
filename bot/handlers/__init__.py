@@ -14,6 +14,7 @@ from . import (
     deployment,
     diplomacy,
     economy,
+    god_locks,
     god_operations,
     interception,
     godmode,
@@ -44,6 +45,7 @@ def register_all_routers(dp: Dispatcher) -> None:
     dp.include_router(maintenance.router)
     dp.include_router(godmode.router)
     dp.include_router(god_operations.router)
+    dp.include_router(god_locks.router)
     dp.include_router(menu.router)
     dp.include_router(economy.router)
     dp.include_router(bank.router)

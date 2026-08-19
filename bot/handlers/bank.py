@@ -21,7 +21,7 @@ from ..states import BankTransferForm, DebtPayForm
 from ..utils.numbers import fa_money, parse_amount
 from ..utils.screens import safe_edit, show_menu
 from ..utils.ui import STYLE_MAIN
-from .deps import NO_COUNTRY_TEXT, get_player_country
+from .deps import NO_COUNTRY_TEXT, assert_feature, get_player_country
 
 router = Router(name="bank")
 
@@ -37,9 +37,14 @@ def _back_bank_kb() -> InlineKeyboardMarkup:
 #  منوی بانک
 # ============================================================
 @router.callback_query(F.data == "econ:bank")
-async def cb_bank(call: CallbackQuery, state: FSMContext) -> None:
+async def cb_bank(
+    call: CallbackQuery, state: FSMContext, session: AsyncSession, db_user: User
+) -> None:
     await state.clear()
     await call.answer()
+    country = await get_player_country(session, db_user)
+    if not await assert_feature(call, session, country, "econ.bank"):
+        return
     await show_menu(
         call,
         "🏦 <b>بانک مرکزی</b>\n\nیکی از خدمات بانکی را انتخاب کنید:",
@@ -175,6 +180,8 @@ async def cb_bank_transfer(call: CallbackQuery, state: FSMContext, session: Asyn
     country = await get_player_country(session, db_user)
     if country is None:
         await safe_edit(call, NO_COUNTRY_TEXT)
+        return
+    if not await assert_feature(call, session, country, "econ.transfer"):
         return
     await state.set_state(BankTransferForm.choosing_target)
     countries = await countries_repo.list_countries(session)

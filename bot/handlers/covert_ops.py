@@ -4,6 +4,9 @@
 قاعده‌ی کلیدی: **بدون جاسوسی، ترور ممکن نیست.**
 بازیکن اول باید محل و برنامه‌ی فرمانده هدف را کشف کند؛ کیفیت اطلاعاتی
 که به دست می‌آورد مستقیماً شانس موفقیت ترور را تعیین می‌کند.
+
+(v2.1) شانس هر عملیات به «قدرت اطلاعاتی» دو کشور وابسته است و اهدافی که
+اختلاف قدرت اجازه‌ی نفوذ به آن‌ها را نمی‌دهد با ⛔️ نمایش داده می‌شوند.
 """
 
 from __future__ import annotations
@@ -26,18 +29,23 @@ from ..database.repositories import commander_intel as intel_repo
 from ..database.repositories import commanders as cmd_repo
 from ..database.repositories import countries as countries_repo
 from ..enums import COMMANDER_ROLE_FA, CommanderRole
-from ..keyboards.common import countries_kb
-from ..keyboards.covert import commander_targets_kb, confirm_kb, covert_menu_kb
+from ..keyboards.covert import (
+    commander_targets_kb,
+    confirm_kb,
+    covert_menu_kb,
+    intel_targets_kb,
+)
 from ..loader import bot
 from ..services import assassination_service as assn_service
 from ..services import espionage_service as spy_service
+from ..services import intel_power_service as intel_power
 from ..services import operation_service as op_service
 from ..services.news_service import send_log
 from ..states import AssassinationForm, EspionageForm
 from ..utils.numbers import fa_money, fa_number
 from ..utils.screens import safe_edit
 from ..utils.ui import DIVIDER, header
-from .deps import NO_COUNTRY_TEXT, get_player_country
+from .deps import NO_COUNTRY_TEXT, assert_feature, get_player_country
 
 logger = logging.getLogger(__name__)
 router = Router(name="covert_ops")
@@ -55,17 +63,28 @@ def _role_fa(commander) -> str:
 #  منوی عملیات مخفیانه
 # ============================================================
 @router.callback_query(F.data == "op:covert")
-async def cb_covert_menu(call: CallbackQuery, state: FSMContext) -> None:
+async def cb_covert_menu(
+    call: CallbackQuery, state: FSMContext, session: AsyncSession, db_user: User
+) -> None:
     """منوی جاسوسی و ترور."""
     await call.answer()
     await state.clear()
+    country = await get_player_country(session, db_user)
+    tier = (
+        f"🕵️ رده‌ی اطلاعاتی کشور شما: <b>{intel_power.tier_text(country.name_en)}</b>\n\n"
+        if country
+        else ""
+    )
     text = (
         header("عملیات مخفیانه", "🕵️") + "\n\n"
+        f"{tier}"
         "🔍 <b>جاسوسی</b> — محل و برنامه‌ی فرماندهان دشمن را کشف می‌کند.\n"
         "🎯 <b>ترور</b> — فقط روی فرمانده‌ای ممکن است که از قبل شناسایی کرده باشید.\n\n"
         f"⏱ فاصله‌ی بین دو عملیات جاسوسی: {fa_number(ESPIONAGE_COOLDOWN_HOURS)} ساعت\n"
         f"💰 هزینه‌ی هر جاسوسی: {fa_money(ESPIONAGE_COST_USD)}\n"
-        f"📅 اعتبار اطلاعات: {fa_number(ESPIONAGE_INTEL_VALID_HOURS)} ساعت"
+        f"📅 اعتبار اطلاعات: {fa_number(ESPIONAGE_INTEL_VALID_HOURS)} ساعت\n\n"
+        "<i>شانس موفقیت به اختلاف توان اطلاعاتی شما و کشور هدف بستگی دارد؛ "
+        "نفوذ به قدرت‌های اطلاعاتی بسیار سخت و گاهی ناممکن است.</i>"
     )
     await safe_edit(call, text, reply_markup=covert_menu_kb())
 
@@ -83,6 +102,8 @@ async def cb_spy_start(
     if country is None:
         await safe_edit(call, NO_COUNTRY_TEXT)
         return
+    if not await assert_feature(call, session, country, "covert.espionage"):
+        return
 
     try:
         await spy_service.assert_can_spy(session, country)
@@ -95,13 +116,40 @@ async def cb_spy_start(
 
     countries = await countries_repo.list_countries(session)
     others = [c for c in countries if c.id != country.id]
+    rows = spy_service.target_rows(country, others)
 
     await safe_edit(
         call,
         header("عملیات جاسوسی", "🔍") + "\n\n"
-        "سرویس اطلاعاتی شما آماده‌ی اعزام عوامل است.\n\n"
-        "🎯 <b>کشور هدف را انتخاب کنید:</b>",
-        reply_markup=countries_kb(others, prefix="spy_country", columns=2, back_data="op:covert"),
+        "سرویس اطلاعاتی شما آماده‌ی اعزام عوامل است.\n"
+        f"🕵️ رده‌ی شما: <b>{intel_power.tier_text(country.name_en)}</b>\n"
+        f"{DIVIDER}\n"
+        "🎯 <b>کشور هدف را انتخاب کنید:</b>\n"
+        "<i>عدد کنار هر کشور، شانس تخمینی نفوذ است. ⛔️ یعنی توان اطلاعاتی شما "
+        "برای نفوذ به آن کشور کافی نیست.</i>",
+        reply_markup=intel_targets_kb(rows, prefix="spy_country", back_data="op:covert"),
+    )
+
+
+@router.callback_query(F.data.startswith("spy_country_blocked:"))
+async def cb_spy_blocked(
+    call: CallbackQuery, session: AsyncSession, db_user: User
+) -> None:
+    """راهنما وقتی بازیکن روی کشوری می‌زند که توان نفوذ به آن را ندارد."""
+    await call.answer()
+    country = await get_player_country(session, db_user)
+    target = await countries_repo.get_country(session, int(call.data.split(":")[1]))
+    if country is None or target is None:
+        return
+    await safe_edit(
+        call,
+        intel_power.block_reason(
+            country.name_en,
+            target.name_en,
+            spy_fa=country.name_fa,
+            target_fa=f"{target.flag} {target.name_fa}",
+        ),
+        reply_markup=covert_menu_kb(),
     )
 
 
@@ -117,6 +165,13 @@ async def cb_spy_country(
     target = await countries_repo.get_country(session, target_id)
     if country is None or target is None:
         await safe_edit(call, "کشور هدف یافت نشد.", reply_markup=covert_menu_kb())
+        return
+
+    # (v2.1) اعتبارسنجی دوباره‌ی توان نفوذ (کال‌بک قدیمی راه فرار نباشد)
+    try:
+        spy_service.assert_target_reachable(country, target)
+    except spy_service.EspionageError as err:
+        await safe_edit(call, str(err), reply_markup=covert_menu_kb())
         return
 
     rows = await spy_service.targets_with_intel_status(session, country.id, target_id)
@@ -176,6 +231,19 @@ async def cb_spy_commander(
         else "\n📁 اطلاعات فعلی: ❔ ندارید"
     )
 
+    # (v2.1) شانس واقعی نفوذ (اختلاف رده + بونوس فرمانده اطلاعات/ماهواره)
+    bonus = await assn_service.intel_bonus_for(session, country.id)
+    chance = min(
+        92.0,
+        intel_power.espionage_chance(country.name_en, target.name_en) + bonus * 0.5,
+    )
+    warn = (
+        "\n\n🔴 <b>هشدار:</b> شانس نفوذ بسیار پایین است؛ احتمال از دست دادن "
+        "بودجه و لو رفتن عوامل زیاد است."
+        if chance < 20.0
+        else ""
+    )
+
     text = (
         header("تأیید عملیات جاسوسی", "🔍") + "\n\n"
         f"🎯 هدف: <b>{commander.rank_title} {commander.name}</b>\n"
@@ -183,9 +251,14 @@ async def cb_spy_commander(
         f"🏴 کشور: {target.flag} {target.name_fa}\n"
         f"{current}\n"
         f"{DIVIDER}\n"
+        f"🕵️ رده‌ی شما: {intel_power.tier_text(country.name_en)}\n"
+        f"🛡 رده‌ی هدف: {intel_power.tier_text(target.name_en)}\n"
+        f"📊 شانس موفقیت: <b>{fa_number(chance, 1)}٪</b>\n"
         f"💰 هزینه: {fa_money(ESPIONAGE_COST_USD)}\n"
         f"⏱ کول‌داون بعدی: {fa_number(ESPIONAGE_COOLDOWN_HOURS)} ساعت\n\n"
-        "⚠️ <i>در صورت لو رفتن عوامل، رضایت عمومی کشورتان کاهش می‌یابد.</i>"
+        "⚠️ <i>هزینه در هر حالت (موفق یا ناموفق) کسر می‌شود و در صورت لو رفتن "
+        "عوامل، رضایت عمومی کشورتان کاهش می‌یابد.</i>"
+        f"{warn}"
     )
     await safe_edit(call, text, reply_markup=confirm_kb("spy_confirm", "op:covert"))
 
@@ -296,6 +369,8 @@ async def cb_assn_start(
     if country is None:
         await safe_edit(call, NO_COUNTRY_TEXT)
         return
+    if not await assert_feature(call, session, country, "covert.assassination"):
+        return
 
     try:
         await op_service.assert_can_operate(session, country)
@@ -308,14 +383,40 @@ async def cb_assn_start(
 
     countries = await countries_repo.list_countries(session)
     others = [c for c in countries if c.id != country.id]
+    rows = spy_service.target_rows(country, others)
 
     await safe_edit(
         call,
         header("عملیات ترور", "🎯") + "\n\n"
         "⚠️ <b>پیش‌نیاز:</b> ترور فرمانده فقط روی هدفی ممکن است که از قبل "
         "با عملیات جاسوسی شناسایی کرده باشید.\n\n"
-        "🎯 <b>کشور هدف را انتخاب کنید:</b>",
-        reply_markup=countries_kb(others, prefix="assn_country", columns=2, back_data="op:covert"),
+        f"🕵️ رده‌ی اطلاعاتی شما: <b>{intel_power.tier_text(country.name_en)}</b>\n"
+        f"{DIVIDER}\n"
+        "🎯 <b>کشور هدف را انتخاب کنید:</b>\n"
+        "<i>⛔️ یعنی توان اطلاعاتی شما برای عملیات در آن کشور کافی نیست.</i>",
+        reply_markup=intel_targets_kb(rows, prefix="assn_country", back_data="op:covert"),
+    )
+
+
+@router.callback_query(F.data.startswith("assn_country_blocked:"))
+async def cb_assn_blocked(
+    call: CallbackQuery, session: AsyncSession, db_user: User
+) -> None:
+    """راهنما وقتی بازیکن روی کشوری می‌زند که توان عملیات در آن را ندارد."""
+    await call.answer()
+    country = await get_player_country(session, db_user)
+    target = await countries_repo.get_country(session, int(call.data.split(":")[1]))
+    if country is None or target is None:
+        return
+    await safe_edit(
+        call,
+        intel_power.block_reason(
+            country.name_en,
+            target.name_en,
+            spy_fa=country.name_fa,
+            target_fa=f"{target.flag} {target.name_fa}",
+        ),
+        reply_markup=covert_menu_kb(),
     )
 
 
@@ -331,6 +432,13 @@ async def cb_assn_country(
     target = await countries_repo.get_country(session, target_id)
     if country is None or target is None:
         await safe_edit(call, "کشور هدف یافت نشد.", reply_markup=covert_menu_kb())
+        return
+
+    # (v2.1) اعتبارسنجی دوباره‌ی توان عملیات روی این کشور
+    try:
+        assn_service.assert_target_reachable(country, target)
+    except assn_service.AssassinationError as err:
+        await safe_edit(call, str(err), reply_markup=covert_menu_kb())
         return
 
     rows = await spy_service.targets_with_intel_status(session, country.id, target_id)
@@ -390,23 +498,19 @@ async def cb_assn_target(
         await safe_edit(call, "کشور هدف یافت نشد.", reply_markup=covert_menu_kb())
         return
 
-    from ..constants import (
-        ASSASSINATION_BASE_SUCCESS_PCT,
-        ASSASSINATION_PRESIDENT_SUCCESS_PCT,
-        INTEL_SUCCESS_FLOOR,
-        INTEL_SUCCESS_SCALE,
-        LEADERSHIP_CRISIS_HOURS,
-    )
+    from ..constants import LEADERSHIP_CRISIS_HOURS
 
     intel_bonus = await assn_service.intel_bonus_for(session, country.id)
 
     if raw == "president":
         await state.update_data(target_president=True, commander_id=None)
-        chance = min(90.0, ASSASSINATION_PRESIDENT_SUCCESS_PCT + intel_bonus)
+        chance = assn_service.president_chance(country, target, intel_bonus)
         text = (
             header("تأیید ترور رئیس‌جمهور", "👤") + "\n\n"
             f"🎯 هدف: <b>رئیس‌جمهور {target.flag} {target.name_fa}</b>\n"
             f"{DIVIDER}\n"
+            f"🕵️ رده‌ی شما: {intel_power.tier_text(country.name_en)}\n"
+            f"🛡 رده‌ی هدف: {intel_power.tier_text(target.name_en)}\n"
             f"📊 شانس موفقیت: <b>{fa_number(chance, 1)}٪</b>\n\n"
             "⚠️ <b>هشدار جدی:</b>\n"
             "• شانس موفقیت بسیار پایین است\n"
@@ -431,8 +535,9 @@ async def cb_assn_target(
 
         await state.update_data(target_president=False, commander_id=commander.id)
 
-        factor = INTEL_SUCCESS_FLOOR + (intel.quality / 100.0) * INTEL_SUCCESS_SCALE
-        chance = min(90.0, ASSASSINATION_BASE_SUCCESS_PCT * factor + intel_bonus)
+        chance = assn_service.commander_chance(
+            country, target, intel.quality, intel_bonus
+        )
 
         text = (
             header("تأیید عملیات ترور", "🎯") + "\n\n"
@@ -443,6 +548,8 @@ async def cb_assn_target(
             f"📁 کیفیت اطلاعات: {spy_service.quality_label(intel.quality)} "
             f"({fa_number(intel.quality)}٪)\n"
             f"📍 محل شناسایی‌شده: {intel.known_location}\n"
+            f"🕵️ رده‌ی شما: {intel_power.tier_text(country.name_en)} — "
+            f"رده‌ی هدف: {intel_power.tier_text(target.name_en)}\n"
             f"📊 شانس موفقیت: <b>{fa_number(chance, 1)}٪</b>\n"
             f"{DIVIDER}\n"
             "⚠️ اطلاعات پس از این عملیات مصرف می‌شود (موفق یا ناموفق).\n"

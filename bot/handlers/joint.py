@@ -35,7 +35,7 @@ from ..services.news_service import send_log
 from ..states import JointFacilityForm
 from ..utils.numbers import fa_money, fa_number, parse_amount
 from ..utils.ui import STYLE_MAIN, STYLE_NO, STYLE_OK
-from .deps import NO_COUNTRY_TEXT, get_player_country
+from .deps import NO_COUNTRY_TEXT, assert_feature, get_player_country
 
 router = Router(name="joint")
 
@@ -52,6 +52,8 @@ async def cb_joint_start(call: CallbackQuery, state: FSMContext, session: AsyncS
     country = await get_player_country(session, db_user)
     if country is None:
         await call.message.edit_text(NO_COUNTRY_TEXT)
+        return
+    if not await assert_feature(call, session, country, "econ.joint"):
         return
 
     # محدودیت ساخت تأسیسات مشترک: هر ۱۲ ساعت ۳ تا (v1.11)

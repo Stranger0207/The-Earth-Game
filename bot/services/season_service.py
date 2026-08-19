@@ -29,6 +29,7 @@ from ..database.models import (
     Cooldown,
     Country,
     Facility,
+    FeatureLock,
     GroupMeeting,
     GroupMeetingParticipant,
     Meeting,
@@ -150,6 +151,8 @@ async def reset_season(session: AsyncSession) -> dict[str, int]:
     await session.execute(delete(NuclearTech))
     await session.execute(delete(NuclearProgram))
     await session.execute(delete(TariffRate))
+    # --- قفل آپشن‌ها (v2.1) — قفل‌های فصل قبل به فصل جدید کشیده نمی‌شوند ---
+    await session.execute(delete(FeatureLock))
 
     # --- ۲) آزادسازی مالکیت همه‌ی کشورها ---
     await session.execute(

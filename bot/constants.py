@@ -626,7 +626,9 @@ DRILL_BUDGET_COST = 3_000_000_000.0       # هزینه‌ی دلاری رزما�
 DRILL_SATISFACTION_GAIN = 1.5
 
 # ---------- ترور (Assassination) ----------
-ASSASSINATION_BASE_SUCCESS_PCT = 35.0        # شانس پایه علیه فرمانده NPC
+# (v2.1) شانس پایه از ۳۵ به ۲۸ کاهش یافت تا ترور فرمانده برای همه سخت‌تر شود؛
+# برتری کشورهای قوی از ضریب رده‌ی اطلاعاتی می‌آید، نه از شانس پایه‌ی بالا.
+ASSASSINATION_BASE_SUCCESS_PCT = 28.0        # شانس پایه علیه فرمانده NPC
 ASSASSINATION_PRESIDENT_SUCCESS_PCT = 8.0    # شانس پایه علیه رئیس‌جمهور بازیکن
 ASSASSINATION_EXPOSURE_ON_FAIL_PCT = 70.0    # شانس افشا در صورت شکست
 ASSASSINATION_EXPOSURE_ON_SUCCESS_PCT = 25.0 # شانس افشا حتی در صورت موفقیت
@@ -707,11 +709,14 @@ PATROL_REQUIRED_BRANCHES: dict[PatrolType, frozenset[str]] = {
 
 # ---------- عملیات جاسوسی (پیش‌نیاز ترور) ----------
 # بدون اطلاعات معتبر، ترور فرمانده اصلاً ممکن نیست.
-ESPIONAGE_BASE_SUCCESS_PCT = 55.0       # شانس پایه‌ی موفقیت جاسوسی
-ESPIONAGE_COST_USD = 800_000_000.0      # هزینه‌ی هر عملیات جاسوسی
-ESPIONAGE_COOLDOWN_HOURS = 6            # فاصله‌ی بین دو جاسوسی
-ESPIONAGE_INTEL_VALID_HOURS = 48        # مدت اعتبار اطلاعات به‌دست‌آمده
-ESPIONAGE_DETECTION_BASE_PCT = 20.0     # شانس پایه‌ی لو رفتن جاسوس
+# (v2.1) جاسوسی سخت‌تر و پرهزینه‌تر شد و شانس ثابت جای خود را به «قدرت اطلاعاتی»
+# کشورها داد (INTEL_POWER پایین‌تر در همین فایل). این عدد فقط به‌عنوان
+# پشتیبان/مرجع تاریخی نگه داشته شده است؛ محاسبه‌ی واقعی در intel_power_service.
+ESPIONAGE_BASE_SUCCESS_PCT = 35.0       # شانس پایه‌ی موفقیت جاسوسی (رده‌ی برابر)
+ESPIONAGE_COST_USD = 1_200_000_000.0    # هزینه‌ی هر عملیات جاسوسی
+ESPIONAGE_COOLDOWN_HOURS = 8            # فاصله‌ی بین دو جاسوسی
+ESPIONAGE_INTEL_VALID_HOURS = 36        # مدت اعتبار اطلاعات به‌دست‌آمده
+ESPIONAGE_DETECTION_BASE_PCT = 30.0     # شانس پایه‌ی لو رفتن جاسوس
 
 # کیفیت اطلاعات (۰ تا ۱۰۰) از این بازه‌ی تصادفی تعیین می‌شود
 ESPIONAGE_QUALITY_MIN = 35.0
@@ -761,3 +766,175 @@ INTERCEPTOR_MAX_UNITS = 40
 # موجودی حذف می‌شود، نه فقط سهم تلفات. منطق واقع‌گرایانه: موشک پدافندی شلیک
 # می‌شود و از بین می‌رود، در حالی‌که جنگنده و ناوچه به پایگاه برمی‌گردند.
 INTERCEPTOR_DEPLETED_BRANCHES: frozenset[str] = frozenset({"سامانه‌های دفاعی"})
+
+
+# ============================================================
+#  🕵️ قدرت اطلاعاتی کشورها (v2.1)
+# ============================================================
+#
+# پیش از v2.1 شانس جاسوسی برای همه‌ی کشورها ۵۵٪ ثابت بود؛ یعنی یمن دقیقاً مثل
+# آمریکا جاسوسی می‌کرد. اکنون هر کشور یک «قدرت اطلاعاتی» (۰ تا ۱۰۰) دارد که
+# بر اساس توان واقعی سرویس‌های اطلاعاتی‌اش در دنیای ۲۰۲۶ تعیین شده است.
+#
+# اختلاف قدرت اطلاعاتی دو کشور (gap) هم شانس موفقیت جاسوسی را تعیین می‌کند،
+# هم کیفیت اطلاعات به‌دست‌آمده، و هم شانس ترور. اگر اختلاف از INTEL_BLOCK_GAP
+# بدتر باشد، عملیات اصلاً ممکن نیست (کشور ضعیف نمی‌تواند قدرت‌ها را هدف بگیرد).
+#
+# منطق محاسبه در `services/intel_power_service.py` است (مستقل و قابل‌تست).
+# کلیدها `name_en` هستند — دقیقاً مطابق `data/countries.json`.
+
+INTEL_POWER: dict[str, float] = {
+    # ⭐ نخبه (۹۰–۱۰۰) — سرویس‌های اطلاعاتی جهانی با شبکه‌ی فراقاره‌ای
+    "USA": 98.0,          # CIA/NSA — گسترده‌ترین شبکه‌ی سیگنالی و انسانی جهان
+    "Israel": 96.0,       # موساد/آمان — نفوذ عمیق در منطقه، نسبت به اندازه بی‌نظیر
+    "Britain": 92.0,      # MI6/GCHQ — شبکه‌ی تاریخی و عضو Five Eyes
+    "Russia": 90.0,       # SVR/FSB/GRU — سنت قوی جاسوسی و ضدجاسوسی
+    "China": 90.0,        # MSS — سایبری و اقتصادی در مقیاس عظیم
+
+    # 🔵 قوی (۷۰–۸۵) — سرویس حرفه‌ای با توان منطقه‌ای/فراملی
+    "France": 82.0,       # DGSE — حضور قوی در آفریقا و خاورمیانه
+    "Germany": 78.0,      # BND
+    "Iran": 76.0,         # وزارت اطلاعات و اطلاعات سپاه — نفوذ منطقه‌ای
+    "SouthKorea": 76.0,   # NIS — تمرکز شدید روی کره‌ی شمالی
+    "India": 74.0,        # RAW
+    "Canada": 74.0,       # CSIS — عضو Five Eyes
+    "Pakistan": 72.0,     # ISI — قدرتمند در منطقه
+    "Japan": 72.0,        # PSIA/CIRO
+    "Australia": 72.0,    # ASIS — عضو Five Eyes
+    "Turkey": 70.0,       # MİT
+
+    # 🟡 متوسط (۴۵–۶۵) — توان جدی ولی محدود به منطقه‌ی خود
+    "NorthKorea": 65.0,   # RGB — سایبری و عملیات ویژه
+    "Taiwan": 62.0,       # NSB — تمرکز روی چین
+    "SaudiArabia": 58.0,
+    "Sweden": 58.0,       # MUST — سیگنالی قوی نسبت به اندازه
+    "Switzerland": 55.0,
+    "UAE": 55.0,
+    "Italy": 55.0,        # AISE
+    "Spain": 52.0,        # CNI
+    "Poland": 52.0,
+    "Norway": 52.0,       # E-tjenesten — شنود شمال اروپا
+    "Ukraine": 50.0,      # HUR/SBU — تجربه‌ی جنگی بالا، منابع محدود
+    "Egypt": 50.0,
+    "Qatar": 48.0,
+    "Brazil": 48.0,       # ABIN
+    "Greece": 45.0,
+    "Azerbaijan": 45.0,
+    "Mexico": 45.0,
+    "Oman": 45.0,
+
+    # 🔴 ضعیف (۲۰–۴۰) — سرویس فرسوده یا درگیر بحران داخلی
+    "Argentina": 35.0,
+    "Iraq": 32.0,
+    "Colombia": 32.0,
+    "Syria": 30.0,
+    "Yemen": 22.0,
+    "Afghanistan": 20.0,
+}
+
+# قدرت اطلاعاتی پیش‌فرض برای کشوری که در فهرست بالا نیست (کشور تازه‌اضافه‌شده)
+INTEL_POWER_DEFAULT = 40.0
+
+# رده‌بندی برای نمایش به بازیکن: (حد پایین، برچسب فارسی)
+INTEL_TIERS: list[tuple[float, str]] = [
+    (90.0, "⭐ نخبه"),
+    (70.0, "🔵 قوی"),
+    (45.0, "🟡 متوسط"),
+    (0.0, "🔴 ضعیف"),
+]
+
+# اگر (قدرت جاسوس − قدرت هدف) از این عدد بدتر باشد، عملیات جاسوسی/ترور
+# اصلاً ممکن نیست. مثال: یمن (۲۲) علیه آمریکا (۹۸) → اختلاف ۷۶− → مسدود.
+INTEL_BLOCK_GAP = -45.0
+
+# شانس جاسوسی = ESPIONAGE_BASE_SUCCESS_PCT + اختلاف × این ضریب (سپس clamp)
+INTEL_ESPIONAGE_GAP_FACTOR = 0.45
+INTEL_ESPIONAGE_CHANCE_MIN = 5.0
+INTEL_ESPIONAGE_CHANCE_MAX = 85.0
+
+# اثر اختلاف روی کیفیت اطلاعات به‌دست‌آمده (نفوذ به کشور قوی‌تر = اطلاعات ناقص‌تر)
+INTEL_QUALITY_GAP_FACTOR = 0.35
+
+# ضریب رده‌ای ترور فرمانده: ۱ + اختلاف ÷ این عدد (سپس clamp به بازه‌ی زیر)
+INTEL_ASSASSINATION_GAP_DIVISOR = 200.0
+INTEL_ASSASSINATION_FACTOR_MIN = 0.55
+INTEL_ASSASSINATION_FACTOR_MAX = 1.35
+
+# اثر اختلاف روی شانس ترور رئیس‌جمهور (شانس پایه ۸٪ + اختلاف × این ضریب)
+INTEL_PRESIDENT_GAP_FACTOR = 0.06
+
+
+# ============================================================
+#  🔒 عملیات غیرفعال‌شده و قفل آپشن‌ها (v2.1)
+# ============================================================
+
+# حمله‌ی نظامی علنی و خرابکاری از داخل ربات غیرفعال شده‌اند؛ بازیکن باید
+# رول را از طریق پشتیبانی ارسال کند (تصمیم مالک بازی).
+DISABLED_OPERATIONS: frozenset[OperationType] = frozenset({
+    OperationType.GROUND_ASSAULT,
+    OperationType.AIR_STRIKE,
+    OperationType.NAVAL_STRIKE,
+    OperationType.SABOTAGE,
+})
+
+# نشانی پشتیبانی برای ارسال رول عملیات‌های غیرفعال‌شده
+SUPPORT_USERNAME = "@GameOfEarth_Support"
+
+OPERATION_DISABLED_TEXT = (
+    "🔒 <b>این بخش از داخل ربات غیرفعال است.</b>\n\n"
+    f"برای ارسال رول به نشانی {SUPPORT_USERNAME} مراجعه کنید."
+)
+
+# ---------- آپشن‌های قابل‌قفل توسط مالک (پنل /god → قفل آپشن‌ها) ----------
+# کلید → (نام فارسی، دسته). مالک می‌تواند هر آپشن را برای یک/چند/همه‌ی
+# کشورها ببندد. اعمال در `handlers/deps.assert_feature`.
+FEATURE_CAT_MILITARY = "⚔️ نظامی"
+FEATURE_CAT_ECONOMY = "💰 اقتصاد"
+FEATURE_CAT_DIPLOMACY = "🤝 دیپلماسی"
+FEATURE_CAT_GOVERNANCE = "🏛 حاکمیت"
+
+FEATURE_CATEGORIES: list[str] = [
+    FEATURE_CAT_MILITARY,
+    FEATURE_CAT_ECONOMY,
+    FEATURE_CAT_DIPLOMACY,
+    FEATURE_CAT_GOVERNANCE,
+]
+
+LOCKABLE_FEATURES: dict[str, tuple[str, str]] = {
+    # ⚔️ نظامی
+    "covert.assassination": ("🎯 ترور", FEATURE_CAT_MILITARY),
+    "covert.espionage": ("🔍 جاسوسی", FEATURE_CAT_MILITARY),
+    "military.attack": ("💥 حمله نظامی", FEATURE_CAT_MILITARY),
+    "military.interception": ("⚓ رهگیری محموله", FEATURE_CAT_MILITARY),
+    "military.patrol": ("🛩 گشت دفاعی", FEATURE_CAT_MILITARY),
+    "military.drill": ("🎪 رزمایش", FEATURE_CAT_MILITARY),
+    "military.base": ("🏗 پایگاه نظامی", FEATURE_CAT_MILITARY),
+    "military.satellite": ("📡 ماهواره فضایی", FEATURE_CAT_MILITARY),
+    "military.deploy": ("🪖 استقرار نیرو", FEATURE_CAT_MILITARY),
+    "military.nuclear": ("☢️ تأسیسات هسته‌ای", FEATURE_CAT_MILITARY),
+    "military.factory": ("🏭 کارخانه نظامی", FEATURE_CAT_MILITARY),
+    "military.sale": ("💰 فروش تسلیحات", FEATURE_CAT_MILITARY),
+    # 💰 اقتصاد
+    "econ.facility": ("🏗 احداث تأسیسات", FEATURE_CAT_ECONOMY),
+    "econ.joint": ("🤝 تأسیسات مشترک", FEATURE_CAT_ECONOMY),
+    "econ.sale": ("💱 فروش ذخیره", FEATURE_CAT_ECONOMY),
+    "econ.bank": ("🏦 بانک", FEATURE_CAT_ECONOMY),
+    "econ.transfer": ("💸 انتقال وجه", FEATURE_CAT_ECONOMY),
+    "econ.investment": ("📈 سرمایه‌گذاری", FEATURE_CAT_ECONOMY),
+    # 🤝 دیپلماسی
+    "dip.letter": ("✉️ نامه", FEATURE_CAT_DIPLOMACY),
+    "dip.call": ("📞 تماس تلفنی", FEATURE_CAT_DIPLOMACY),
+    "dip.meeting": ("🤝 سفر و دیدار", FEATURE_CAT_DIPLOMACY),
+    "dip.contract": ("📜 قرارداد", FEATURE_CAT_DIPLOMACY),
+    "dip.sanction": ("🚫 تحریم", FEATURE_CAT_DIPLOMACY),
+    "dip.alliance": ("🤝 اتحاد", FEATURE_CAT_DIPLOMACY),
+    "dip.speech": ("🎤 سخنرانی", FEATURE_CAT_DIPLOMACY),
+    "dip.war": ("🚨 اعلام جنگ", FEATURE_CAT_DIPLOMACY),
+    # 🏛 حاکمیت
+    "gov.system": ("🏛 تغییر نظام حاکمیتی", FEATURE_CAT_GOVERNANCE),
+    "gov.tax": ("💵 مالیات", FEATURE_CAT_GOVERNANCE),
+    "gov.legislation": ("📋 قانونگذاری", FEATURE_CAT_GOVERNANCE),
+}
+
+# پیام پیش‌فرض هنگام تلاش برای استفاده از آپشن قفل‌شده
+FEATURE_LOCKED_TEXT = "🔒 «{name}» توسط مدیریت بازی موقتاً غیرفعال شده است."

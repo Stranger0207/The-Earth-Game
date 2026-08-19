@@ -63,7 +63,7 @@ from ..utils.numbers import fa_money, fa_number, parse_amount
 from ..utils.ui import STYLE_NO, STYLE_OK, header
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from ..utils.screens import safe_edit
-from .deps import NO_COUNTRY_TEXT, get_player_country
+from .deps import NO_COUNTRY_TEXT, assert_feature, get_player_country
 
 router = Router(name="military")
 settings = get_settings()
@@ -158,10 +158,15 @@ async def _show_military_report(
 #  🏭 سیستم کارخانه‌ی نظامی (v1.7) — بازتولید تجهیزات
 # ============================================================
 @router.callback_query(F.data == "mil:factory")
-async def cb_factory_menu(call: CallbackQuery, state: FSMContext) -> None:
+async def cb_factory_menu(
+    call: CallbackQuery, state: FSMContext, session: AsyncSession, db_user: User
+) -> None:
     """منوی کارخانه‌ی نظامی."""
     await call.answer()
     await state.clear()
+    country = await get_player_country(session, db_user)
+    if not await assert_feature(call, session, country, "military.factory"):
+        return
     await safe_edit(call,
         header("کارخانه نظامی", "🏭") + "\n\nبا احداث کارخانه می‌توانید تجهیزات موجود کشورتان را بازتولید کنید.",
         reply_markup=military_factory_menu_kb(),
@@ -408,6 +413,8 @@ async def cb_sell(call: CallbackQuery, state: FSMContext, session: AsyncSession,
     country = await get_player_country(session, db_user)
     if country is None:
         await safe_edit(call,NO_COUNTRY_TEXT)
+        return
+    if not await assert_feature(call, session, country, "military.sale"):
         return
     assets = await mil_repo.list_assets(session, country.id)
     assets = [a for a in assets if a.count > 0]

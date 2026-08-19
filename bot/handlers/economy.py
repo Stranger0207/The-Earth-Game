@@ -56,7 +56,7 @@ from ..utils.formatting import render_economy_panel, render_reserves_panel
 from ..utils.numbers import fa_money, fa_number, parse_amount
 from ..utils.screens import safe_edit
 from ..utils.ui import STYLE_MAIN, STYLE_NO, STYLE_OK, header
-from .deps import NO_COUNTRY_TEXT, get_player_country
+from .deps import NO_COUNTRY_TEXT, assert_feature, get_player_country
 
 router = Router(name="economy")
 settings = get_settings()
@@ -135,8 +135,13 @@ async def cb_reserves(call: CallbackQuery, session: AsyncSession, db_user: User)
 #  احداث تأسیسات
 # ============================================================
 @router.callback_query(F.data == "econ:build")
-async def cb_build(call: CallbackQuery, state: FSMContext) -> None:
+async def cb_build(
+    call: CallbackQuery, state: FSMContext, session: AsyncSession, db_user: User
+) -> None:
     await call.answer()
+    country = await get_player_country(session, db_user)
+    if not await assert_feature(call, session, country, "econ.facility"):
+        return
     await state.set_state(FacilityForm.choosing_type)
     await safe_edit(call,
         "🏗 نوع تأسیساتی که می‌خواهید احداث کنید را انتخاب کنید:",
@@ -430,6 +435,8 @@ async def cb_sell(
     country = await get_player_country(session, db_user)
     if country is None:
         await safe_edit(call,NO_COUNTRY_TEXT)
+        return
+    if not await assert_feature(call, session, country, "econ.sale"):
         return
 
     # بررسی کول‌داون فروش

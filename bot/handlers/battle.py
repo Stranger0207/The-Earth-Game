@@ -18,7 +18,7 @@ from ..keyboards.common import countries_kb
 from ..services import battle_service
 from ..utils.screens import safe_edit
 from ..utils.ui import header
-from .deps import NO_COUNTRY_TEXT, get_player_country
+from .deps import NO_COUNTRY_TEXT, assert_feature, get_player_country
 
 router = Router(name="war_declaration")
 
@@ -32,6 +32,8 @@ async def cb_declare_war_start(
     country = await get_player_country(session, db_user)
     if country is None:
         await safe_edit(call, NO_COUNTRY_TEXT)
+        return
+    if not await assert_feature(call, session, country, "dip.war"):
         return
 
     countries = await countries_repo.list_countries(session)

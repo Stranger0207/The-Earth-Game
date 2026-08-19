@@ -32,7 +32,7 @@ from ..states import InvestForm
 from ..utils.numbers import fa_money, fa_number, parse_amount
 from ..utils.screens import safe_edit
 from ..utils.ui import STYLE_MAIN
-from .deps import NO_COUNTRY_TEXT, get_player_country
+from .deps import NO_COUNTRY_TEXT, assert_feature, get_player_country
 
 router = Router(name="investment")
 settings = get_settings()
@@ -126,6 +126,8 @@ async def cb_invest_internal(call: CallbackQuery, state: FSMContext, session: As
     country = await get_player_country(session, db_user)
     if country is None:
         await safe_edit(call,NO_COUNTRY_TEXT)
+        return
+    if not await assert_feature(call, session, country, "econ.investment"):
         return
     if await _invest_cap_reached(session, country.id):
         await safe_edit(call, _INVEST_CAP_TEXT, reply_markup=invest_menu_kb())
@@ -261,6 +263,8 @@ async def cb_invest_new_foreign(call: CallbackQuery, state: FSMContext, session:
     country = await get_player_country(session, db_user)
     if country is None:
         await safe_edit(call,NO_COUNTRY_TEXT)
+        return
+    if not await assert_feature(call, session, country, "econ.investment"):
         return
     if await _invest_cap_reached(session, country.id):
         await safe_edit(call, _INVEST_CAP_TEXT, reply_markup=invest_foreign_kb())

@@ -22,7 +22,7 @@ from ..states import AllianceForm
 from ..utils.numbers import fa_number
 from ..utils.screens import safe_edit
 from ..utils.ui import PICK_OFF, PICK_ON, STYLE_MAIN, STYLE_NO, STYLE_OK
-from .deps import NO_COUNTRY_TEXT, get_player_country
+from .deps import NO_COUNTRY_TEXT, assert_feature, get_player_country
 
 router = Router(name="alliance")
 
@@ -56,9 +56,14 @@ async def _president_name(session: AsyncSession, country) -> str:
 #  منوی اتحاد
 # ============================================================
 @router.callback_query(F.data == "dip:alliance")
-async def cb_alliance(call: CallbackQuery, state: FSMContext) -> None:
+async def cb_alliance(
+    call: CallbackQuery, state: FSMContext, session: AsyncSession, db_user: User
+) -> None:
     await state.clear()
     await call.answer()
+    country = await get_player_country(session, db_user)
+    if not await assert_feature(call, session, country, "dip.alliance"):
+        return
     await safe_edit(call,
         "🤝 <b>اتحادها</b>\n\nیک گزینه را انتخاب کنید:",
         reply_markup=_alliance_menu_kb(),

@@ -30,8 +30,13 @@ class BotState(Base):
     auto_off_start: Mapped[str | None] = mapped_column(String(5), nullable=True)
     auto_off_end: Mapped[str | None] = mapped_column(String(5), nullable=True)
 
+    # انجماد سراسری پلیرها (v2.1): همه‌ی صاحبان کشور معلق می‌شوند و هر کشورگیریِ
+    # تازه‌تأییدشده هم خودکار معلق می‌شود (کاربر بدون کشور می‌تواند /claim بزند).
+    global_freeze: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+
     def __repr__(self) -> str:
         return (
             f"<BotState maintenance={self.maintenance} "
+            f"freeze={self.global_freeze} "
             f"auto={self.auto_off_enabled} {self.auto_off_start}-{self.auto_off_end}>"
         )

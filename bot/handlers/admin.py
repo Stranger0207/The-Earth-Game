@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..config import get_settings
 from ..database.models import User
+from ..database.repositories import bot_state as bot_state_repo
 from ..database.repositories import claims as claims_repo
 from ..database.repositories import countries as countries_repo
 from ..database.repositories import diplomacy as dip_repo
@@ -68,12 +69,39 @@ async def cb_approve(
         await users_repo.set_president_name(session, claim.user_id, claim.president_name)
     await claims_repo.set_status(session, claim_id, ClaimStatus.APPROVED, call.from_user.id)
 
+    # (v2.1) اگر بازی در حالت «انجماد سراسری» است، کشورگیرِ تازه هم خودکار معلق
+    # می‌شود تا مالک بازی خودش شروع بازی را اعلام کند.
+    state = await bot_state_repo.get_state(session)
+    frozen = bool(getattr(state, "global_freeze", False))
+    if frozen:
+        await users_repo.set_suspended(session, claim.user_id, True)
+
     await call.answer("تأیید شد ✅")
     await call.message.edit_text(
-        call.message.html_text + "\n\n✅ <b>تأیید شد</b>"
+        call.message.html_text + "\n\n✅ <b>تأیید شد</b>" + (" (معلق — بازی منجمد است ⏸)" if frozen else "")
     )
 
     # اطلاع به بازیکن (پنل اصلی با عکس تصادفی؛ در نبود عکس فقط متن)
+    if frozen:
+        # پلیر معلق نمی‌تواند از پنل استفاده کند؛ پس کیبورد نمی‌فرستیم
+        try:
+            await bot.send_message(
+                claim.user_id,
+                f"🎉 درخواست شما تأیید شد و شما رهبر {country.flag} "
+                f"<b>{country.name_fa}</b> هستید.\n\n"
+                "⏸ اما بازی در حال حاضر <b>معلق</b> است و تا رفع تعلیق توسط مدیریت "
+                "نمی‌توانید اقدامی انجام دهید. به‌محض شروع بازی خبر می‌دهیم.",
+            )
+        except Exception:  # noqa: BLE001
+            pass
+        await send_log(
+            bot,
+            f"⏸ <b>کشورگیری در حالت انجماد</b>\n"
+            f"کشور: {country.flag} {country.name_fa}\n"
+            f"کاربر: <code>{claim.user_id}</code> — خودکار معلق شد.",
+        )
+        return
+
     try:
         await media.send_photo_news(
             bot,

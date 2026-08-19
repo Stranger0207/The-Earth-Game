@@ -8,6 +8,10 @@
 نکته‌ی کلیدی: پیش از تأیید نهایی، نتیجه‌ی محاسباتی عملیات به بازیکن
 پیش‌نمایش داده می‌شود (امکان‌سنجی، هزینه، برآورد رهگیری) تا کورکورانه
 نیرو اعزام نکند.
+
+**(v2.1) حمله‌ی نظامی علنی و خرابکاری از داخل ربات غیرفعال شده‌اند**
+(`constants.DISABLED_OPERATIONS`)؛ بازیکن باید رول را از طریق پشتیبانی
+ارسال کند. جریان زیر برای بقیه‌ی عملیات‌ها دست‌نخورده مانده است.
 """
 
 from __future__ import annotations
@@ -17,9 +21,10 @@ import logging
 from aiogram import F, Router
 from aiogram.filters import StateFilter
 from aiogram.fsm.context import FSMContext
-from aiogram.types import CallbackQuery, Message
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..constants import DISABLED_OPERATIONS, OPERATION_DISABLED_TEXT
 from ..database.models import User
 from ..database.repositories import countries as countries_repo
 from ..enums import (
@@ -33,7 +38,6 @@ from ..enums import (
 )
 from ..keyboards.command_center import (
     asset_picker_kb,
-    attack_types_kb,
     claim_responsibility_kb,
     operation_confirm_kb,
     operations_menu_kb,
@@ -48,8 +52,8 @@ from ..services.news_service import send_log
 from ..states import OperationForm
 from ..utils.numbers import fa_number, parse_amount
 from ..utils.screens import safe_edit
-from ..utils.ui import DIVIDER, header
-from .deps import NO_COUNTRY_TEXT, get_player_country
+from ..utils.ui import DIVIDER, STYLE_MAIN, header
+from .deps import NO_COUNTRY_TEXT, assert_feature, get_player_country
 
 logger = logging.getLogger(__name__)
 router = Router(name="operations")
@@ -103,21 +107,41 @@ async def _render_asset_picker(
 
 
 # ============================================================
+#  عملیات‌های غیرفعال‌شده (v2.1): حمله نظامی و خرابکاری
+# ============================================================
+def _disabled_kb() -> InlineKeyboardMarkup:
+    """دکمه‌ی بازگشت زیر پیام «غیرفعال است»."""
+    return InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="🔙 بازگشت", callback_data="cc:operations", style=STYLE_MAIN)
+    ]])
+
+
+@router.callback_query(F.data.startswith("op:disabled:"))
+async def cb_operation_disabled(call: CallbackQuery, state: FSMContext) -> None:
+    """
+    پیام راهنما برای حمله‌ی نظامی و خرابکاری که از داخل ربات غیرفعال شده‌اند.
+
+    بازیکن باید رول عملیات را از طریق پشتیبانی ارسال کند.
+    """
+    await call.answer()
+    await state.clear()
+    await safe_edit(call, OPERATION_DISABLED_TEXT, reply_markup=_disabled_kb())
+
+
+# ============================================================
 #  شروع: انتخاب نوع عملیات
 # ============================================================
 @router.callback_query(F.data == "op:attack")
 async def cb_attack_menu(call: CallbackQuery, state: FSMContext) -> None:
-    """منوی انتخاب نوع حمله‌ی علنی."""
+    """
+    منوی انتخاب نوع حمله‌ی علنی.
+
+    (v2.1) حمله‌ی علنی غیرفعال است؛ این هندلر فقط برای کال‌بک‌های قدیمی
+    باقی مانده و پیام ارجاع به پشتیبانی می‌دهد.
+    """
     await call.answer()
     await state.clear()
-    text = (
-        header("حمله نظامی", "💥") + "\n\n"
-        "نوع حمله را انتخاب کنید.\n\n"
-        "⚠️ <b>توجه:</b> حملات علنی نیازمند <b>اعلام جنگ رسمی</b> پیشین هستند.\n"
-        "🪖 حمله‌ی زمینی فقط علیه کشورهای نزدیک ممکن است.\n"
-        "🚢 حمله‌ی دریایی نیازمند آب مشترک با هدف است."
-    )
-    await safe_edit(call, text, reply_markup=attack_types_kb())
+    await safe_edit(call, OPERATION_DISABLED_TEXT, reply_markup=_disabled_kb())
 
 
 @router.callback_query(F.data.startswith("op:new:"))
@@ -133,9 +157,19 @@ async def cb_start_operation(
         await call.answer("نوع عملیات نامعتبر است.", show_alert=True)
         return
 
+    # (v2.1) حمله‌ی علنی و خرابکاری از داخل ربات غیرفعال‌اند — هر مسیری که به
+    # اینجا برسد (از جمله کال‌بک قدیمی در چت) باید به پشتیبانی ارجاع شود.
+    if operation in DISABLED_OPERATIONS:
+        await safe_edit(call, OPERATION_DISABLED_TEXT, reply_markup=_disabled_kb())
+        return
+
     country = await get_player_country(session, db_user)
     if country is None:
         await safe_edit(call, NO_COUNTRY_TEXT)
+        return
+
+    # قفل مدیریتی آپشن حمله (پنل /god → غیرفعال‌کردن آپشن)
+    if not await assert_feature(call, session, country, "military.attack"):
         return
 
     # بررسی سقف عملیات و بحران رهبری پیش از شروع فرم

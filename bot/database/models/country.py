@@ -58,6 +58,8 @@ class Country(Base):
     energy_status: Mapped[str] = mapped_column(String(16), default="medium")  # weak/medium/good/excellent
     foreign_trade: Mapped[str] = mapped_column(String(16), default="balanced")  # negative/balanced/positive
     govt_debt: Mapped[float] = mapped_column(Float, default=0.0)         # دلار
+    # رتبه اعتباری بانکی (v2.2): normal / good / bad_credit / defaulter
+    credit_rating: Mapped[str] = mapped_column(String(16), default="normal", nullable=False)
 
     # --- سیاست داخلی ---
     public_satisfaction: Mapped[float] = mapped_column(Float, default=60.0)  # رضایت عمومی (۰ تا ۱۰۰)

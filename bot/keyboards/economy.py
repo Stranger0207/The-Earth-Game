@@ -28,13 +28,14 @@ def economy_menu_kb(is_usa: bool = False) -> InlineKeyboardMarkup:
     builder.button(text="💱 فروش ذخیره", callback_data="econ:sell", style=STYLE_OK)
     builder.button(text="🏦 بانک", callback_data="econ:bank", style=STYLE_MAIN)
     builder.button(text="📈 سرمایه‌گذاری", callback_data="econ:invest", style=STYLE_MAIN)
+    builder.button(text="🏷 مزایده", callback_data="econ:auction", style=STYLE_MAIN)
     if is_usa:
         builder.button(text="🇺🇸 تعرفه بین‌المللی", callback_data="econ:tariffs", style=STYLE_NO)
     builder.button(text="🔙 بازگشت", callback_data="menu:main", style=STYLE_MAIN)
     if is_usa:
-        builder.adjust(2, 2, 2, 1, 1)
+        builder.adjust(2, 2, 2, 1, 1, 1)
     else:
-        builder.adjust(2, 2, 2, 1)
+        builder.adjust(2, 2, 2, 1, 1)
     return builder.as_markup()
 
 
@@ -220,4 +221,53 @@ def sell_resources_kb() -> InlineKeyboardMarkup:
         )
     builder.button(text="🔙 بازگشت", callback_data="menu:economy", style=STYLE_MAIN)
     builder.adjust(2, 2, 2, 1)
+    return builder.as_markup()
+
+
+def loan_panel_kb(has_active_loan: bool = False) -> InlineKeyboardMarkup:
+    """کیبورد بخش وام بانکی (v2.2)."""
+    builder = InlineKeyboardBuilder()
+    if has_active_loan:
+        builder.button(text="💳 بازپرداخت وام", callback_data="bank:loan_repay", style=STYLE_OK)
+    else:
+        builder.button(text="💸 درخواست اخذ وام", callback_data="bank:loan_take", style=STYLE_OK)
+    builder.button(text="🔙 بازگشت به بانک", callback_data="econ:bank", style=STYLE_MAIN)
+    builder.adjust(1, 1)
+    return builder.as_markup()
+
+
+def auction_menu_kb() -> InlineKeyboardMarkup:
+    """منوی اصلی سیستم مزایده (v2.2)."""
+    builder = InlineKeyboardBuilder()
+    builder.button(text="🏷 مزایده‌های فعال", callback_data="auc:active:0", style=STYLE_MAIN)
+    builder.button(text="➕ ثبت مزایده جدید", callback_data="auc:create", style=STYLE_OK)
+    builder.button(text="📋 مزایده‌های من", callback_data="auc:mine:0", style=STYLE_MAIN)
+    builder.button(text="🔙 بازگشت", callback_data="menu:economy", style=STYLE_MAIN)
+    builder.adjust(1, 1, 1, 1)
+    return builder.as_markup()
+
+
+def auction_resources_kb() -> InlineKeyboardMarkup:
+    """انتخاب منبع طبیعی برای مزایده (v2.2)."""
+    builder = InlineKeyboardBuilder()
+    for r in ResourceType:
+        builder.button(
+            text=f"{RESOURCE_EMOJI[r]} {RESOURCE_FA[r]}",
+            callback_data=f"auc_res:{r.value}",
+            style=STYLE_MAIN,
+        )
+    builder.button(text="🔙 بازگشت", callback_data="econ:auction", style=STYLE_MAIN)
+    builder.adjust(2, 2, 2, 1)
+    return builder.as_markup()
+
+
+def auction_durations_kb() -> InlineKeyboardMarkup:
+    """انتخاب مدت زمان مزایده به ساعت (v2.2)."""
+    builder = InlineKeyboardBuilder()
+    builder.button(text="⏱ ۶ ساعت", callback_data="auc_dur:6", style=STYLE_MAIN)
+    builder.button(text="⏱ ۱۲ ساعت", callback_data="auc_dur:12", style=STYLE_MAIN)
+    builder.button(text="⏱ ۲۴ ساعت (۱ روز)", callback_data="auc_dur:24", style=STYLE_MAIN)
+    builder.button(text="⏱ ۴۸ ساعت (۲ روز)", callback_data="auc_dur:48", style=STYLE_MAIN)
+    builder.button(text="🔙 بازگشت", callback_data="econ:auction", style=STYLE_MAIN)
+    builder.adjust(2, 2, 1)
     return builder.as_markup()

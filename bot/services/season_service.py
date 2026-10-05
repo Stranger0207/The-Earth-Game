@@ -24,6 +24,9 @@ logger = logging.getLogger(__name__)
 from ..constants import DEFAULT_RESERVE_YIELD_HOURS
 from ..database.models import (
     Attack,
+    Auction,
+    AuctionBid,
+    BankLoan,
     ClaimRequest,
     Contract,
     Cooldown,
@@ -153,6 +156,10 @@ async def reset_season(session: AsyncSession) -> dict[str, int]:
     await session.execute(delete(TariffRate))
     # --- قفل آپشن‌ها (v2.1) — قفل‌های فصل قبل به فصل جدید کشیده نمی‌شوند ---
     await session.execute(delete(FeatureLock))
+    # --- سیستم وام بانکی و مزایده (v2.2) ---
+    await session.execute(delete(AuctionBid))
+    await session.execute(delete(Auction))
+    await session.execute(delete(BankLoan))
 
     # --- ۲) آزادسازی مالکیت همه‌ی کشورها ---
     await session.execute(
@@ -179,6 +186,7 @@ async def reset_season(session: AsyncSession) -> dict[str, int]:
         country.govt_debt = econ.get("govt_debt", 0.0)
         country.public_satisfaction = econ.get("public_satisfaction", 60.0)
         country.stability = econ.get("stability", 60.0)
+        country.credit_rating = "normal"  # v2.2
 
         # ریست فیلدهای حاکمیت (v1.10.2)
         country.government_type = ""

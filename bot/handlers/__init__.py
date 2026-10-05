@@ -6,6 +6,7 @@ from . import (
     admin,
     advisor,
     alliance,
+    auction,
     bank,
     battle,
     claim,
@@ -48,6 +49,7 @@ def register_all_routers(dp: Dispatcher) -> None:
     dp.include_router(god_locks.router)
     dp.include_router(menu.router)
     dp.include_router(economy.router)
+    dp.include_router(auction.router)
     dp.include_router(bank.router)
     dp.include_router(investment.router)
     dp.include_router(joint.router)

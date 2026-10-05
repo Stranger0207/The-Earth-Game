@@ -1211,6 +1211,102 @@ async def process_nuclear(bot: Bot) -> None:
             pass
 
 
+async def process_bank_loans(bot: Bot) -> None:
+    """بررسی وضعیت بازپرداخت وام‌های بانکی و اخطارها/تنزیل رتبه به بدحساب (v2.2)."""
+    from ..database.repositories import bank_loans as loans_repo
+    from ..database.repositories import countries as countries_repo
+    from ..enums import CreditRating, LoanStatus
+    from ..utils.numbers import fa_money
+
+    now = _utcnow()
+    notifications: list[tuple[int, str]] = []  # (owner_user_id, text)
+    log_msgs: list[str] = []
+
+    async with async_session_factory() as session:
+        loans = await loans_repo.list_active_loans(session)
+        for loan in loans:
+            deadline = _aware(loan.deadline)
+            if deadline is None:
+                continue
+
+            country = await countries_repo.get_country(session, loan.country_id)
+            if not country:
+                continue
+
+            # ۱. اگر موعد ۷ روزه منقضی شده است -> معوقه و بدحسابی
+            if now >= deadline:
+                loan.status = LoanStatus.DEFAULTED
+                country.credit_rating = CreditRating.DEFAULTER
+                log_msgs.append(
+                    f"🚨 <b>معوق‌شدن وام بانکی</b>\n"
+                    f"کشور: {country.flag} {country.name_fa}\n"
+                    f"مبلغ مانده: {fa_money(loan.remaining_amount)}\n"
+                    f"شناسه وام: #{loan.id}\n"
+                    f"رتبه اعتباری کشور به <b>بدحساب (مسدود)</b> تنزیل یافت."
+                )
+                if country.owner_user_id:
+                    notifications.append((
+                        country.owner_user_id,
+                        f"🚨 <b>اخطار بانکی: مهلت ۷ روزه بازپرداخت وام به پایان رسید!</b>\n\n"
+                        f"وام شماره #{loan.id} به مبلغ {fa_money(loan.remaining_amount)} تسویه نشد.\n"
+                        f"رتبه اعتباری شما به <b>بدحساب (مسدود)</b> تنزیل یافت و تا زمان تسویه بدهی، "
+                        f"هرگونه دریافت وام جدید برای شما مسدود خواهد بود.\n"
+                        f"💡 پس از تسویه این وام معوقه، سقف وام شما ۱ تریلیون دلار خواهد شد.",
+                    ))
+                continue
+
+            # ۲. اخطار روز ششم (کمتر از ۲۴ ساعت مانده)
+            if not loan.warned_6d and now >= deadline - timedelta(days=1):
+                loan.warned_6d = True
+                if country.owner_user_id:
+                    notifications.append((
+                        country.owner_user_id,
+                        f"⚠️ <b>هشدار مهم بانکی:</b> تنها کمتر از ۲۴ ساعت تا پایان مهلت بازپرداخت وام "
+                        f"شماره #{loan.id} به مبلغ {fa_money(loan.remaining_amount)} باقی مانده است.\n"
+                        f"در صورت عدم تسویه، حساب بانکی شما مسدود و بدحساب خواهد شد.",
+                    ))
+                continue
+
+            # ۳. یادآوری روز پنجم (کمتر از ۴۸ ساعت مانده)
+            if not loan.warned_5d and now >= deadline - timedelta(days=2):
+                loan.warned_5d = True
+                if country.owner_user_id:
+                    notifications.append((
+                        country.owner_user_id,
+                        f"⏳ <b>یادآوری بازپرداخت وام بانکی:</b> حدود ۲ روز تا مهلت نهایی وام "
+                        f"شماره #{loan.id} (مانده: {fa_money(loan.remaining_amount)}) باقی است.",
+                    ))
+
+        await session.commit()
+
+    for owner_id, text in notifications:
+        try:
+            await bot.send_message(owner_id, text)
+        except Exception:
+            pass
+
+    for log_text in log_msgs:
+        try:
+            await send_log(bot, log_text)
+        except Exception:
+            pass
+
+
+async def process_auctions(bot: Bot) -> None:
+    """بررسی مزایده‌های به پایان‌رسیده و تسویه خودکار آن‌ها (v2.2)."""
+    from ..database.repositories import auctions as auctions_repo
+    from ..handlers.auction import finalize_auction
+
+    now = _utcnow()
+    async with async_session_factory() as session:
+        active_auctions = await auctions_repo.list_active_auctions(session)
+        for auction in active_auctions:
+            ends_at = _aware(auction.ends_at)
+            if ends_at and now >= ends_at:
+                await finalize_auction(session, auction)
+        await session.commit()
+
+
 async def _tick(bot: Bot) -> None:
     """جاب اصلی که هر دقیقه همه‌ی پردازش‌های زمان‌دار را اجرا می‌کند.
 
@@ -1233,6 +1329,8 @@ async def _tick(bot: Bot) -> None:
         ("process_group_meetings", lambda: process_group_meetings(bot)),
         ("process_calls", lambda: process_calls()),
         ("process_investments", lambda: process_investments(bot)),
+        ("process_bank_loans", lambda: process_bank_loans(bot)),
+        ("process_auctions", lambda: process_auctions(bot)),
         ("process_satellites", lambda: process_satellites()),
         ("process_nuclear", lambda: process_nuclear(bot)),
         ("process_taxes", lambda: process_taxes(bot)),

@@ -58,6 +58,8 @@ def parse_amount(text: str) -> float | None:
         multiplier, raw = 1_000_000, raw[:-1]
     elif raw.endswith("b"):
         multiplier, raw = 1_000_000_000, raw[:-1]
+    elif raw.endswith("t"):
+        multiplier, raw = 1_000_000_000_000, raw[:-1]
     try:
         return float(raw) * multiplier
     except ValueError:

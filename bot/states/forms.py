@@ -217,3 +217,34 @@ class LawForm(StatesGroup):
 
     entering_title = State()        # عنوان لایحه
     entering_body = State()         # متن لایحه
+
+
+class LoanTakeForm(StatesGroup):
+    """فرم اخذ وام بانکی (v2.2)."""
+
+    entering_amount = State()       # مبلغ درخواستی
+    confirming = State()            # تأیید نهایی دریافت وام
+
+
+class LoanRepayForm(StatesGroup):
+    """فرم بازپرداخت وام بانکی (v2.2)."""
+
+    entering_amount = State()       # مبلغ بازپرداخت
+    confirming = State()            # تأیید نهایی بازپرداخت
+
+
+class AuctionCreateForm(StatesGroup):
+    """فرم ایجاد مزایده جدید منابع طبیعی (v2.2)."""
+
+    choosing_resource = State()     # انتخاب منبع طبیعی
+    entering_amount = State()       # مقدار منبع
+    entering_base_price = State()   # قیمت پایه
+    entering_duration = State()     # مدت زمان به ساعت
+    confirming = State()            # تأیید نهایی مزایده
+
+
+class AuctionBidForm(StatesGroup):
+    """فرم ثبت پیشنهاد در مزایده (v2.2)."""
+
+    entering_bid = State()          # مبلغ پیشنهادی
+    confirming = State()            # تأیید کسر کارمزد و ثبت پیشنهاد

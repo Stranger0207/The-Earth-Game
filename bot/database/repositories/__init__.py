@@ -6,6 +6,8 @@
 
 from . import (
     alliances,
+    auctions,
+    bank_loans,
     bot_state,
     claims,
     commander_intel,
@@ -31,6 +33,8 @@ from . import (
 
 __all__ = [
     "alliances",
+    "auctions",
+    "bank_loans",
     "bot_state",
     "claims",
     "commander_intel",

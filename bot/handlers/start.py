@@ -74,6 +74,18 @@ async def cmd_start(
             await message.answer("💬 متن نقل قول خود را بنویسید:")
             return
 
+    # deep-link مزایده منابع طبیعی: /start auc_<auction_id> (v2.2)
+    if command.args and command.args.startswith("auc_"):
+        try:
+            auc_id = int(command.args.split("_", 1)[1])
+        except (ValueError, IndexError):
+            auc_id = None
+        if auc_id is not None:
+            from .auction import show_auction_details
+
+            await show_auction_details(message, session, db_user, auc_id)
+            return
+
     country = await get_player_country(session, db_user)
     if country is not None:
         await show_menu(

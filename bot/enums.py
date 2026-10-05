@@ -640,3 +640,36 @@ class NewsArchetype(str, enum.Enum):
     DAMAGE_ASSESSMENT = "damage_assess"  # ارزیابی میدانی خسارت
     WIRE = "wire"                        # خبر خبرگزاری بین‌المللی
     TICKER = "ticker"                    # تیتر تک‌خطی فوری
+
+
+class CreditRating(str, enum.Enum):
+    """رتبه‌بندی اعتباری کشورها در سیستم بانکی (v2.2)."""
+
+    NORMAL = "normal"          # عادی — سقف ۲ تریلیون
+    GOOD = "good"              # خوش‌حساب — سقف ۵ تریلیون (تسویه زیر ۵ روز)
+    BAD_CREDIT = "bad_credit"  # بدحساب تسویه‌شده — سقف ۱ تریلیون
+    DEFAULTER = "defaulter"    # بدحساب دارای معوقه — مسدود از دریافت وام
+
+
+CREDIT_RATING_FA: dict[CreditRating, str] = {
+    CreditRating.NORMAL: "عادی",
+    CreditRating.GOOD: "خوش‌حساب (سقف ۵ تریلیون)",
+    CreditRating.BAD_CREDIT: "بدحساب تسویه‌شده (سقف ۱ تریلیون)",
+    CreditRating.DEFAULTER: "بدحساب (دارای معوقه - مسدود)",
+}
+
+
+class LoanStatus(str, enum.Enum):
+    """وضعیت وام بانکی (v2.2)."""
+
+    ACTIVE = "active"          # فعال و جاری
+    PAID = "paid"              # تسویه‌شده
+    DEFAULTED = "defaulted"    # معوقه و سوخت‌شده (عدم پرداخت در ۷ روز)
+
+
+class AuctionStatus(str, enum.Enum):
+    """وضعیت مزایده منابع طبیعی (v2.2)."""
+
+    ACTIVE = "active"          # در حال برگزاری
+    COMPLETED = "completed"    # به اتمام رسیده و برنده مشخص شده
+    CANCELLED = "cancelled"    # لغوشده توسط فروشنده یا منقضی بدون پیشنهاد

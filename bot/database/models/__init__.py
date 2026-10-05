@@ -47,6 +47,8 @@ from .operation import Operation
 from .patrol import Patrol
 from .reserves import Reserve
 from .satellite import Satellite
+from .auction import Auction, AuctionBid
+from .bank_loan import BankLoan
 from .tariff import TariffRate
 from .trade import ResourceSale
 from .user import User
@@ -55,6 +57,9 @@ __all__ = [
     "Alliance",
     "AllianceMember",
     "Attack",
+    "Auction",
+    "AuctionBid",
+    "BankLoan",
     "BaseEquipment",
     "Battle",
     "BotState",

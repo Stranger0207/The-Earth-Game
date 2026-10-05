@@ -149,7 +149,7 @@ def _cooldown_text(label: str, every_fa: str, mins: int) -> str:
 
 
 # ============================================================
-#  📞 تماس تلفنی (حداکثر ۵ دقیقه، بدون قرارداد)
+#  📞 تماس تلفنی (حداکثر ۱۰ دقیقه، بدون قرارداد)
 # ============================================================
 @router.callback_query(F.data == "dip:call")
 async def cb_call(call: CallbackQuery, state: FSMContext, session: AsyncSession, db_user: User) -> None:

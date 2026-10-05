@@ -14,6 +14,8 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMar
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..constants import (
+    LOAN_COOLDOWN_DAYS,
+    LOAN_COOLDOWN_HOURS,
     LOAN_DURATION_DAYS,
     LOAN_GOOD_CREDIT_DAYS,
     LOAN_LIMIT_BAD_CREDIT,
@@ -22,6 +24,7 @@ from ..constants import (
 )
 from ..database.models import User
 from ..database.repositories import bank_loans as loans_repo
+from ..database.repositories import cooldowns as cd_repo
 from ..database.repositories import countries as countries_repo
 from ..enums import CREDIT_RATING_FA, CreditRating, LoanStatus
 from ..keyboards.common import confirm_cancel_kb, countries_kb
@@ -322,6 +325,24 @@ def _format_time_left(target: datetime) -> str:
     return " و ".join(parts)
 
 
+def _format_seconds(seconds: float) -> str:
+    """فرمت فارسی زمان باقی‌مانده از کول‌داون."""
+    if seconds <= 0:
+        return "۰ دقیقه"
+    total_mins = int(seconds // 60)
+    days = total_mins // (24 * 60)
+    hours = (total_mins % (24 * 60)) // 60
+    mins = total_mins % 60
+    parts = []
+    if days > 0:
+        parts.append(f"{fa_number(days)} روز")
+    if hours > 0:
+        parts.append(f"{fa_number(hours)} ساعت")
+    if mins > 0 or not parts:
+        parts.append(f"{fa_number(mins)} دقیقه")
+    return " و ".join(parts)
+
+
 def _loan_limit_for_country(country) -> float:
     """محاسبه سقف وام بر اساس رتبه اعتباری کشور."""
     rating = getattr(country, "credit_rating", CreditRating.NORMAL)
@@ -394,15 +415,26 @@ async def cb_bank_loan(
         await safe_edit(call, text, reply_markup=_back_bank_kb())
         return
 
+    # بررسی کول‌داون ۵ روزه دریافت وام
+    cd_rem = await cd_repo.remaining_seconds(session, country.id, "bank_loan", LOAN_COOLDOWN_HOURS)
+    cd_note = ""
+    if cd_rem > 0:
+        cd_note = (
+            f"\n\n⏳ <b>محدودیت زمانی (کول‌داون):</b> شما هر {fa_number(LOAN_COOLDOWN_DAYS)} روز یک‌بار می‌توانید وام بگیرید.\n"
+            f"زمان باقی‌مانده تا امکان اخذ وام جدید: <b>{_format_seconds(cd_rem)}</b>"
+        )
+
     max_limit = _loan_limit_for_country(country)
     text = (
         f"🏛 <b>تسهیلات وام بانکی {country.flag} {country.name_fa}</b>\n\n"
         f"⭐ <b>رتبه اعتباری:</b> {rating_fa}\n"
         f"💎 <b>سقف مجاز دریافت وام:</b> {fa_money(max_limit)}\n"
-        f"⏳ <b>مهلت بازپرداخت قانونی:</b> {fa_number(LOAN_DURATION_DAYS)} روز\n\n"
+        f"⏳ <b>مهلت بازپرداخت قانونی:</b> {fa_number(LOAN_DURATION_DAYS)} روز\n"
+        f"🔄 <b>کول‌داون دریافت وام:</b> هر {fa_number(LOAN_COOLDOWN_DAYS)} روز ۱ بار\n\n"
         f"💡 <b>قوانین اعتبارسنجی:</b>\n"
         f"• در صورت تسویه زیر {fa_number(LOAN_GOOD_CREDIT_DAYS)} روز، رتبه شما به <b>خوش‌حساب</b> ارتقا یافته و سقف وامتان به <b>۵ تریلیون دلار</b> می‌رسد.\n"
         f"• در صورت عدم تسویه ظرف ۷ روز، حسابتان بدحساب شده و دسترسی به وام مسدود می‌گردد."
+        f"{cd_note}"
     )
     await safe_edit(call, text, reply_markup=loan_panel_kb(has_active_loan=False))
 
@@ -431,6 +463,15 @@ async def cb_bank_loan_take(
     rating = getattr(country, "credit_rating", CreditRating.NORMAL)
     if rating == CreditRating.DEFAULTER:
         await call.answer("حساب شما مسدود است.", show_alert=True)
+        return
+
+    # بررسی کول‌داون ۵ روزه دریافت وام
+    cd_rem = await cd_repo.remaining_seconds(session, country.id, "bank_loan", LOAN_COOLDOWN_HOURS)
+    if cd_rem > 0:
+        await call.answer(
+            f"⛔️ هر {fa_number(LOAN_COOLDOWN_DAYS)} روز یک‌بار می‌توانید وام بگیرید.\nزمان باقی‌مانده: {_format_seconds(cd_rem)}",
+            show_alert=True,
+        )
         return
 
     max_limit = _loan_limit_for_country(country)
@@ -502,6 +543,15 @@ async def cb_loan_take_confirm(
         await call.message.edit_text("⛔️ شما در حال حاضر وام فعال دارید.", reply_markup=_back_bank_kb())
         return
 
+    # بررسی کول‌داون ۵ روزه
+    cd_rem = await cd_repo.remaining_seconds(session, country.id, "bank_loan", LOAN_COOLDOWN_HOURS)
+    if cd_rem > 0:
+        await call.message.edit_text(
+            f"⛔️ کول‌داون ۵ روزه وام هنوز به پایان نرسیده است.\nزمان باقی‌مانده: {_format_seconds(cd_rem)}",
+            reply_markup=_back_bank_kb(),
+        )
+        return
+
     amount = float(data.get("loan_amount", 0))
     max_limit = _loan_limit_for_country(country)
     if amount <= 0 or amount > max_limit:
@@ -520,6 +570,9 @@ async def cb_loan_take_confirm(
         reward_deadline=reward_deadline,
     )
     country.budget = (country.budget or 0.0) + amount
+
+    # ثبت کول‌داون ۵ روزه اخذ وام
+    await cd_repo.touch(session, country.id, "bank_loan")
 
     await call.message.edit_text(
         f"✅ <b>وام بانکی با موفقیت دریافت و واریز شد!</b>\n\n"

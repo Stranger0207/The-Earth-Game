@@ -22,17 +22,21 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from bot.constants import (
     AUCTION_ENTRY_FEE,
+    LOAN_COOLDOWN_DAYS,
+    LOAN_COOLDOWN_HOURS,
     LOAN_DURATION_DAYS,
     LOAN_GOOD_CREDIT_DAYS,
     LOAN_LIMIT_BAD_CREDIT,
     LOAN_LIMIT_GOOD,
     LOAN_LIMIT_NORMAL,
     LOCKABLE_FEATURES,
+    PHONE_CALL_DURATION_MINUTES,
 )
 from bot.database.base import Base
 from bot.database.models import Auction, AuctionBid, BankLoan, Country, Reserve, ResourceSale, User
 from bot.database.repositories import auctions as auctions_repo
 from bot.database.repositories import bank_loans as loans_repo
+from bot.database.repositories import cooldowns as cd_repo
 from bot.database.repositories import countries as countries_repo
 from bot.database.repositories import reserves as reserves_repo
 from bot.enums import AuctionStatus, CreditRating, LoanStatus, ResourceType, TradeStatus
@@ -116,6 +120,14 @@ async def run_tests() -> None:
         assert c1.credit_rating == CreditRating.NORMAL
         assert LOAN_LIMIT_NORMAL == 2_000_000_000_000.0
 
+        # بررسی مدت زمان تماس تلفنی
+        assert PHONE_CALL_DURATION_MINUTES == 10, "مدت تماس تلفنی ۱۰ دقیقه نیست!"
+        print("  [OK] مدت زمان تماس تلفنی ۱۰ دقیقه تأیید شد.")
+
+        # بررسی ثابت‌های کول‌داون وام
+        assert LOAN_COOLDOWN_DAYS == 5
+        assert LOAN_COOLDOWN_HOURS == 120
+
         # دریافت وام ۱.۵ تریلیون توسط کشور ۱
         loan_amount = 1_500_000_000_000.0
         deadline = now + timedelta(days=LOAN_DURATION_DAYS)
@@ -124,8 +136,14 @@ async def run_tests() -> None:
             session, c1.id, loan_amount, deadline, reward_deadline
         )
         c1.budget += loan_amount
+        await cd_repo.touch(session, c1.id, "bank_loan")
         await session.commit()
         print(f"  [OK] وام #{loan1.id} به مبلغ ۱.۵ تریلیون دلار با موفقیت برای کشور ۱ ثبت شد.")
+
+        # بررسی فعال شدن کول‌داون ۵ روزه
+        cd_rem = await cd_repo.remaining_seconds(session, c1.id, "bank_loan", LOAN_COOLDOWN_HOURS)
+        assert cd_rem > 0, "کول‌داون ۵ روزه وام فعال نشد!"
+        print(f"  [OK] کول‌داون ۵ روزه وام فعال شد (ثانیه‌های باقی‌مانده: {cd_rem:.0f}).")
 
     async with session_factory() as session:
         c1 = await session.get(Country, c1_id)

@@ -543,11 +543,11 @@ async def cb_loan_take_confirm(
         await call.message.edit_text("⛔️ شما در حال حاضر وام فعال دارید.", reply_markup=_back_bank_kb())
         return
 
-    # بررسی کول‌داون ۵ روزه
+    # بررسی کول‌داون دریافت وام
     cd_rem = await cd_repo.remaining_seconds(session, country.id, "bank_loan", LOAN_COOLDOWN_HOURS)
     if cd_rem > 0:
         await call.message.edit_text(
-            f"⛔️ کول‌داون ۵ روزه وام هنوز به پایان نرسیده است.\nزمان باقی‌مانده: {_format_seconds(cd_rem)}",
+            f"⛔️ کول‌داون {fa_number(LOAN_COOLDOWN_DAYS)} روزه وام هنوز به پایان نرسیده است.\nزمان باقی‌مانده: {_format_seconds(cd_rem)}",
             reply_markup=_back_bank_kb(),
         )
         return
@@ -571,7 +571,7 @@ async def cb_loan_take_confirm(
     )
     country.budget = (country.budget or 0.0) + amount
 
-    # ثبت کول‌داون ۵ روزه اخذ وام
+    # ثبت کول‌داون اخذ وام
     await cd_repo.touch(session, country.id, "bank_loan")
 
     await call.message.edit_text(
@@ -579,7 +579,7 @@ async def cb_loan_take_confirm(
         f"💰 مبلغ واریزشده: {fa_money(amount)}\n"
         f"🏦 موجودی جدید خزانه: {fa_money(country.budget)}\n"
         f"⏳ مهلت بازپرداخت: تا ۷ روز آینده ({fa_number(LOAN_DURATION_DAYS)} روز)\n\n"
-        f"💡 در صورت تسویه زیر ۵ روز، سقف وام بعدی شما <b>۵ تریلیون دلار</b> خواهد شد.",
+        f"💡 در صورت تسویه زیر {fa_number(LOAN_GOOD_CREDIT_DAYS)} روز، سقف وام بعدی شما <b>۵ تریلیون دلار</b> خواهد شد.",
         reply_markup=_back_bank_kb(),
     )
 
@@ -700,7 +700,7 @@ async def cb_loan_repay_confirm(
             country.credit_rating = CreditRating.GOOD
             status_note = (
                 "\n\n🎉 <b>تبریک ویژه!</b>\n"
-                "شما وام خود را در کمتر از ۵ روز تسویه کردید!\n"
+                f"شما وام خود را در کمتر از {fa_number(LOAN_GOOD_CREDIT_DAYS)} روز تسویه کردید!\n"
                 "رتبه اعتباری شما به <b>خوش‌حساب</b> ارتقا یافت و سقف وام بعدی شما <b>۵ تریلیون دلار</b> شد."
             )
         else:

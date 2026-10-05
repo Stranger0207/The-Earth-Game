@@ -124,9 +124,10 @@ async def run_tests() -> None:
         assert PHONE_CALL_DURATION_MINUTES == 10, "مدت تماس تلفنی ۱۰ دقیقه نیست!"
         print("  [OK] مدت زمان تماس تلفنی ۱۰ دقیقه تأیید شد.")
 
-        # بررسی ثابت‌های کول‌داون وام
-        assert LOAN_COOLDOWN_DAYS == 5
-        assert LOAN_COOLDOWN_HOURS == 120
+        # بررسی ثابت‌های کول‌داون و خوش‌حسابی وام
+        assert LOAN_GOOD_CREDIT_DAYS == 3
+        assert LOAN_COOLDOWN_DAYS == 4
+        assert LOAN_COOLDOWN_HOURS == 96
 
         # دریافت وام ۱.۵ تریلیون توسط کشور ۱
         loan_amount = 1_500_000_000_000.0
@@ -140,10 +141,10 @@ async def run_tests() -> None:
         await session.commit()
         print(f"  [OK] وام #{loan1.id} به مبلغ ۱.۵ تریلیون دلار با موفقیت برای کشور ۱ ثبت شد.")
 
-        # بررسی فعال شدن کول‌داون ۵ روزه
+        # بررسی فعال شدن کول‌داون ۴ روزه
         cd_rem = await cd_repo.remaining_seconds(session, c1.id, "bank_loan", LOAN_COOLDOWN_HOURS)
-        assert cd_rem > 0, "کول‌داون ۵ روزه وام فعال نشد!"
-        print(f"  [OK] کول‌داون ۵ روزه وام فعال شد (ثانیه‌های باقی‌مانده: {cd_rem:.0f}).")
+        assert cd_rem > 0, "کول‌داون ۴ روزه وام فعال نشد!"
+        print(f"  [OK] کول‌داون ۴ روزه وام فعال شد (ثانیه‌های باقی‌مانده: {cd_rem:.0f}).")
 
     async with session_factory() as session:
         c1 = await session.get(Country, c1_id)
@@ -152,18 +153,18 @@ async def run_tests() -> None:
         assert active_loan.remaining_amount == 1_500_000_000_000.0
         assert active_loan.status == LoanStatus.ACTIVE
 
-        # بازپرداخت سریع زیر ۵ روز (مثلاً تسویه کامل در روز سوم)
+        # بازپرداخت سریع زیر ۳ روز (مثلاً تسویه کامل در روز دوم)
         pay_amount = 1_500_000_000_000.0
         c1.budget -= pay_amount
         active_loan.remaining_amount = 0.0
         active_loan.status = LoanStatus.PAID
-        active_loan.paid_at = now + timedelta(days=3)
+        active_loan.paid_at = now + timedelta(days=2)
 
         # اعمال منطق خوش‌حسابی
         if _aware(active_loan.paid_at) <= _aware(active_loan.reward_deadline):
             c1.credit_rating = CreditRating.GOOD
         await session.commit()
-        print("  [OK] وام در کمتر از ۵ روز تسویه شد -> رتبه به خوش‌حساب (good) ارتقا یافت.")
+        print("  [OK] وام در کمتر از ۳ روز تسویه شد -> رتبه به خوش‌حساب (good) ارتقا یافت.")
 
     async with session_factory() as session:
         c1 = await session.get(Country, c1_id)

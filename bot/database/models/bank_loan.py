@@ -18,7 +18,7 @@ def _utcnow() -> datetime:
 class BankLoan(Base):
     """
     وام دریافتی یک کشور از بانک مرکزی.
-    مهلت بازپرداخت ۷ روز است؛ در صورتی که زیر ۵ روز تسویه شود، کشور خوش‌حساب می‌شود.
+    مهلت بازپرداخت ۷ روز است؛ در صورتی که زیر ۳ روز تسویه شود، کشور خوش‌حساب می‌شود.
     در صورت عدم تسویه در ۷ روز، کشور بدحساب (defaulter) می‌شود.
     """
 
@@ -44,7 +44,7 @@ class BankLoan(Base):
     )  # مهلت ۷ روزه
     reward_deadline: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
-    )  # مهلت ۵ روزه برای خوش‌حسابی
+    )  # مهلت ۳ روزه برای خوش‌حسابی
 
     paid_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True

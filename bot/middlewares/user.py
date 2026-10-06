@@ -8,6 +8,7 @@ from typing import Any
 from aiogram import BaseMiddleware
 from aiogram.types import CallbackQuery, Message, TelegramObject, User as TgUser
 
+from ..database.repositories import countries as countries_repo
 from ..database.repositories import users as users_repo
 
 
@@ -43,14 +44,20 @@ class UserMiddleware(BaseMiddleware):
                 await event.answer("⛔️ دسترسی شما مسدود شده است.", show_alert=True)
             return None
 
-        # کاربر معلق (v1.10.5): متمایز از بن — برگشت‌پذیر؛ نمی‌تواند اقدامی انجام دهد
+        # کاربر معلق (v1.10.5): متمایز از بن — برگشت‌پذیر؛ نمی‌تواند اقدامی در کشورش انجام دهد
         if getattr(db_user, "is_suspended", False):
-            msg = "⏸ کشور شما توسط مدیریت بازی معلق شده و فعلاً نمی‌توانید اقدامی انجام دهید."
-            if isinstance(event, Message):
-                await event.answer(msg)
-            elif isinstance(event, CallbackQuery):
-                await event.answer(msg, show_alert=True)
-            return None
+            # اگر کاربر اصلاً کشوری ندارد (مثلاً اخراج شده)، تعلیقش برداشته می‌شود تا بتواند مجدداً کشورگیری کند
+            country = await countries_repo.get_country_by_owner(session, db_user.telegram_id)
+            if country is None:
+                db_user.is_suspended = False
+                await session.commit()
+            else:
+                msg = "⏸ کشور شما توسط مدیریت بازی معلق شده و فعلاً نمی‌توانید اقدامی انجام دهید."
+                if isinstance(event, Message):
+                    await event.answer(msg)
+                elif isinstance(event, CallbackQuery):
+                    await event.answer(msg, show_alert=True)
+                return None
 
         data["db_user"] = db_user
         return await handler(event, data)

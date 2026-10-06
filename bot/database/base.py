@@ -77,8 +77,9 @@ _COLUMN_MIGRATIONS = [
     ("military_sales", "escort_json", "TEXT NOT NULL DEFAULT '[]'"),
     # v2.1 — انجماد سراسری پلیرها
     ("bot_state", "global_freeze", "BOOLEAN NOT NULL DEFAULT FALSE"),
-    # v2.2 — رتبه‌بندی اعتباری وام بانکی
+    # v2.2 — رتبه‌بندی اعتباری وام بانکی و مزایده
     ("countries", "credit_rating", "VARCHAR(16) NOT NULL DEFAULT 'normal'"),
+    ("auctions", "channel_message_id", "BIGINT"),
 ]
 
 

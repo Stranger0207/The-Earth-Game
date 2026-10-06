@@ -135,6 +135,7 @@ def _home_kb() -> InlineKeyboardMarkup:
     builder.button(text="⚔️ عملیات نظامی", callback_data="god:ops", style=STYLE_NO)
     builder.button(text="💥 سیستم تلفات", callback_data="god:casualty", style=STYLE_NO)
     builder.button(text="🔒 غیرفعال‌کردن آپشن", callback_data="god:locks", style=STYLE_NO)
+    builder.button(text="⛔️ مدیریت بن کاربران", callback_data="god:ban_list", style=STYLE_NO)
     builder.adjust(1)
     return builder.as_markup()
 
@@ -1221,6 +1222,8 @@ async def cb_release_do(call: CallbackQuery, session: AsyncSession) -> None:
     former_owner = country.owner_user_id
     await countries_repo.release_country(session, cid)
     if former_owner:
+        # رفع تعلیق کاربر برکنارشده تا بتواند مجدداً کشورگیری کند
+        await users_repo.set_suspended(session, former_owner, False)
         try:
             await bot.send_message(
                 former_owner,
@@ -1266,6 +1269,60 @@ async def cb_unban(call: CallbackQuery, session: AsyncSession) -> None:
     except Exception:  # noqa: BLE001
         pass
     await _show_country_panel(call, session, cid)
+
+
+@router.callback_query(F.data == "god:ban_list")
+async def cb_ban_list(call: CallbackQuery, session: AsyncSession) -> None:
+    """نمایش لیست کاربران بن‌شده و امکان رفع بن آن‌ها."""
+    if not await _guard(call):
+        return
+    await call.answer()
+    banned_users = await users_repo.list_banned_users(session)
+    builder = InlineKeyboardBuilder()
+
+    lines = [
+        header("مدیریت بن کاربران", "⛔️"),
+        f"\nتعداد کاربران مسدودشده: <b>{fa_number(len(banned_users))}</b> نفر\n",
+        "💡 <i>جهت بن یا رفع بن سریع می‌توانید از دستورات زیر نیز استفاده کنید:</i>",
+        "• <code>/ban 123456789</code> یا <code>/ban @username</code>",
+        "• <code>/unban 123456789</code> یا <code>/unban @username</code>\n",
+    ]
+
+    if not banned_users:
+        lines.append("🟢 هیچ کاربری در حال حاضر در کل ربات بن نشده است.")
+    else:
+        lines.append("فهرست کاربران مسدود:")
+        for u in banned_users[:15]:
+            uname = f"@{u.username}" if u.username else (u.first_name or "بدون نام")
+            lines.append(f"• {uname} (<code>{u.telegram_id}</code>)")
+            builder.button(
+                text=f"✅ رفع بن {uname}",
+                callback_data=f"god_unban_uid:{u.telegram_id}",
+                style=STYLE_OK,
+            )
+
+    builder.button(text="🔙 بازگشت به گاد مود", callback_data="god:home", style=STYLE_MAIN)
+    builder.adjust(1)
+    await call.message.edit_text("\n".join(lines), reply_markup=builder.as_markup())
+
+
+@router.callback_query(F.data.startswith("god_unban_uid:"))
+async def cb_god_unban_uid(call: CallbackQuery, session: AsyncSession) -> None:
+    """رفع بن کاربر با آیدی از طریق پنل گاد."""
+    if not await _guard(call):
+        return
+    uid = int(call.data.split(":")[1])
+    await users_repo.set_banned(session, uid, False)
+    await call.answer("بن کاربر برداشته شد ✅", show_alert=True)
+    try:
+        await bot.send_message(uid, "🟢 دسترسی شما به ربات توسط مدیریت آزاد شد. /start")
+    except Exception:
+        pass
+    await send_log(
+        bot,
+        f"🟢 <b>رفع بن کاربر از پنل گاد</b>\nکاربر: <code>{uid}</code>\nتوسط: {call.from_user.id}",
+    )
+    await cb_ban_list(call, session)
 
 
 @router.callback_query(F.data.startswith("godsuspend:"))

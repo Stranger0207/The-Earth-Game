@@ -267,6 +267,7 @@ async def _freeze_panel_kb(session: AsyncSession) -> InlineKeyboardMarkup:
         builder.button(text="❄️ انجماد همه", callback_data="frz:freeze_all", style=STYLE_NO)
     builder.button(text="⏸ تعلیق یک کشور", callback_data="frz:suspend", style=STYLE_NO)
     builder.button(text="▶️ رفع تعلیق یک کشور", callback_data="frz:unsuspend", style=STYLE_OK)
+    builder.button(text="🔓 رفع تعلیق افراد بدون کشور", callback_data="frz:unsuspend_countryless", style=STYLE_OK)
     builder.button(text="📋 فهرست معلق‌ها", callback_data="frz:list", style=STYLE_MAIN)
     builder.adjust(1)
     return builder.as_markup()
@@ -351,13 +352,16 @@ async def cb_unfreeze_all(call: CallbackQuery, session: AsyncSession) -> None:
         if getattr(user, "is_suspended", False):
             user.is_suspended = False
             released += 1
+    # همچنین رفع تعلیق کاربران بدون کشور در رفع انجماد سراسری
+    countryless_released = await users_repo.unsuspend_countryless_users(session)
+    total_released = released + countryless_released
     await session.commit()
 
-    await call.answer(f"تعلیق {released} پلیر برداشته شد ▶️", show_alert=True)
+    await call.answer(f"تعلیق {total_released} کاربر برداشته شد ▶️", show_alert=True)
     await _show_freeze_panel(call, session)
     await send_log(
         bot,
-        f"🟢 <b>رفع انجماد سراسری</b>\nپلیرهای آزادشده: {fa_number(released)}\n👤 توسط مالک",
+        f"🟢 <b>رفع انجماد سراسری</b>\nپلیرهای آزادشده: {fa_number(total_released)}\n👤 توسط مالک",
     )
 
     for country, user in pairs:
@@ -369,6 +373,25 @@ async def cb_unfreeze_all(call: CallbackQuery, session: AsyncSession) -> None:
             )
         except Exception:  # noqa: BLE001
             continue
+
+
+@router.callback_query(F.data == "frz:unsuspend_countryless")
+async def cb_unsuspend_countryless(call: CallbackQuery, session: AsyncSession) -> None:
+    """رفع تعلیق تمام افراد معلق که در حال حاضر در بازی کشور ندارند."""
+    if not _is_owner(call.from_user.id):
+        await call.answer("فقط مالک.", show_alert=True)
+        return
+
+    count = await users_repo.unsuspend_countryless_users(session)
+    await session.commit()
+    await call.answer(f"تعلیق {fa_number(count)} کاربر بدون کشور برداشته شد 🔓", show_alert=True)
+    await _show_freeze_panel(call, session)
+    await send_log(
+        bot,
+        f"🔓 <b>رفع تعلیق افراد بدون کشور</b>\n"
+        f"تعداد آزادشده: {fa_number(count)} کاربر\n"
+        f"👤 توسط: {call.from_user.id}",
+    )
 
 
 def _freeze_countries_kb(pairs: list, prefix: str) -> InlineKeyboardMarkup:

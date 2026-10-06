@@ -706,6 +706,7 @@ async def cb_auction_create_confirm(
                 settings.news_economy_channel_id, channel_text, reply_markup=deep_link_kb
             )
             auction.channel_message_id = msg.message_id
+            await session.flush()
         except Exception:
             pass
 
@@ -984,3 +985,48 @@ async def cb_auction_bid_confirm(
         f"مبلغ: {fa_money(bid_amount)}\n"
         f"کارمزد ورودی دریافت شد.",
     )
+
+    # ۶. ریپلای روی پیام آغاز مزایده در کانال اخبار اقتصادی
+    settings = get_settings()
+    if settings.news_economy_channel_id:
+        try:
+            bot_info = await bot.get_me()
+            bid_reply_text = (
+                f"🏷 <b>پیشنهاد جدید در مزایده #{auction.id}!</b>\n\n"
+                f"پیشنهاد جدید از کشور <b>{country.flag} {country.name_fa}</b>\n"
+                f"💰 <b>قیمت پایه جدید:</b> {fa_money(bid_amount)}"
+            )
+            deep_link_kb = InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [
+                        InlineKeyboardButton(
+                            text="🏷 شرکت در مزایده",
+                            url=f"https://t.me/{bot_info.username}?start=auc_{auction.id}",
+                        )
+                    ]
+                ]
+            )
+            if auction.channel_message_id:
+                try:
+                    await bot.send_message(
+                        settings.news_economy_channel_id,
+                        bid_reply_text,
+                        reply_to_message_id=auction.channel_message_id,
+                        reply_markup=deep_link_kb,
+                    )
+                except Exception:
+                    # در صورت حذف پیام اصلی در تلگرام یا خطای ریپلای، ارسال بدون ریپلای
+                    await bot.send_message(
+                        settings.news_economy_channel_id,
+                        bid_reply_text,
+                        reply_markup=deep_link_kb,
+                    )
+            else:
+                await bot.send_message(
+                    settings.news_economy_channel_id,
+                    bid_reply_text,
+                    reply_markup=deep_link_kb,
+                )
+        except Exception:
+            pass
+

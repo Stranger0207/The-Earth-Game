@@ -72,6 +72,7 @@ from ..database.models import (
     NuclearWarhead,
     Satellite,
     TariffRate,
+    User,
 )
 from ..database.repositories import countries as countries_repo
 
@@ -161,9 +162,12 @@ async def reset_season(session: AsyncSession) -> dict[str, int]:
     await session.execute(delete(Auction))
     await session.execute(delete(BankLoan))
 
-    # --- ۲) آزادسازی مالکیت همه‌ی کشورها ---
+    # --- ۲) آزادسازی مالکیت همه‌ی کشورها و رفع تعلیق کاربران ---
     await session.execute(
         update(Country).values(owner_user_id=None, is_claimed=False)
+    )
+    await session.execute(
+        update(User).values(is_suspended=False)
     )
 
     # --- ۳) بازگرداندن داده‌ی هر کشور به حالت اولیه ---

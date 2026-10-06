@@ -430,3 +430,181 @@ async def cb_season_confirm(
         f"کشورهای ریست‌شده: {result['countries_reset']} | "
         f"فرماندهان بازسازی‌شده: {result['commanders_created']}",
     )
+
+
+# ============================================================
+#  دستورات مسدودسازی و رفع مسدودسازی (/ban و /unban)
+# ============================================================
+async def _resolve_ban_target(
+    session: AsyncSession, identifier: str
+) -> tuple[User | None, int | None, str | None]:
+    """
+    یافتن کاربر هدف بر اساس آیدی عددی یا @username.
+    خروجی: (db_user, telegram_id, error_message)
+    """
+    clean = identifier.strip()
+    if not clean:
+        return None, None, "شناسه‌ای وارد نشده است."
+
+    # اگر آیدی عددی است
+    if clean.isdigit() or (clean.startswith("-") and clean[1:].isdigit()):
+        uid = int(clean)
+        user = await users_repo.get_user(session, uid)
+        return user, uid, None
+
+    # اگر نام کاربری است (@username یا username)
+    uname = clean.lstrip("@")
+    user = await users_repo.get_user_by_username(session, uname)
+    if user is not None:
+        return user, user.telegram_id, None
+
+    return None, None, (
+        f"❌ کاربری با نام کاربری @{uname} در دیتابیس ربات یافت نشد.\n"
+        "💡 کاربر باید حداقل یک‌بار ربات را استارت کرده باشد تا نام کاربری‌اش ثبت شود. "
+        "می‌توانید از آیدی عددی تلگرام کاربر استفاده کنید."
+    )
+
+
+@router.message(Command("ban"))
+async def cmd_ban(message: Message, session: AsyncSession) -> None:
+    """مسدودسازی کاربر از کل ربات با آیدی عددی یا @username."""
+    if not settings.is_admin(message.from_user.id):
+        return
+
+    text = message.text or ""
+    parts = text.split(maxsplit=2)
+    target_id_str = None
+    reason = "بدون ذکر علت"
+
+    if len(parts) >= 2:
+        target_id_str = parts[1]
+        if len(parts) >= 3:
+            reason = parts[2]
+    elif message.reply_to_message and message.reply_to_message.from_user:
+        target_id_str = str(message.reply_to_message.from_user.id)
+        if len(parts) >= 2:
+            reason = parts[1]
+
+    if not target_id_str:
+        await message.answer(
+            "⛔️ <b>دستور مسدودسازی (بن) کاربر از کل ربات</b>\n\n"
+            "📌 <b>نحوه استفاده:</b>\n"
+            "• <code>/ban 123456789</code> (با آیدی عددی)\n"
+            "• <code>/ban @username</code> (با نام کاربری)\n"
+            "• <code>/ban @username علت مسدودسازی</code>\n"
+            "• یا ریپلای روی پیام کاربر با <code>/ban [علت]</code>",
+        )
+        return
+
+    user, uid, err = await _resolve_ban_target(session, target_id_str)
+    if err:
+        await message.answer(err)
+        return
+
+    # بررسی عدم امکان بن کردن ادمین/مالک
+    if uid and settings.is_admin(uid):
+        await message.answer("⛔️ امکان مسدودسازی ادمین یا مالک بازی وجود ندارد.")
+        return
+
+    # اگر کاربر در دیتابیس نبود اما آیدی عددی بود، رکورد ایجاد می‌کنیم (Preemptive Ban)
+    if user is None and uid:
+        user = await users_repo.get_or_create_user(session, uid, None, None)
+
+    if user is None:
+        await message.answer("❌ کاربر یافت نشد.")
+        return
+
+    if user.is_banned:
+        await message.answer(f"⚠️ کاربر <code>{user.telegram_id}</code> از قبل مسدود است.")
+        return
+
+    await users_repo.set_banned(session, user.telegram_id, True)
+    await session.commit()
+
+    # اطلاع به کاربر
+    try:
+        await bot.send_message(
+            user.telegram_id,
+            f"⛔️ <b>دسترسی شما به بازی و ربات مسدود شد.</b>\nعلت: {reason}",
+        )
+    except Exception:
+        pass
+
+    uname_display = f"@{user.username}" if user.username else (user.first_name or "بدون نام")
+    await message.answer(
+        f"✅ <b>کاربر با موفقیت از کل ربات مسدود شد:</b>\n\n"
+        f"👤 کاربر: {uname_display}\n"
+        f"🆔 شناسه: <code>{user.telegram_id}</code>\n"
+        f"📝 علت: {reason}",
+    )
+    await send_log(
+        bot,
+        f"⛔️ <b>بن کاربر از کل ربات</b>\n"
+        f"کاربر: {uname_display} (<code>{user.telegram_id}</code>)\n"
+        f"علت: {reason}\n"
+        f"توسط: <code>{message.from_user.id}</code>",
+    )
+
+
+@router.message(Command("unban"))
+async def cmd_unban(message: Message, session: AsyncSession) -> None:
+    """رفع مسدودسازی کاربر با آیدی عددی یا @username."""
+    if not settings.is_admin(message.from_user.id):
+        return
+
+    text = message.text or ""
+    parts = text.split(maxsplit=1)
+    target_id_str = None
+
+    if len(parts) >= 2:
+        target_id_str = parts[1]
+    elif message.reply_to_message and message.reply_to_message.from_user:
+        target_id_str = str(message.reply_to_message.from_user.id)
+
+    if not target_id_str:
+        await message.answer(
+            "🟢 <b>دستور رفع مسدودسازی (آن‌بن) کاربر</b>\n\n"
+            "📌 <b>نحوه استفاده:</b>\n"
+            "• <code>/unban 123456789</code> (با آیدی عددی)\n"
+            "• <code>/unban @username</code> (با نام کاربری)\n"
+            "• یا ریپلای روی پیام کاربر با <code>/unban</code>",
+        )
+        return
+
+    user, uid, err = await _resolve_ban_target(session, target_id_str)
+    if err:
+        await message.answer(err)
+        return
+
+    if user is None:
+        await message.answer("❌ کاربر در دیتابیس یافت نشد (این کاربر مسدود نیست).")
+        return
+
+    if not user.is_banned:
+        await message.answer(f"ℹ️ کاربر <code>{user.telegram_id}</code> مسدود نیست.")
+        return
+
+    await users_repo.set_banned(session, user.telegram_id, False)
+    await session.commit()
+
+    try:
+        await bot.send_message(
+            user.telegram_id,
+            "🟢 دسترسی شما به ربات و بازی توسط مدیریت آزاد شد. /start",
+        )
+    except Exception:
+        pass
+
+    uname_display = f"@{user.username}" if user.username else (user.first_name or "بدون نام")
+    await message.answer(
+        f"✅ <b>مسدودسازی کاربر با موفقیت برداشته شد:</b>\n\n"
+        f"👤 کاربر: {uname_display}\n"
+        f"🆔 شناسه: <code>{user.telegram_id}</code>",
+    )
+    await send_log(
+        bot,
+        f"🟢 <b>رفع بن کاربر</b>\n"
+        f"کاربر: {uname_display} (<code>{user.telegram_id}</code>)\n"
+        f"توسط: <code>{message.from_user.id}</code>",
+    )
+

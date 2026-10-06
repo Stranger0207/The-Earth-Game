@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from sqlalchemy import select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ...enums import UserRole
@@ -72,3 +72,41 @@ async def all_users(session: AsyncSession) -> list[User]:
     """فهرست همه‌ی کاربران."""
     result = await session.execute(select(User))
     return list(result.scalars().all())
+
+
+async def get_user_by_username(
+    session: AsyncSession, username: str
+) -> User | None:
+    """یافتن کاربر بر اساس نام کاربری (حساس نبودن به حروف کوچک/بزرگ و بدون @)."""
+    clean_username = username.lstrip("@").strip().lower()
+    if not clean_username:
+        return None
+    stmt = select(User).where(func.lower(User.username) == clean_username)
+    result = await session.execute(stmt)
+    return result.scalars().first()
+
+
+async def list_banned_users(session: AsyncSession) -> list[User]:
+    """فهرست تمام کاربران مسدودشده."""
+    stmt = select(User).where(User.is_banned.is_(True)).order_by(User.created_at.desc())
+    result = await session.execute(stmt)
+    return list(result.scalars().all())
+
+
+async def unsuspend_countryless_users(session: AsyncSession) -> int:
+    """
+    رفع تعلیق تمام کاربرانی که معلق هستند اما در حال حاضر مالکیتی بر هیچ کشوری ندارند.
+    تعداد کاربران آزادشده را بازمی‌گرداند.
+    """
+    from ..models import Country
+
+    subq = select(Country.owner_user_id).where(Country.owner_user_id.is_not(None))
+    stmt = (
+        update(User)
+        .where(User.is_suspended.is_(True))
+        .where(User.telegram_id.not_in(subq))
+        .values(is_suspended=False)
+    )
+    result = await session.execute(stmt)
+    return result.rowcount or 0
+

@@ -31,30 +31,34 @@ from ..services.news_service import send_log
 from ..states import InvestForm
 from ..utils.numbers import fa_money, fa_number, parse_amount
 from ..utils.screens import safe_edit
-from ..utils.ui import STYLE_MAIN
+from ..utils.ui import STYLE_MAIN, STYLE_NO, STYLE_OK
 from .deps import NO_COUNTRY_TEXT, assert_feature, get_player_country
 
 router = Router(name="investment")
 settings = get_settings()
 
-# تعداد سرمایه‌گذاری در هر صفحه‌ی فهرست (v1.11.1)
+# تعداد سرمایه‌گذاری در هر صفحه‌ی فهرست (v1.11.1 / v2.4)
 INVEST_PAGE_SIZE = 10
 
 
-def _back_invest_kb() -> InlineKeyboardMarkup:
+def _back_invest_kb(back_data: str = "econ:invest") -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(text="🔙 بازگشت", callback_data="econ:invest", style=STYLE_MAIN)
+        InlineKeyboardButton(text="🔙 بازگشت", callback_data=back_data, style=STYLE_MAIN)
     ]])
 
 
 def _invest_page_kb(
-    kind: str, page: int, total: int, chunk: list[Investment] | None = None
+    kind: str,
+    page: int,
+    total: int,
+    chunk: list[Investment] | None = None,
+    back_data: str = "econ:invest",
 ) -> InlineKeyboardMarkup:
-    """ناوبری صفحه‌های فهرست سرمایه‌گذاری (v1.11.1) + دکمه‌های لغو (v2.3)."""
+    """ناوبری صفحه‌های فهرست سرمایه‌گذاری (v1.11.1) + دکمه‌های لغو (v2.3/v2.4)."""
     rows: list[list[InlineKeyboardButton]] = []
 
-    # دکمه‌های لغو سرمایه‌گذاری برای موارد همین صفحه (فقط سرمایه‌گذاری‌های من)
-    if kind == "mine" and chunk:
+    # دکمه‌های لغو سرمایه‌گذاری برای موارد همین صفحه (سرمایه‌گذاری‌های خود بازیکن)
+    if kind in ("mine", "foreign_mine", "domestic_mine") and chunk:
         btn_row: list[InlineKeyboardButton] = []
         for idx, inv in enumerate(chunk, start=page * INVEST_PAGE_SIZE + 1):
             fa, _ = _cat_fa_pct(inv.category)
@@ -84,7 +88,7 @@ def _invest_page_kb(
     if nav:
         rows.append(nav)
     rows.append([
-        InlineKeyboardButton(text="🔙 بازگشت", callback_data="econ:invest", style=STYLE_MAIN)
+        InlineKeyboardButton(text="🔙 بازگشت", callback_data=back_data, style=STYLE_MAIN)
     ])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
@@ -167,18 +171,44 @@ async def cb_invest_internal(call: CallbackQuery, state: FSMContext, session: As
 
 # ----- خارجی: منو -----
 @router.callback_query(F.data == "inv:foreign")
-async def cb_invest_foreign(call: CallbackQuery, state: FSMContext) -> None:
+async def cb_invest_foreign(call: CallbackQuery, state: FSMContext, session: AsyncSession, db_user: User) -> None:
     await state.clear()
     await call.answer()
-    await safe_edit(call,
-        "🌍 <b>سرمایه‌گذاری خارجی</b>\n\nیک گزینه را انتخاب کنید:",
-        reply_markup=invest_foreign_kb(),
+    country = await get_player_country(session, db_user)
+    if country is None:
+        await safe_edit(call, NO_COUNTRY_TEXT)
+        return
+
+    foreign_mine = await inv_repo.list_foreign_by_investor(session, country.id)
+    on_me = await inv_repo.list_on_target(session, country.id)
+    total_out = sum(i.amount for i in foreign_mine)
+    total_in = sum(i.amount for i in on_me)
+    text = (
+        "🌍 <b>سرمایه‌گذاری‌های خارجی</b>\n\n"
+        f"📤 سرمایه‌گذاری‌های شما در خارج: <b>{fa_number(len(foreign_mine))}</b> مورد ({fa_money(total_out)})\n"
+        f"📥 سرمایه‌گذاری‌های دیگران روی کشور شما: <b>{fa_number(len(on_me))}</b> مورد ({fa_money(total_in)})\n\n"
+        "یک گزینه را انتخاب کنید:"
     )
+    await safe_edit(call, text, reply_markup=invest_foreign_kb())
+
+
+@router.callback_query(F.data == "inv:foreign_mine")
+async def cb_invest_foreign_mine(call: CallbackQuery, session: AsyncSession, db_user: User) -> None:
+    """فهرست سرمایه‌گذاری‌های خارجی من روی سایر کشورها — صفحه‌ی اول (v2.4)."""
+    await call.answer()
+    await _show_invest_page(call, session, db_user, kind="foreign_mine", page=0)
+
+
+@router.callback_query(F.data == "inv:domestic_mine")
+async def cb_invest_domestic_mine(call: CallbackQuery, session: AsyncSession, db_user: User) -> None:
+    """فهرست سرمایه‌گذاری‌های داخلی من روی کشور خودم — صفحه‌ی اول (v2.4)."""
+    await call.answer()
+    await _show_invest_page(call, session, db_user, kind="domestic_mine", page=0)
 
 
 @router.callback_query(F.data == "inv:mine")
 async def cb_invest_mine(call: CallbackQuery, session: AsyncSession, db_user: User) -> None:
-    """فهرست سرمایه‌گذاری‌های من — صفحه‌ی اول (v1.11.1)."""
+    """فهرست کل سرمایه‌گذاری‌های من (داخلی + خارجی) — صفحه‌ی اول (v1.11.1)."""
     await call.answer()
     await _show_invest_page(call, session, db_user, kind="mine", page=0)
 
@@ -200,12 +230,13 @@ async def _show_invest_page(
     call: CallbackQuery, session: AsyncSession, db_user: User, *, kind: str, page: int
 ) -> None:
     """
-    رندر یک صفحه از فهرست سرمایه‌گذاری‌ها (v1.11.1).
+    رندر یک صفحه از فهرست سرمایه‌گذاری‌ها (v1.11.1 / تفکیک v2.4).
 
-    kind: "mine" = سرمایه‌گذاری‌های من | "on_me" = سرمایه‌گذاری‌ها روی کشور من
-
-    پیش‌تر کل فهرست در یک پیام می‌آمد و با زیادشدن سرمایه‌گذاری‌ها از سقف طول
-    پیام تلگرام رد می‌شد و پیام اصلاً نمایش داده نمی‌شد.
+    kind:
+    - "foreign_mine": سرمایه‌گذاری‌های خارجی من روی کشورهای دیگر
+    - "on_me": سرمایه‌گذاری‌ها روی کشور من توسط دیگران
+    - "domestic_mine": سرمایه‌گذاری‌های داخلی من
+    - "mine": همه‌ی سرمایه‌گذاری‌های من
     """
     country = await get_player_country(session, db_user)
     if country is None:
@@ -216,14 +247,26 @@ async def _show_invest_page(
         items = await inv_repo.list_on_target(session, country.id)
         title, emoji = "سرمایه‌گذاری‌ها روی کشور من", "📥"
         empty = "هیچ کشوری روی کشور شما سرمایه‌گذاری نکرده است."
+        back_data = "inv:foreign"
+    elif kind == "foreign_mine":
+        items = await inv_repo.list_foreign_by_investor(session, country.id)
+        title, emoji = "سرمایه‌گذاری‌های خارجی من", "🌍"
+        empty = "شما در حال حاضر هیچ سرمایه‌گذاری فعالی در سایر کشورها ندارید."
+        back_data = "inv:foreign"
+    elif kind == "domestic_mine":
+        items = await inv_repo.list_domestic_by_investor(session, country.id)
+        title, emoji = "سرمایه‌گذاری‌های داخلی من", "🏠"
+        empty = "شما در حال حاضر هیچ سرمایه‌گذاری داخلی فعالی ندارید."
+        back_data = "econ:invest"
     else:
         kind = "mine"
         items = await inv_repo.list_by_investor(session, country.id)
-        title, emoji = "سرمایه‌گذاری‌های من", "📋"
+        title, emoji = "همه‌ی سرمایه‌گذاری‌های من", "📋"
         empty = "شما هنوز سرمایه‌گذاری‌ای انجام نداده‌اید."
+        back_data = "econ:invest"
 
     if not items:
-        await safe_edit(call, empty, reply_markup=_back_invest_kb())
+        await safe_edit(call, empty, reply_markup=_back_invest_kb(back_data=back_data))
         return
 
     total_pages = max(1, (len(items) + INVEST_PAGE_SIZE - 1) // INVEST_PAGE_SIZE)
@@ -235,7 +278,7 @@ async def _show_invest_page(
         f"{emoji} <b>{title}</b>",
         "",
         f"📊 تعداد: <b>{fa_number(len(items))}</b> از سقف {fa_number(INVESTMENT_ACTIVE_LIMIT)}"
-        if kind == "mine"
+        if kind in ("mine", "foreign_mine", "domestic_mine")
         else f"📊 تعداد: <b>{fa_number(len(items))}</b>",
         f"💰 مجموع سرمایه: {fa_money(total_amount)}",
         f"📄 صفحه {fa_number(page + 1)} از {fa_number(total_pages)}",
@@ -264,10 +307,11 @@ async def _show_invest_page(
                 f"   💵 اصل: {fa_money(inv.amount)} | 📈 سود ۲۴ساعته: {fa_money(profit)}"
             )
 
+    can_cancel = kind in ("mine", "foreign_mine", "domestic_mine")
     await safe_edit(
         call,
         "\n".join(lines),
-        reply_markup=_invest_page_kb(kind, page, total_pages, chunk=chunk if kind == "mine" else None),
+        reply_markup=_invest_page_kb(kind, page, total_pages, chunk=chunk if can_cancel else None, back_data=back_data),
     )
 
 
@@ -488,9 +532,10 @@ async def cb_invest_cancel(call: CallbackQuery, session: AsyncSession, db_user: 
         "⚠️ با تأیید لغو، این سرمایه‌گذاری متوقف شده و ۵۰٪ مبلغ اصل سرمایه به خزانه‌ی شما بازمی‌گردد.\n\n"
         "آیا از لغو سرمایه‌گذاری اطمینان دارید؟"
     )
+    back_cancel = "inv:foreign_mine" if inv.is_foreign else "inv:mine"
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=f"✅ تأیید و بازگشت {fa_money(refund)}", callback_data=f"inv_cancel_ok:{inv.id}", style=STYLE_OK)],
-        [InlineKeyboardButton(text="🔙 انصراف", callback_data="inv:mine", style=STYLE_MAIN)],
+        [InlineKeyboardButton(text="🔙 انصراف", callback_data=back_cancel, style=STYLE_MAIN)],
     ])
     await safe_edit(call, prompt, reply_markup=kb)
 
@@ -543,13 +588,20 @@ async def cb_invest_cancel_confirm(call: CallbackQuery, session: AsyncSession, d
         f"موجودی جدید خزانه: {fa_money(country.budget)}",
     )
 
+    btn_row = []
+    if inv.is_foreign:
+        btn_row.append(InlineKeyboardButton(text="🌍 سرمایه‌گذاری‌های خارجی من", callback_data="inv:foreign_mine", style=STYLE_MAIN))
+    else:
+        btn_row.append(InlineKeyboardButton(text="🏠 سرمایه‌گذاری‌های داخلی من", callback_data="inv:domestic_mine", style=STYLE_MAIN))
+    btn_row.append(InlineKeyboardButton(text="📋 همه‌ی سرمایه‌گذاری‌ها", callback_data="inv:mine", style=STYLE_MAIN))
+
     await safe_edit(
         call,
         f"✅ سرمایه‌گذاری در «{fa}» لغو شد.\n\n"
         f"💰 مبلغ {fa_money(refund)} (۵۰٪ اصل سرمایه) به خزانه‌ی شما بازگردانده شد.\n"
         f"💵 موجودی فعلی خزانه: {fa_money(country.budget)}",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
-            InlineKeyboardButton(text="📋 سرمایه‌گذاری‌های من", callback_data="inv:mine", style=STYLE_MAIN),
-            InlineKeyboardButton(text="🔙 منوی اقتصاد", callback_data="menu:economy", style=STYLE_MAIN),
-        ]]),
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            btn_row,
+            [InlineKeyboardButton(text="🔙 منوی اقتصاد", callback_data="menu:economy", style=STYLE_MAIN)],
+        ]),
     )

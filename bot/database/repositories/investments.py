@@ -38,6 +38,34 @@ async def list_on_target(session: AsyncSession, country_id: int) -> list[Investm
     return list(result.scalars().all())
 
 
+async def list_foreign_by_investor(session: AsyncSession, country_id: int) -> list[Investment]:
+    """سرمایه‌گذاری‌های خارجی که این کشور روی کشورهای دیگر انجام داده است (v2.4)."""
+    result = await session.execute(
+        select(Investment)
+        .where(
+            Investment.investor_country == country_id,
+            Investment.target_country != country_id,
+            Investment.active.is_(True),
+        )
+        .order_by(Investment.id.desc())
+    )
+    return list(result.scalars().all())
+
+
+async def list_domestic_by_investor(session: AsyncSession, country_id: int) -> list[Investment]:
+    """سرمایه‌گذاری‌های داخلی این کشور روی خودش (v2.4)."""
+    result = await session.execute(
+        select(Investment)
+        .where(
+            Investment.investor_country == country_id,
+            Investment.target_country == country_id,
+            Investment.active.is_(True),
+        )
+        .order_by(Investment.id.desc())
+    )
+    return list(result.scalars().all())
+
+
 async def all_active(session: AsyncSession) -> list[Investment]:
     """همه‌ی سرمایه‌گذاری‌های فعال (برای پردازش بازدهی توسط زمان‌بند)."""
     result = await session.execute(

@@ -51,11 +51,11 @@ def invest_menu_kb() -> InlineKeyboardMarkup:
 
 
 def invest_foreign_kb() -> InlineKeyboardMarkup:
-    """منوی سرمایه‌گذاری خارجی (v1.9)."""
+    """منوی سرمایه‌گذاری خارجی (v1.9 / تفکیک v2.4)."""
     builder = InlineKeyboardBuilder()
-    builder.button(text="📋 سرمایه‌گذاری‌های من", callback_data="inv:mine", style=STYLE_MAIN)
-    builder.button(text="📥 سرمایه‌گذاری روی کشور من", callback_data="inv:on_me", style=STYLE_MAIN)
-    builder.button(text="💸 سرمایه‌گذاری روی کشور خارجی", callback_data="inv:new_foreign", style=STYLE_OK)
+    builder.button(text="📤 سرمایه‌گذاری‌های من در خارج", callback_data="inv:foreign_mine", style=STYLE_MAIN)
+    builder.button(text="📥 سرمایه‌گذاری‌ها روی کشور من", callback_data="inv:on_me", style=STYLE_MAIN)
+    builder.button(text="💸 ثبت سرمایه‌گذاری روی کشور خارجی", callback_data="inv:new_foreign", style=STYLE_OK)
     builder.button(text="🔙 بازگشت", callback_data="econ:invest", style=STYLE_MAIN)
     builder.adjust(1, 1, 1, 1)
     return builder.as_markup()

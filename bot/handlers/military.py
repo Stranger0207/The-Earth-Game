@@ -386,17 +386,113 @@ async def cb_factory_mine(call: CallbackQuery, session: AsyncSession, db_user: U
         )
         return
     lines = ["🏭 <b>کارخانه‌های نظامی شما</b>", ""]
-    for f in factories:
+    builder = InlineKeyboardBuilder()
+    for idx, f in enumerate(factories, start=1):
         try:
             fa = MIL_FACTORY_FA[MilitaryFactoryType(f.factory_type)]
         except ValueError:
             fa = f.factory_type
         interval_fa = "۲۴ ساعت" if f.yield_interval_h == 24 else f"{fa_number(f.yield_interval_h // 24)} روز"
         lines.append(
-            f"• {fa} — بازتولید {f.asset_name}\n"
+            f"{fa_number(idx)}. {fa} — بازتولید {f.asset_name}\n"
             f"   📍 {f.location} | 🏭 {fa_number(f.yield_amount)} {f.unit}/{interval_fa} | 💰 {fa_money(f.cost)}"
         )
-    await safe_edit(call,"\n".join(lines), reply_markup=military_factory_menu_kb())
+        builder.button(
+            text=f"🗑 تخریب #{fa_number(idx)} ({f.asset_name[:12]})",
+            callback_data=f"milfac_del:{f.id}",
+            style=STYLE_NO,
+        )
+    builder.adjust(2)
+    builder.row(InlineKeyboardButton(text="🔙 بازگشت", callback_data="milfac:menu", style=STYLE_OK))
+    await safe_edit(call, "\n".join(lines), reply_markup=builder.as_markup())
+
+
+@router.callback_query(F.data.startswith("milfac_del:"))
+async def cb_milfac_delete(call: CallbackQuery, session: AsyncSession, db_user: User) -> None:
+    """تأییدیه تخریب کارخانه نظامی."""
+    await call.answer()
+    country = await get_player_country(session, db_user)
+    if country is None:
+        await safe_edit(call, NO_COUNTRY_TEXT)
+        return
+    try:
+        fid = int(call.data.split(":")[1])
+    except (IndexError, ValueError):
+        await call.answer("شناسه نامعتبر است.", show_alert=True)
+        return
+
+    factory = await session.get(MilitaryFactory, fid)
+    if factory is None or factory.country_id != country.id:
+        await safe_edit(call, "کارخانه یافت نشد یا قبلاً حذف شده است.", reply_markup=military_factory_menu_kb())
+        return
+
+    try:
+        fa = MIL_FACTORY_FA[MilitaryFactoryType(factory.factory_type)]
+    except ValueError:
+        fa = factory.factory_type
+
+    prompt = (
+        f"🗑 <b>تخریب / انحلال کارخانه نظامی</b>\n\n"
+        f"• نوع: <b>{fa}</b>\n"
+        f"• بازتولید: <b>{factory.asset_name}</b>\n"
+        f"• محل: <b>{factory.location or '—'}</b>\n\n"
+        "⚠️ با تأیید، این کارخانه به‌طور کامل تخریب و حذف می‌شود و تولید آن متوقف خواهد شد.\n\n"
+        "آیا از تخریب این کارخانه اطمینان دارید؟"
+    )
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🗑 تأیید و تخریب قطعی", callback_data=f"milfac_del_ok:{factory.id}", style=STYLE_NO)],
+        [InlineKeyboardButton(text="🔙 انصراف", callback_data="milfac:mine", style=STYLE_OK)],
+    ])
+    await safe_edit(call, prompt, reply_markup=kb)
+
+
+@router.callback_query(F.data.startswith("milfac_del_ok:"))
+async def cb_milfac_delete_confirm(call: CallbackQuery, session: AsyncSession, db_user: User) -> None:
+    """تأیید نهایی تخریب کارخانه نظامی."""
+    await call.answer()
+    country = await get_player_country(session, db_user)
+    if country is None:
+        await safe_edit(call, NO_COUNTRY_TEXT)
+        return
+    try:
+        fid = int(call.data.split(":")[1])
+    except (IndexError, ValueError):
+        await call.answer("شناسه نامعتبر است.", show_alert=True)
+        return
+
+    factory = await session.get(MilitaryFactory, fid)
+    if factory is None or factory.country_id != country.id:
+        await safe_edit(call, "کارخانه یافت نشد یا قبلاً حذف شده است.", reply_markup=military_factory_menu_kb())
+        return
+
+    try:
+        fa = MIL_FACTORY_FA[MilitaryFactoryType(factory.factory_type)]
+    except ValueError:
+        fa = factory.factory_type
+
+    asset_name = factory.asset_name
+    loc = factory.location or "—"
+
+    await session.delete(factory)
+    await session.flush()
+
+    await send_log(
+        bot,
+        f"🗑 <b>تخریب کارخانه نظامی</b>\n"
+        f"کشور: {country.flag} {country.name_fa}\n"
+        f"کارخانه: {fa}\n"
+        f"بازتولید: {asset_name}\n"
+        f"محل: {loc}",
+    )
+
+    await safe_edit(
+        call,
+        f"✅ کارخانه «{fa}» ({asset_name}) با موفقیت تخریب و منحل شد.",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="🏭 کارخانه‌های من", callback_data="milfac:mine", style=STYLE_OK),
+            InlineKeyboardButton(text="🔙 منوی کارخانه‌ها", callback_data="milfac:menu", style=STYLE_OK),
+        ]]),
+    )
 
 
 # ============================================================

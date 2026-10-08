@@ -101,13 +101,14 @@ async def cb_alliance_mine(call: CallbackQuery, session: AsyncSession, db_user: 
         f"👥 اعضا ({fa_number(len(members))}):\n" + "\n".join(member_lines)
     )
     rows = [[InlineKeyboardButton(text="📜 مفاد اتحاد", callback_data="alli:terms", style=STYLE_MAIN)]]
-    # دکمه‌های مدیریت اعضا فقط برای مالک اتحاد (v1.10.1)
     if alliance.owner_country == country.id:
         rows.append([
             InlineKeyboardButton(text="➕ افزودن کشور", callback_data="alli:add", style=STYLE_OK),
             InlineKeyboardButton(text="➖ حذف کشور", callback_data="alli:remove", style=STYLE_NO),
         ])
-    rows.append([InlineKeyboardButton(text="🚪 خروج از اتحاد", callback_data="alli:leave", style=STYLE_NO)])
+        rows.append([InlineKeyboardButton(text="💥 انحلال اتحاد", callback_data="alli:leave", style=STYLE_NO)])
+    else:
+        rows.append([InlineKeyboardButton(text="🚪 خروج از اتحاد", callback_data="alli:leave", style=STYLE_NO)])
     rows.append([InlineKeyboardButton(text="🔙 بازگشت", callback_data="dip:alliance", style=STYLE_MAIN)])
     await safe_edit(call,text, reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
 
@@ -134,13 +135,31 @@ async def cb_alliance_terms(call: CallbackQuery, session: AsyncSession, db_user:
 
 
 @router.callback_query(F.data == "alli:leave")
-async def cb_alliance_leave(call: CallbackQuery) -> None:
+async def cb_alliance_leave(call: CallbackQuery, session: AsyncSession, db_user: User) -> None:
     await call.answer()
-    await safe_edit(call,
-        "❓ آیا مطمئن هستید که می‌خواهید از اتحاد خارج شوید؟\n"
-        "اگر سازنده‌ی اتحاد باشید، کل اتحاد منحل می‌شود.",
-        reply_markup=confirm_cancel_kb("alli:leave_confirm", cancel_data="alli:mine"),
-    )
+    country = await get_player_country(session, db_user)
+    if country is None:
+        await safe_edit(call, NO_COUNTRY_TEXT)
+        return
+    membership = await alli_repo.get_membership(session, country.id)
+    if membership is None:
+        await safe_edit(call, "شما عضو هیچ اتحادی نیستید.", reply_markup=_back_alliance_kb())
+        return
+    alliance = await alli_repo.get_alliance(session, membership.alliance_id)
+    is_owner = alliance is not None and alliance.owner_country == country.id
+    if is_owner:
+        prompt = (
+            f"❓ <b>انحلال اتحاد «{alliance.name}»</b>\n\n"
+            "آیا مطمئن هستید که می‌خواهید اتحاد را منحل کنید؟\n"
+            "⚠️ با این کار، کل اتحاد و مفاد آن به‌طور کامل از بین خواهد رفت."
+        )
+    else:
+        name = alliance.name if alliance else ""
+        prompt = (
+            f"❓ <b>خروج از اتحاد «{name}»</b>\n\n"
+            "آیا مطمئن هستید که می‌خواهید از این اتحاد خارج شوید؟"
+        )
+    await safe_edit(call, prompt, reply_markup=confirm_cancel_kb("alli:leave_confirm", cancel_data="alli:mine"))
 
 
 @router.callback_query(F.data == "alli:leave_confirm")
@@ -159,30 +178,35 @@ async def cb_alliance_leave_confirm(call: CallbackQuery, session: AsyncSession, 
         await safe_edit(call,"اتحاد یافت نشد.", reply_markup=_back_alliance_kb())
         return
     name = alliance.name
-    if alliance.owner_country == country.id:
-        # سازنده خارج شد → انحلال اتحاد و اطلاع به اعضا
-        members = await alli_repo.list_members(session, alliance.id)
-        member_ids = [m.country_id for m in members if m.country_id != country.id]
-        await alli_repo.delete_alliance(session, alliance.id)
-        for cid in member_ids:
-            c = await countries_repo.get_country(session, cid)
-            if c and c.owner_user_id:
+    try:
+        if alliance.owner_country == country.id:
+            # سازنده خارج شد → انحلال اتحاد و اطلاع به اعضا
+            members = await alli_repo.list_members(session, alliance.id)
+            member_ids = [m.country_id for m in members if m.country_id != country.id]
+            await alli_repo.delete_alliance(session, alliance.id)
+            await session.flush()
+            for cid in member_ids:
+                c = await countries_repo.get_country(session, cid)
+                if c and c.owner_user_id:
+                    try:
+                        await bot.send_message(c.owner_user_id, f"⚠️ اتحاد «{name}» توسط سازنده منحل شد.")
+                    except Exception:  # noqa: BLE001
+                        pass
+            await safe_edit(call,f"✅ اتحاد «{name}» منحل شد.", reply_markup=_back_alliance_kb())
+            await send_log(bot, f"🛡 <b>انحلال اتحاد</b>\nاتحاد «{name}» توسط {country.flag} {country.name_fa} منحل شد.")
+        else:
+            await alli_repo.remove_member(session, alliance.id, country.id)
+            await session.flush()
+            await safe_edit(call,f"✅ شما از اتحاد «{name}» خارج شدید.", reply_markup=_back_alliance_kb())
+            owner = await countries_repo.get_country(session, alliance.owner_country)
+            if owner and owner.owner_user_id:
                 try:
-                    await bot.send_message(c.owner_user_id, f"⚠️ اتحاد «{name}» توسط سازنده منحل شد.")
+                    await bot.send_message(owner.owner_user_id, f"🚪 {country.flag} {country.name_fa} از اتحاد «{name}» خارج شد.")
                 except Exception:  # noqa: BLE001
                     pass
-        await safe_edit(call,f"✅ اتحاد «{name}» منحل شد.", reply_markup=_back_alliance_kb())
-        await send_log(bot, f"🛡 <b>انحلال اتحاد</b>\nاتحاد «{name}» توسط {country.flag} {country.name_fa} منحل شد.")
-    else:
-        await alli_repo.remove_member(session, alliance.id, country.id)
-        await safe_edit(call,f"✅ شما از اتحاد «{name}» خارج شدید.", reply_markup=_back_alliance_kb())
-        owner = await countries_repo.get_country(session, alliance.owner_country)
-        if owner and owner.owner_user_id:
-            try:
-                await bot.send_message(owner.owner_user_id, f"🚪 {country.flag} {country.name_fa} از اتحاد «{name}» خارج شد.")
-            except Exception:  # noqa: BLE001
-                pass
-        await send_log(bot, f"🚪 <b>خروج از اتحاد</b>\n{country.flag} {country.name_fa} از اتحاد «{name}» خارج شد.")
+            await send_log(bot, f"🚪 <b>خروج از اتحاد</b>\n{country.flag} {country.name_fa} از اتحاد «{name}» خارج شد.")
+    except Exception as exc:
+        await safe_edit(call, f"⛔️ خطایی در عملیات رخ داد: {exc}", reply_markup=_back_alliance_kb())
 
 
 # ============================================================

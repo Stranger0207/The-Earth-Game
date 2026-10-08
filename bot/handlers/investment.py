@@ -47,8 +47,30 @@ def _back_invest_kb() -> InlineKeyboardMarkup:
     ]])
 
 
-def _invest_page_kb(kind: str, page: int, total: int) -> InlineKeyboardMarkup:
-    """ناوبری صفحه‌های فهرست سرمایه‌گذاری (v1.11.1)."""
+def _invest_page_kb(
+    kind: str, page: int, total: int, chunk: list[Investment] | None = None
+) -> InlineKeyboardMarkup:
+    """ناوبری صفحه‌های فهرست سرمایه‌گذاری (v1.11.1) + دکمه‌های لغو (v2.3)."""
+    rows: list[list[InlineKeyboardButton]] = []
+
+    # دکمه‌های لغو سرمایه‌گذاری برای موارد همین صفحه (فقط سرمایه‌گذاری‌های من)
+    if kind == "mine" and chunk:
+        btn_row: list[InlineKeyboardButton] = []
+        for idx, inv in enumerate(chunk, start=page * INVEST_PAGE_SIZE + 1):
+            fa, _ = _cat_fa_pct(inv.category)
+            btn_row.append(
+                InlineKeyboardButton(
+                    text=f"❌ لغو #{fa_number(idx)} ({fa})",
+                    callback_data=f"inv_cancel:{inv.id}",
+                    style=STYLE_NO,
+                )
+            )
+            if len(btn_row) == 2:
+                rows.append(btn_row)
+                btn_row = []
+        if btn_row:
+            rows.append(btn_row)
+
     nav: list[InlineKeyboardButton] = []
     if page > 0:
         nav.append(InlineKeyboardButton(
@@ -59,7 +81,6 @@ def _invest_page_kb(kind: str, page: int, total: int) -> InlineKeyboardMarkup:
             text="صفحه بعدی ▶️", callback_data=f"invpg:{kind}:{page + 1}", style=STYLE_MAIN
         ))
 
-    rows: list[list[InlineKeyboardButton]] = []
     if nav:
         rows.append(nav)
     rows.append([
@@ -246,7 +267,7 @@ async def _show_invest_page(
     await safe_edit(
         call,
         "\n".join(lines),
-        reply_markup=_invest_page_kb(kind, page, total_pages),
+        reply_markup=_invest_page_kb(kind, page, total_pages, chunk=chunk if kind == "mine" else None),
     )
 
 
@@ -431,4 +452,104 @@ async def cb_invest_confirm(call: CallbackQuery, state: FSMContext, session: Asy
         f"📈 <b>سرمایه‌گذاری ({where})</b>\n"
         f"سرمایه‌گذار: {country.flag} {country.name_fa}\n"
         f"دسته: {fa}\nمبلغ: {fa_money(amount)} | سود ۲۴ساعته: {fa_money(profit)}",
+    )
+
+
+# ============================================================
+#  ❌ لغو سرمایه‌گذاری با بازگشت ۵۰٪ اصل سرمایه
+# ============================================================
+@router.callback_query(F.data.startswith("inv_cancel:"))
+async def cb_invest_cancel(call: CallbackQuery, session: AsyncSession, db_user: User) -> None:
+    """درخواست لغو سرمایه‌گذاری و نمایش تأییدیه با ۵۰٪ بازگشت وجه."""
+    await call.answer()
+    country = await get_player_country(session, db_user)
+    if country is None:
+        await safe_edit(call, NO_COUNTRY_TEXT)
+        return
+    try:
+        inv_id = int(call.data.split(":")[1])
+    except (IndexError, ValueError):
+        await call.answer("شناسه نامعتبر است.", show_alert=True)
+        return
+
+    inv = await inv_repo.get_investment(session, inv_id)
+    if inv is None or not inv.active or inv.investor_country != country.id:
+        await safe_edit(call, "سرمایه‌گذاری یافت نشد یا قبلاً لغو شده است.", reply_markup=_back_invest_kb())
+        return
+
+    fa, _ = _cat_fa_pct(inv.category)
+    refund = inv.amount * 0.5
+    where = "داخلی" if not inv.is_foreign else "خارجی"
+    prompt = (
+        f"❓ <b>لغو سرمایه‌گذاری ({where})</b>\n\n"
+        f"• دسته: <b>{fa}</b>\n"
+        f"• اصل سرمایه‌گذاری: <b>{fa_money(inv.amount)}</b>\n"
+        f"• مبلغ بازگشتی به حساب (۵۰٪): <b>{fa_money(refund)}</b>\n\n"
+        "⚠️ با تأیید لغو، این سرمایه‌گذاری متوقف شده و ۵۰٪ مبلغ اصل سرمایه به خزانه‌ی شما بازمی‌گردد.\n\n"
+        "آیا از لغو سرمایه‌گذاری اطمینان دارید؟"
+    )
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=f"✅ تأیید و بازگشت {fa_money(refund)}", callback_data=f"inv_cancel_ok:{inv.id}", style=STYLE_OK)],
+        [InlineKeyboardButton(text="🔙 انصراف", callback_data="inv:mine", style=STYLE_MAIN)],
+    ])
+    await safe_edit(call, prompt, reply_markup=kb)
+
+
+@router.callback_query(F.data.startswith("inv_cancel_ok:"))
+async def cb_invest_cancel_confirm(call: CallbackQuery, session: AsyncSession, db_user: User) -> None:
+    """تأیید نهایی لغو سرمایه‌گذاری، بازگشت ۵۰٪ بودجه و غیرفعال‌سازی."""
+    await call.answer()
+    country = await get_player_country(session, db_user)
+    if country is None:
+        await safe_edit(call, NO_COUNTRY_TEXT)
+        return
+    try:
+        inv_id = int(call.data.split(":")[1])
+    except (IndexError, ValueError):
+        await call.answer("شناسه نامعتبر است.", show_alert=True)
+        return
+
+    inv = await inv_repo.get_investment(session, inv_id)
+    if inv is None or not inv.active or inv.investor_country != country.id:
+        await safe_edit(call, "سرمایه‌گذاری یافت نشد یا قبلاً لغو شده است.", reply_markup=_back_invest_kb())
+        return
+
+    refund = inv.amount * 0.5
+    country.budget = (country.budget or 0.0) + refund
+    inv.active = False
+    await session.flush()
+
+    fa, _ = _cat_fa_pct(inv.category)
+    target = await countries_repo.get_country(session, inv.target_country) if inv.is_foreign else None
+
+    # اطلاع به کشور هدف در صورت خارجی بودن
+    if target and target.owner_user_id:
+        try:
+            await bot.send_message(
+                target.owner_user_id,
+                f"📉 کشور {country.flag} {country.name_fa} سرمایه‌گذاری خود در دسته‌ی «{fa}» روی کشور شما را لغو کرد.",
+            )
+        except Exception:  # noqa: BLE001
+            pass
+
+    # لاگ به گروه لاگ مدیران
+    where_txt = f"خارجی روی {target.flag} {target.name_fa}" if target else "داخلی"
+    await send_log(
+        bot,
+        f"📉 <b>لغو سرمایه‌گذاری ({where_txt})</b>\n"
+        f"سرمایه‌گذار: {country.flag} {country.name_fa}\n"
+        f"دسته: {fa}\n"
+        f"اصل سرمایه: {fa_money(inv.amount)} | بازگشت وجه (۵۰٪): {fa_money(refund)}\n"
+        f"موجودی جدید خزانه: {fa_money(country.budget)}",
+    )
+
+    await safe_edit(
+        call,
+        f"✅ سرمایه‌گذاری در «{fa}» لغو شد.\n\n"
+        f"💰 مبلغ {fa_money(refund)} (۵۰٪ اصل سرمایه) به خزانه‌ی شما بازگردانده شد.\n"
+        f"💵 موجودی فعلی خزانه: {fa_money(country.budget)}",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="📋 سرمایه‌گذاری‌های من", callback_data="inv:mine", style=STYLE_MAIN),
+            InlineKeyboardButton(text="🔙 منوی اقتصاد", callback_data="menu:economy", style=STYLE_MAIN),
+        ]]),
     )

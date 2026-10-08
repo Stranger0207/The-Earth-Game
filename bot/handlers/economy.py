@@ -17,14 +17,13 @@ from ..constants import (
     RESOURCE_SALE_COOLDOWN_HOURS,
     build_limit_group_for,
 )
-from ..database.models import User
+from ..database.models import Facility, ResourceSale, User
 from ..database.repositories import cooldowns as cd_repo
 from ..database.repositories import countries as countries_repo
 from ..database.repositories import facilities as fac_repo
 from ..database.repositories import reserves as reserves_repo
 from ..database.repositories import tariff as tariff_repo
 from ..database.repositories import trade as trade_repo
-from ..database.models import ResourceSale
 from ..enums import (
     FACILITY_FA,
     RESOURCE_FA,
@@ -273,8 +272,136 @@ async def cb_facility_list(call: CallbackQuery, session: AsyncSession, db_user: 
         call,
         "\n".join(lines),
         reply_markup=facility_list_nav_kb(
-            page, total_pages, prefix=prefix, back_data=back_data
+            page,
+            total_pages,
+            prefix=prefix,
+            back_data=back_data,
+            items=chunk,
+            start_idx=page * FACILITY_PAGE_SIZE + 1,
         ),
+    )
+
+
+# ============================================================
+#  🗑 تخریب / انحلال تأسیسات (v2.3)
+# ============================================================
+@router.callback_query(F.data.startswith("fac_del:"))
+async def cb_facility_delete(call: CallbackQuery, session: AsyncSession, db_user: User) -> None:
+    """درخواست تخریب تأسیسات و نمایش تأییدیه."""
+    await call.answer()
+    country = await get_player_country(session, db_user)
+    if country is None:
+        await safe_edit(call, NO_COUNTRY_TEXT)
+        return
+    try:
+        fid = int(call.data.split(":")[1])
+    except (IndexError, ValueError):
+        await call.answer("شناسه نامعتبر است.", show_alert=True)
+        return
+
+    facility = await session.get(Facility, fid)
+    if facility is None or facility.country_id != country.id:
+        await safe_edit(call, "تأسیسات یافت نشد یا قبلاً حذف شده است.", reply_markup=facility_types_kb())
+        return
+
+    try:
+        fa = FACILITY_FA[FacilityType(facility.type)]
+    except (ValueError, KeyError):
+        fa = facility.type
+    unit = ""
+    if facility.resource:
+        try:
+            rtype = ResourceType(facility.resource)
+            unit = RESOURCE_UNIT_FA[rtype]
+            fa = f"{fa} {RESOURCE_FA[rtype]}"
+        except (ValueError, KeyError):
+            pass
+
+    partner_note = ""
+    if facility.partner_country:
+        partner_c = await countries_repo.get_country(session, facility.partner_country)
+        pname = f"{partner_c.flag} {partner_c.name_fa}" if partner_c else "نامشخص"
+        partner_note = f"\n• تأسیسات مشترک با: <b>{pname}</b> (سهم شریک: {fa_number(facility.partner_percent)}٪)"
+
+    prompt = (
+        f"🗑 <b>تخریب / انحلال تأسیسات</b>\n\n"
+        f"• نوع: <b>{fa}</b>\n"
+        f"• محل: <b>{facility.location or '—'}</b>\n"
+        f"• بازدهی تولید: <b>{fa_number(facility.yield_amount)} {unit}/۲۴ساعت</b>"
+        f"{partner_note}\n\n"
+        "⚠️ با تأیید، این تأسیسات به‌طور دائم تخریب و منحل شده و تولید آن متوقف می‌شود.\n\n"
+        "آیا از تخریب این تأسیسات اطمینان دارید؟"
+    )
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🗑 تأیید و تخریب قطعی", callback_data=f"fac_del_ok:{facility.id}", style=STYLE_NO)],
+        [InlineKeyboardButton(text="🔙 انصراف", callback_data="econ:facilities", style=STYLE_MAIN)],
+    ])
+    await safe_edit(call, prompt, reply_markup=kb)
+
+
+@router.callback_query(F.data.startswith("fac_del_ok:"))
+async def cb_facility_delete_confirm(call: CallbackQuery, session: AsyncSession, db_user: User) -> None:
+    """تأیید نهایی تخریب تأسیسات و حذف از دیتابیس."""
+    await call.answer()
+    country = await get_player_country(session, db_user)
+    if country is None:
+        await safe_edit(call, NO_COUNTRY_TEXT)
+        return
+    try:
+        fid = int(call.data.split(":")[1])
+    except (IndexError, ValueError):
+        await call.answer("شناسه نامعتبر است.", show_alert=True)
+        return
+
+    facility = await session.get(Facility, fid)
+    if facility is None or facility.country_id != country.id:
+        await safe_edit(call, "تأسیسات یافت نشد یا قبلاً حذف شده است.", reply_markup=facility_types_kb())
+        return
+
+    try:
+        fa = FACILITY_FA[FacilityType(facility.type)]
+    except (ValueError, KeyError):
+        fa = facility.type
+    if facility.resource:
+        try:
+            fa = f"{fa} {RESOURCE_FA[ResourceType(facility.resource)]}"
+        except (ValueError, KeyError):
+            pass
+
+    loc = facility.location or "—"
+    partner_id = facility.partner_country
+
+    await session.delete(facility)
+    await session.flush()
+
+    # اطلاع به شریک در صورت مشترک بودن تأسیسات
+    if partner_id:
+        partner_c = await countries_repo.get_country(session, partner_id)
+        if partner_c and partner_c.owner_user_id:
+            try:
+                await bot.send_message(
+                    partner_c.owner_user_id,
+                    f"⚠️ تأسیسات مشترک «{fa}» در «{loc}» توسط {country.flag} {country.name_fa} تخریب و منحل شد.",
+                )
+            except Exception:  # noqa: BLE001
+                pass
+
+    # لاگ به گروه مدیران
+    await send_log(
+        bot,
+        f"🗑 <b>تخریب تأسیسات</b>\n"
+        f"کشور: {country.flag} {country.name_fa}\n"
+        f"تأسیسات: {fa}\n"
+        f"محل: {loc}",
+    )
+
+    await safe_edit(
+        call,
+        f"✅ تأسیسات «{fa}» در «{loc}» با موفقیت تخریب و منحل شد.",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="🏭 تأسیسات من", callback_data="econ:facilities", style=STYLE_MAIN),
+            InlineKeyboardButton(text="🔙 منوی اقتصاد", callback_data="menu:economy", style=STYLE_MAIN),
+        ]]),
     )
 
 

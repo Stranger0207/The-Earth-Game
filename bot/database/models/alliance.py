@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from sqlalchemy import DateTime, ForeignKey, Integer, String, Text
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ..base import Base
 
@@ -29,6 +29,10 @@ class Alliance(Base):
         DateTime(timezone=True), default=_utcnow, nullable=False
     )
 
+    members: Mapped[list["AllianceMember"]] = relationship(
+        back_populates="alliance", cascade="all, delete-orphan", passive_deletes=True
+    )
+
     def __repr__(self) -> str:
         return f"<Alliance {self.name} owner={self.owner_country}>"
 
@@ -48,6 +52,8 @@ class AllianceMember(Base):
     joined_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False
     )
+
+    alliance: Mapped["Alliance"] = relationship(back_populates="members")
 
     def __repr__(self) -> str:
         return f"<AllianceMember a={self.alliance_id} c={self.country_id}>"

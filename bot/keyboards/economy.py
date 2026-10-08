@@ -44,8 +44,9 @@ def invest_menu_kb() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.button(text="🏠 سرمایه‌گذاری داخلی", callback_data="inv:internal", style=STYLE_OK)
     builder.button(text="🌍 سرمایه‌گذاری خارجی", callback_data="inv:foreign", style=STYLE_MAIN)
+    builder.button(text="📋 سرمایه‌گذاری‌های من", callback_data="inv:mine", style=STYLE_MAIN)
     builder.button(text="🔙 بازگشت", callback_data="menu:economy", style=STYLE_MAIN)
-    builder.adjust(1, 1, 1)
+    builder.adjust(2, 1, 1)
     return builder.as_markup()
 
 
@@ -141,14 +142,30 @@ def mine_resource_pages_kb(counts: dict[str, int]) -> InlineKeyboardMarkup:
 
 
 def facility_list_nav_kb(
-    page: int, total: int, *, prefix: str, back_data: str
+    page: int,
+    total: int,
+    *,
+    prefix: str,
+    back_data: str,
+    items: list | None = None,
+    start_idx: int = 1,
 ) -> InlineKeyboardMarkup:
     """
-    ناوبری صفحه‌های فهرست تأسیسات (v1.11.1).
+    ناوبری صفحه‌های فهرست تأسیسات (v1.11.1) + دکمه‌های تخریب (v2.3).
 
     prefix: پیشوند کال‌بک بدون شماره‌ی صفحه (مثلاً "facl:mine:iron").
     """
     builder = InlineKeyboardBuilder()
+
+    if items:
+        for idx, f in enumerate(items, start=start_idx):
+            builder.button(
+                text=f"🗑 تخریب #{fa_number(idx)}",
+                callback_data=f"fac_del:{f.id}",
+                style=STYLE_NO,
+            )
+        builder.adjust(2)
+
     nav: list[InlineKeyboardButton] = []
     if page > 0:
         nav.append(

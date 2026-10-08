@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..models import Alliance, AllianceMember
@@ -67,8 +67,11 @@ async def remove_member(session: AsyncSession, alliance_id: int, country_id: int
 
 async def delete_alliance(session: AsyncSession, alliance_id: int) -> None:
     """حذف اتحاد و همه‌ی اعضای آن (مثلاً وقتی سازنده خارج شود)."""
-    for m in await list_members(session, alliance_id):
-        await session.delete(m)
+    await session.execute(
+        delete(AllianceMember).where(AllianceMember.alliance_id == alliance_id)
+    )
+    await session.flush()
     alliance = await session.get(Alliance, alliance_id)
     if alliance is not None:
         await session.delete(alliance)
+        await session.flush()

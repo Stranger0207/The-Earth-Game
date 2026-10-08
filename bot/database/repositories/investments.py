@@ -77,3 +77,8 @@ async def count_by_investor_since(
         )
     )
     return res.scalar() or 0
+
+
+async def get_investment(session: AsyncSession, investment_id: int) -> Investment | None:
+    """دریافت یک سرمایه‌گذاری با شناسه."""
+    return await session.get(Investment, investment_id)

@@ -1198,20 +1198,186 @@ async def cb_contracts(call: CallbackQuery, session: AsyncSession, db_user: User
     await call.answer()
     country = await get_player_country(session, db_user)
     if country is None:
-        await safe_edit(call,NO_COUNTRY_TEXT)
+        await safe_edit(call, NO_COUNTRY_TEXT)
         return
     if not await assert_feature(call, session, country, "dip.contract"):
         return
     contracts = await dip_repo.list_contracts_for_country(session, country.id, only_active=True)
     if not contracts:
-        await safe_edit(call,"📜 قرارداد فعالی ندارید.", reply_markup=diplomacy_menu_kb())
+        await safe_edit(call, "📜 قرارداد فعالی ندارید.", reply_markup=diplomacy_menu_kb())
         return
-    lines = ["📜 <b>قراردادهای فعال:</b>", ""]
-    for c in contracts:
+
+    lines = [
+        "📜 <b>قراردادهای فعال شما:</b>",
+        "",
+        "<i>برای مشاهده مفاد و لغو هر معاهده، روی آن کلیک کنید:</i>",
+        "",
+    ]
+    builder = InlineKeyboardBuilder()
+    for idx, c in enumerate(contracts, start=1):
         a = await countries_repo.get_country(session, c.country_a)
         b = await countries_repo.get_country(session, c.country_b)
-        lines.append(f"• «{c.title}» — {a.name_fa if a else '?'} ↔ {b.name_fa if b else '?'}")
-    await safe_edit(call,"\n".join(lines), reply_markup=diplomacy_menu_kb())
+        a_name = a.name_fa if a else "?"
+        b_name = b.name_fa if b else "?"
+        lines.append(f"{fa_number(idx)}. «{c.title}»\n   🏛 طرفین: {a_name} ↔ {b_name}")
+        builder.button(
+            text=f"📜 #{fa_number(idx)}. «{c.title[:18]}»",
+            callback_data=f"contract_view:{c.id}",
+            style=STYLE_MAIN,
+        )
+    builder.adjust(1)
+    builder.row(InlineKeyboardButton(text="🔙 بازگشت به دیپلماسی", callback_data="menu:diplomacy", style=STYLE_MAIN))
+    await safe_edit(call, "\n".join(lines), reply_markup=builder.as_markup())
+
+
+@router.callback_query(F.data.startswith("contract_view:"))
+async def cb_contract_view(call: CallbackQuery, session: AsyncSession, db_user: User) -> None:
+    """مشاهده متن کامل یک قرارداد همراه با گزینه لغو."""
+    await call.answer()
+    country = await get_player_country(session, db_user)
+    if country is None:
+        await safe_edit(call, NO_COUNTRY_TEXT)
+        return
+    try:
+        cid = int(call.data.split(":")[1])
+    except (IndexError, ValueError):
+        await call.answer("شناسه نامعتبر است.", show_alert=True)
+        return
+
+    contract = await dip_repo.get_contract(session, cid)
+    if contract is None or contract.status != DiplomacyStatus.ACTIVE:
+        await safe_edit(call, "قرارداد یافت نشد یا دیگر فعال نیست.", reply_markup=diplomacy_menu_kb())
+        return
+    if country.id not in (contract.country_a, contract.country_b):
+        await call.answer("شما طرف این قرارداد نیستید.", show_alert=True)
+        return
+
+    a = await countries_repo.get_country(session, contract.country_a)
+    b = await countries_repo.get_country(session, contract.country_b)
+
+    text = (
+        f"📜 <b>قرارداد: {contract.title}</b>\n\n"
+        f"🏛 <b>طرف اول:</b> {a.flag if a else ''} {a.name_fa if a else '?'}\n"
+        f"🏛 <b>طرف دوم:</b> {b.flag if b else ''} {b.name_fa if b else '?'}\n\n"
+        f"📝 <b>متن و مفاد قرارداد:</b>\n"
+        f"<blockquote>{contract.body}</blockquote>"
+    )
+    builder = InlineKeyboardBuilder()
+    builder.button(
+        text="❌ لغو یک‌طرفه قرارداد",
+        callback_data=f"contract_cancel:{contract.id}",
+        style=STYLE_NO,
+    )
+    builder.button(
+        text="🔙 بازگشت به قراردادها",
+        callback_data="dip:contracts",
+        style=STYLE_MAIN,
+    )
+    builder.adjust(1)
+    await safe_edit(call, text, reply_markup=builder.as_markup())
+
+
+@router.callback_query(F.data.startswith("contract_cancel:"))
+async def cb_contract_cancel(call: CallbackQuery, session: AsyncSession, db_user: User) -> None:
+    """تأییدیه لغو قرارداد."""
+    await call.answer()
+    country = await get_player_country(session, db_user)
+    if country is None:
+        await safe_edit(call, NO_COUNTRY_TEXT)
+        return
+    try:
+        cid = int(call.data.split(":")[1])
+    except (IndexError, ValueError):
+        await call.answer("شناسه نامعتبر است.", show_alert=True)
+        return
+
+    contract = await dip_repo.get_contract(session, cid)
+    if contract is None or contract.status != DiplomacyStatus.ACTIVE:
+        await safe_edit(call, "قرارداد یافت نشد یا دیگر فعال نیست.", reply_markup=diplomacy_menu_kb())
+        return
+    if country.id not in (contract.country_a, contract.country_b):
+        await call.answer("شما طرف این قرارداد نیستید.", show_alert=True)
+        return
+
+    other_id = contract.country_b if contract.country_a == country.id else contract.country_a
+    other = await countries_repo.get_country(session, other_id)
+    other_name = f"{other.flag} {other.name_fa}" if other else "طرف مقابل"
+
+    prompt = (
+        f"❓ <b>لغو قرارداد</b>\n\n"
+        f"آیا مطمئن هستید که می‌خواهید قرارداد «{contract.title}» با {other_name} را لغو کنید؟\n\n"
+        "⚠️ با لغو این معاهده، وضعیت قرارداد به «لغوشده» تغییر می‌یابد و به مقامات کشور مقابل اطلاع داده می‌شود."
+    )
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="❌ تأیید و لغو معاهده", callback_data=f"contract_cancel_ok:{contract.id}", style=STYLE_NO)],
+        [InlineKeyboardButton(text="🔙 انصراف", callback_data=f"contract_view:{contract.id}", style=STYLE_MAIN)],
+    ])
+    await safe_edit(call, prompt, reply_markup=kb)
+
+
+@router.callback_query(F.data.startswith("contract_cancel_ok:"))
+async def cb_contract_cancel_confirm(call: CallbackQuery, session: AsyncSession, db_user: User) -> None:
+    """اجرای نهایی لغو معاهده."""
+    await call.answer()
+    country = await get_player_country(session, db_user)
+    if country is None:
+        await safe_edit(call, NO_COUNTRY_TEXT)
+        return
+    try:
+        cid = int(call.data.split(":")[1])
+    except (IndexError, ValueError):
+        await call.answer("شناسه نامعتبر است.", show_alert=True)
+        return
+
+    contract = await dip_repo.get_contract(session, cid)
+    if contract is None or contract.status != DiplomacyStatus.ACTIVE:
+        await safe_edit(call, "این قرارداد قبلاً لغو شده یا دیگر فعال نیست.", reply_markup=diplomacy_menu_kb())
+        return
+    if country.id not in (contract.country_a, contract.country_b):
+        await call.answer("شما طرف این قرارداد نیستید.", show_alert=True)
+        return
+
+    contract.status = DiplomacyStatus.CANCELLED
+    await session.flush()
+
+    a = await countries_repo.get_country(session, contract.country_a)
+    b = await countries_repo.get_country(session, contract.country_b)
+    other = b if contract.country_a == country.id else a
+
+    # اطلاع به کشور طرف مقابل
+    if other and other.owner_user_id:
+        try:
+            await bot.send_message(
+                other.owner_user_id,
+                f"⚠️ <b>لغو قرارداد</b>\n\nکشور {country.flag} {country.name_fa} قرارداد دوجانبه‌ی «{contract.title}» را به صورت یک‌طرفه لغو کرد.",
+            )
+        except Exception:  # noqa: BLE001
+            pass
+
+    # خبر در کانال دیپلماسی
+    await publish_news(
+        bot,
+        NewsCategory.DIPLOMACY,
+        f"📜 قرارداد «{contract.title}» میان {a.name_fa if a else '?'} و {b.name_fa if b else '?'} توسط {country.name_fa} لغو شد.",
+    )
+
+    # لاگ به گروه مدیران
+    await send_log(
+        bot,
+        f"📜 <b>لغو قرارداد</b>\n"
+        f"عنوان: {contract.title}\n"
+        f"لغوکننده: {country.flag} {country.name_fa}\n"
+        f"طرفین: {a.name_fa if a else '?'} ↔ {b.name_fa if b else '?'}",
+    )
+
+    await safe_edit(
+        call,
+        f"✅ قرارداد «{contract.title}» با موفقیت لغو شد.",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="📜 فهرست قراردادها", callback_data="dip:contracts", style=STYLE_MAIN),
+            InlineKeyboardButton(text="🔙 منوی دیپلماسی", callback_data="menu:diplomacy", style=STYLE_MAIN),
+        ]]),
+    )
 
 
 # ============================================================

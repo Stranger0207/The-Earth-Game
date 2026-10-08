@@ -43,7 +43,6 @@ from ..database.repositories import reserves as reserves_repo
 from ..database.repositories import trade as trade_repo
 from ..enums import RESOURCE_FA, RESOURCE_UNIT_FA, ResourceType, TradeStatus
 from . import geo_service as geo
-from . import patrol_service
 from .combat.power import CommittedAsset, strike_power
 
 logger = logging.getLogger(__name__)
@@ -309,10 +308,6 @@ async def resolve_interception(
     # ============================================================
     if escort_power <= 0:
         chance = INTERCEPTION_UNESCORTED_SUCCESS_PCT
-        chance += await patrol_service.intercept_bonus(session, interceptor.id)
-        # گشت دریایی خریدار کمی از محموله محافظت می‌کند
-        chance -= await patrol_service.intercept_bonus(session, buyer.id)
-        chance = max(15.0, min(95.0, chance))
 
         if rng.uniform(0.0, 100.0) > chance:
             interceptor.public_satisfaction = max(
@@ -350,9 +345,7 @@ async def resolve_interception(
             )
 
         needed = required_power(escort_power)
-        # بونوس گشت به‌صورت ضریب قدرت اعمال می‌شود
-        patrol_boost = 1.0 + await patrol_service.intercept_bonus(session, interceptor.id) / 100.0
-        effective_attack = attack_power * patrol_boost * rng.uniform(0.9, 1.1)
+        effective_attack = attack_power * rng.uniform(0.9, 1.1)
         result["attack_power"] = round(effective_attack, 1)
 
         if effective_attack < needed:

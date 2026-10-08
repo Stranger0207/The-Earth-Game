@@ -126,15 +126,6 @@ def test_structure() -> None:
         f"یا با دلیل به _PRESERVED در همین فایل",
     )
 
-    # نگهبان صریح برای همان باگی که این تست به‌خاطرش نوشته شد
-    check("commander_intel در فهرست پاک‌سازی است", "commander_intel" in purged)
-    check(
-        "commander_intel قبل از commanders پاک می‌شود",
-        "commander_intel" in purged
-        and "commanders" in purged
-        and order.index("commander_intel") < order.index("commanders"),
-    )
-
 
 async def test_end_to_end() -> None:
     """لایه ۳: ریست واقعی با اجبار کلید خارجی (بازتولید رفتار PostgreSQL)."""
@@ -149,7 +140,6 @@ async def test_end_to_end() -> None:
         AllianceMember,
         BaseEquipment,
         Commander,
-        CommanderIntel,
         Country,
         GroupMeeting,
         GroupMeetingParticipant,
@@ -189,8 +179,8 @@ async def test_end_to_end() -> None:
         # اجبار کلید خارجی واقعاً روشن است؟ (وگرنه بقیه‌ی تست بی‌معنی است)
         fk_enforced = False
         try:
-            session.add(CommanderIntel(
-                spy_country_id=c1.id, commander_id=10**9, target_country_id=c2.id,
+            session.add(BaseEquipment(
+                base_id=10**9, asset_name="F-16", branch="نیروی هوایی", count=4,
             ))
             await session.flush()
         except IntegrityError:
@@ -206,19 +196,11 @@ async def test_end_to_end() -> None:
         # --- ساخت داده‌ی فصل، با تمرکز روی جدول‌های وابسته (فرزندِ کلید خارجی) ---
         c1.is_claimed = True
         c1.budget = 1.0
-        c1.readiness = 33.0
 
         cmd = Commander(country_id=c1.id, name="فرمانده تست", role="ground",
                         rank_title="سرلشکر", bonus_pct=5.0)
         session.add(cmd)
         await session.flush()
-
-        # این ردیف دقیقاً همان چیزی است که ریست فصل را می‌شکست
-        session.add(CommanderIntel(
-            spy_country_id=c2.id, commander_id=cmd.id, target_country_id=c1.id,
-            quality=80.0, known_location="پایگاه تست",
-            expires_at=_utcnow() + timedelta(hours=6),
-        ))
 
         base = MilitaryBase(owner_country_id=c1.id, host_country_id=c1.id,
                             base_type="air", name="پایگاه تست", location="تست")
@@ -275,7 +257,6 @@ async def test_end_to_end() -> None:
     # --- بررسی وضعیت پس از ریست ---
     async with fk_session() as session:
         for model, name in (
-            (CommanderIntel, "commander_intel"),
             (BaseEquipment, "base_equipments"),
             (AllianceMember, "alliance_members"),
             (Alliance, "alliances"),
@@ -297,8 +278,6 @@ async def test_end_to_end() -> None:
         )).scalar_one()
         check("مالکیت کشور آزاد شد",
               country.is_claimed is False and country.owner_user_id is None)
-        check("آمادگی رزمی صفر شد", country.readiness == 0.0,
-              f"readiness={country.readiness}")
         check("بودجه از countries.json بازسازی شد", country.budget != 1.0,
               f"budget={country.budget} (نام: {c1_name})")
 

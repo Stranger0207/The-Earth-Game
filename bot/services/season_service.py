@@ -23,7 +23,6 @@ logger = logging.getLogger(__name__)
 
 from ..constants import DEFAULT_RESERVE_YIELD_HOURS
 from ..database.models import (
-    Attack,
     Auction,
     AuctionBid,
     BankLoan,
@@ -46,14 +45,7 @@ from ..database.models import (
     Sanction,
     Alliance,
     AllianceMember,
-    Battle,
     Commander,
-    CommanderIntel,
-    Drill,
-    NewsFingerprint,
-    Operation,
-    Patrol,
-    WarDeclaration,
     Deployment,
     Speech,
     Law,
@@ -117,7 +109,6 @@ async def reset_season(session: AsyncSession) -> dict[str, int]:
     await session.execute(delete(ResourceSale))
     await session.execute(delete(MilitarySale))      # v1.7
     await session.execute(delete(MilitaryFactory))   # v1.7
-    await session.execute(delete(Attack))
     await session.execute(delete(Facility))
     await session.execute(delete(Cooldown))
     await session.execute(delete(ClaimRequest))
@@ -125,17 +116,7 @@ async def reset_season(session: AsyncSession) -> dict[str, int]:
     # --- پاک کردن مدل‌های جدید (v1.9 تا v2.0) ---
     await session.execute(delete(AllianceMember))
     await session.execute(delete(Alliance))
-    await session.execute(delete(Battle))
-    await session.execute(delete(WarDeclaration))
-    # --- سیستم عملیات نظامی (v1.10.6) ---
-    await session.execute(delete(Operation))
-    await session.execute(delete(Patrol))
-    await session.execute(delete(Drill))
-    # اطلاعات جاسوسی روی فرماندهان باید *قبل* از خود فرماندهان پاک شود،
-    # وگرنه کلید خارجی commander_intel.commander_id ریست فصل را می‌شکند.
-    await session.execute(delete(CommanderIntel))
     await session.execute(delete(Commander))
-    await session.execute(delete(NewsFingerprint))
     await session.execute(delete(Deployment))
     await session.execute(delete(Speech))
     await session.execute(delete(Law))

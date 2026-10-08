@@ -63,15 +63,6 @@ class ContractForm(StatesGroup):
     confirming = State()
 
 
-class AttackForm(StatesGroup):
-    """فرم حمله نظامی."""
-
-    choosing_type = State()       # نوع حمله
-    choosing_target = State()     # کشور هدف
-    describing = State()          # شرح تجهیزات و هدف حمله
-    confirming_fuel = State()     # تأیید مصرف سوخت
-
-
 class MilitaryFactoryForm(StatesGroup):
     """فرم احداث کارخانه‌ی نظامی (v1.7)."""
 

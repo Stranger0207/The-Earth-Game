@@ -1,9 +1,7 @@
-from .battle import BattleForm
 from .forms import (
     AdvisorForm,
     AllianceForm,
     AnnounceForm,
-    AttackForm,
     AuctionBidForm,
     AuctionCreateForm,
     BankTransferForm,
@@ -34,13 +32,8 @@ from .forms import (
 )
 from .military_base import MilitaryBaseForm
 from .operations import (
-    AssassinationForm,
-    DrillForm,
     EscortForm,
-    EspionageForm,
     InterceptionForm,
-    OperationForm,
-    PatrolForm,
 )
 from .satellite import SatelliteForm
 
@@ -48,22 +41,17 @@ __all__ = [
     "AdvisorForm",
     "AllianceForm",
     "AnnounceForm",
-    "AttackForm",
     "AuctionBidForm",
     "AuctionCreateForm",
     "BankTransferForm",
-    "BattleForm",
     "CallForm",
-    "AssassinationForm",
     "ClaimForm",
     "ContractForm",
     "DebtPayForm",
     "LoanRepayForm",
     "LoanTakeForm",
     "DeploymentForm",
-    "DrillForm",
     "EscortForm",
-    "EspionageForm",
     "FacilityForm",
     "GodForm",
     "GodLockForm",
@@ -79,8 +67,6 @@ __all__ = [
     "MilitaryBaseForm",
     "MilitaryFactoryForm",
     "MilitarySaleForm",
-    "OperationForm",
-    "PatrolForm",
     "SaleForm",
     "SanctionForm",
     "SatelliteForm",

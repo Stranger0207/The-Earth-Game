@@ -132,7 +132,6 @@ def _home_kb() -> InlineKeyboardMarkup:
     builder.button(text="🚫 تحریم‌ها", callback_data="god:sanctions", style=STYLE_MAIN)
     builder.button(text="📈 سرمایه‌گذاری‌ها", callback_data="god:invest", style=STYLE_MAIN)
     builder.button(text="☢️ برنامه‌های هسته‌ای", callback_data="god:nuclear", style=STYLE_MAIN)
-    builder.button(text="⚔️ عملیات نظامی", callback_data="god:ops", style=STYLE_NO)
     builder.button(text="💥 سیستم تلفات", callback_data="god:casualty", style=STYLE_NO)
     builder.button(text="🔒 غیرفعال‌کردن آپشن", callback_data="god:locks", style=STYLE_NO)
     builder.button(text="⛔️ مدیریت بن کاربران", callback_data="god:ban_list", style=STYLE_NO)

@@ -25,7 +25,7 @@ from ..constants import (
     MIL_FACTORY_INTAKE,
     MIL_FACTORY_YIELD,
 )
-from ..database.models import Attack, MilitaryFactory, MilitarySale, User
+from ..database.models import MilitaryFactory, MilitarySale, User
 from ..database.repositories import countries as countries_repo
 from ..database.repositories import facilities as fac_repo
 from ..database.repositories import military as mil_repo
@@ -33,13 +33,10 @@ from ..database.repositories import military_factory as milfac_repo
 from ..database.repositories import military_sale as milsale_repo
 from ..database.repositories import reserves as reserves_repo
 from ..enums import (
-    ATTACK_FA,
     MIL_FACTORY_CATEGORY,
     MIL_FACTORY_FA,
     RESOURCE_FA,
     RESOURCE_UNIT_FA,
-    AttackStatus,
-    AttackType,
     MilitaryFactoryType,
     ResourceType,
     TradeStatus,
@@ -55,7 +52,6 @@ from ..keyboards.military import (
 from ..loader import bot
 from ..services.ai import evaluators
 from ..services.media import send_photo_news
-from ..services.military_service import apply_losses, format_casualties_log
 from ..services.news_service import send_log
 from ..states import MilitaryFactoryForm, MilitarySaleForm
 from ..utils.formatting import military_branch_pages, render_military_branch

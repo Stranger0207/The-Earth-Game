@@ -22,11 +22,10 @@ from ..constants import ESCORT_MAX_UNITS, INTERCEPTOR_MAX_UNITS
 from ..database.models import User
 from ..database.repositories import countries as countries_repo
 from ..database.repositories import trade as trade_repo
-from ..keyboards.command_center import asset_picker_kb, operations_menu_kb
+from ..keyboards.command_center import asset_picker_kb, command_center_kb
 from ..keyboards.covert import confirm_kb, shipments_kb
 from ..loader import bot
 from ..services import escort_service, interception_service
-from ..services import operation_service as op_service
 from ..services.combat import CommittedAsset
 from ..services.news_service import send_log
 from ..states import EscortForm, InterceptionForm
@@ -92,12 +91,6 @@ async def cb_intercept_start(
     if not await assert_feature(call, session, country, "military.interception"):
         return
 
-    try:
-        await op_service.assert_can_operate(session, country)
-    except op_service.OperationError as err:
-        await safe_edit(call, str(err), reply_markup=operations_menu_kb())
-        return
-
     shipments = await interception_service.interceptable_shipments(session, country)
 
     if not shipments:
@@ -107,7 +100,7 @@ async def cb_intercept_start(
             "در حال حاضر هیچ محموله‌ای از قلمرو شما عبور نمی‌کند.\n\n"
             "<i>فقط محموله‌هایی قابل رهگیری‌اند که مسیرشان از خاک یا آب "
             "کشور شما بگذرد. محموله‌ی خودتان قابل رهگیری نیست.</i>",
-            reply_markup=operations_menu_kb(),
+            reply_markup=command_center_kb(),
         )
         return
 
@@ -124,7 +117,7 @@ async def cb_intercept_start(
         "<i>محموله‌ی موردنظر را انتخاب کنید:</i>",
     ]
     await safe_edit(
-        call, "\n".join(lines), reply_markup=shipments_kb(shipments, "cc:operations")
+        call, "\n".join(lines), reply_markup=shipments_kb(shipments, "cc:home")
     )
 
 
@@ -139,7 +132,7 @@ async def cb_intercept_pick(
     country = await get_player_country(session, db_user)
     sale = await trade_repo.get_sale(session, sale_id)
     if country is None or sale is None:
-        await safe_edit(call, "محموله یافت نشد.", reply_markup=operations_menu_kb())
+        await safe_edit(call, "محموله یافت نشد.", reply_markup=command_center_kb())
         return
 
     seller = await countries_repo.get_country(session, sale.seller_country)
@@ -183,7 +176,7 @@ async def cb_intercept_pick(
             call,
             f"{base}\n\n⚠️ شما تجهیزات مناسبی برای رهگیری ندارید "
             "(نیروی دریایی، هوایی یا پدافندی لازم است).",
-            reply_markup=operations_menu_kb(),
+            reply_markup=command_center_kb(),
         )
         return
 
@@ -383,7 +376,7 @@ async def cb_intercept_confirm(
     country = await get_player_country(session, db_user)
     sale = await trade_repo.get_sale(session, data.get("sale_id", 0))
     if country is None or sale is None:
-        await safe_edit(call, "محموله یافت نشد.", reply_markup=operations_menu_kb())
+        await safe_edit(call, "محموله یافت نشد.", reply_markup=command_center_kb())
         return
 
     committed = _build_committed(data)
@@ -393,7 +386,7 @@ async def cb_intercept_confirm(
             session, country, sale, committed=committed
         )
     except interception_service.InterceptionError as err:
-        await safe_edit(call, f"⛔️ {err}", reply_markup=operations_menu_kb())
+        await safe_edit(call, f"⛔️ {err}", reply_markup=command_center_kb())
         return
 
     await session.commit()
@@ -431,7 +424,7 @@ async def cb_intercept_confirm(
             + _depleted_report(result)
         )
 
-    await safe_edit(call, text, reply_markup=operations_menu_kb())
+    await safe_edit(call, text, reply_markup=command_center_kb())
 
     # ---------- لاگ و اطلاع به طرفین ----------
     outcome = "دفع‌شده" if result["repulsed"] else ("موفق" if result["success"] else "ناموفق")

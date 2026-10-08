@@ -14,10 +14,7 @@ from .enums import (
     MilitaryFactoryType,
     NuclearFacilityType,
     NuclearTechType,
-    OperationType,
-    PatrolType,
     ResourceType,
-    TargetType,
 )
 
 # ============================================================
@@ -490,267 +487,33 @@ NUCLEAR_DETERRENCE_POWER_PER_WARHEAD = 2.5
 NUCLEAR_DETERRENCE_DEFENSE_PER_WARHEAD = 3.0
 NUCLEAR_DETERRENCE_MAX_DEFENSE = 30.0
 
-# ---------- خرابکاری سایبری (استاکس‌نت) ----------
-CYBER_SABOTAGE_COST_USD = 6_000_000_000.0
-CYBER_SABOTAGE_SUCCESS_BASE = 55.0            # درصد پایه‌ی موفقیت
-CYBER_SABOTAGE_CENTRIFUGE_LOSS = (0.2, 0.6)   # بازه‌ی درصد سانتریفیوژهای نابودشده
-CYBER_SABOTAGE_COOLDOWN_HOURS = 24
-
-
-
-
 # ============================================================
-#  ⚔️ سیستم عملیات نظامی (v1.10.6) — بازسازی کامل
+#  🎖 فرماندهان نظامی (NPC)
 # ============================================================
-
-# ---------- سقف عملیات ----------
-# سقف کلی: هر کشور در هر ۲۴ ساعت حداکثر این تعداد عملیات تهاجمی ثبت می‌کند.
-# گشت و رزمایش از این سقف مستثنا هستند (فقط هزینه‌ی منابع دارند).
-OPERATION_LIMIT_WINDOW_HOURS = 24
-OPERATION_LIMIT_PER_WINDOW = 3
-
-# عملیات‌هایی که در سقف بالا شمرده نمی‌شوند
-OPERATION_LIMIT_EXEMPT: frozenset[OperationType] = frozenset({
-    OperationType.PATROL,
-    OperationType.DRILL,
-})
-
-# ---------- هزینه‌ی سوخت (میلیون بشکه نفت) ----------
-# هزینه‌ی پایه‌ی هر نوع عملیات، پیش از ضریب فاصله و حجم نیرو
-OPERATION_BASE_FUEL: dict[OperationType, float] = {
-    OperationType.GROUND_ASSAULT: 2.0,
-    OperationType.AIR_STRIKE: 3.0,
-    OperationType.NAVAL_STRIKE: 4.0,
-    OperationType.SABOTAGE: 0.2,
-    OperationType.ASSASSINATION: 0.3,
-    OperationType.INTERCEPTION: 1.0,
-    OperationType.PATROL: 0.5,
-    OperationType.DRILL: 1.5,
-}
-
-# سوخت اضافی به ازای هر واحد تجهیزات درگیر
-OPERATION_FUEL_PER_UNIT = 0.02
-
-# ضریب سوخت بر اساس رده‌ی فاصله (کلیدها هماهنگ با geo_service)
-DISTANCE_FUEL_MULTIPLIER: dict[str, float] = {
-    "neighbor": 1.0,
-    "regional": 1.6,
-    "continental": 2.4,
-    "intercontinental": 3.5,
-}
-
-# ضریب کاهش قدرت مؤثر بر اساس فاصله (هرچه دورتر، اثربخشی کمتر)
-DISTANCE_POWER_MULTIPLIER: dict[str, float] = {
-    "neighbor": 1.0,
-    "regional": 0.88,
-    "continental": 0.72,
-    "intercontinental": 0.55,
-}
-
-# ---------- برد عملیاتی (کیلومتر) ----------
-# حداکثر فاصله‌ای که هر نوع حمله بدون پایگاه نزدیک می‌تواند طی کند.
-# داشتن پایگاه نظامی در کشور همسایه‌ی هدف این محدودیت را برمی‌دارد.
-OPERATION_MAX_RANGE_KM: dict[OperationType, float] = {
-    OperationType.GROUND_ASSAULT: 1500.0,   # نیروی زمینی فقط نزدیک
-    OperationType.AIR_STRIKE: 6000.0,       # با سوخت‌گیری هوایی
-    OperationType.NAVAL_STRIKE: 12000.0,    # ناوگان دریایی برد بلند
-    OperationType.SABOTAGE: 20000.0,        # عوامل نفوذی — بدون محدودیت عملی
-    OperationType.ASSASSINATION: 20000.0,
-    OperationType.INTERCEPTION: 4000.0,
-}
-
-# ---------- پدافند و رهگیری ----------
-AIR_DEFENSE_MAX_INTERCEPT_PCT = 92.0   # سقف درصد رهگیری پدافند (هیچ‌وقت ۱۰۰٪ نیست)
-AIR_DEFENSE_MIN_INTERCEPT_PCT = 3.0    # کف رهگیری (همیشه کمی مقاومت هست)
-# ضریب تبدیل نسبت پدافند/حمله به درصد رهگیری.
-# نسبت در بازه‌ی ۰..۱ است؛ این ضریب آن را به درصد رهگیری می‌نگارد.
-# مقدار ۱۰۵ باعث می‌شود پدافند متعادل (نسبت ۰.۵) حدود ۵۲٪ رهگیری کند
-# و پدافند بسیار قوی (نسبت ۰.۸) به سقف نزدیک شود.
-DEFENSE_RATIO_SCALING = 105.0
-
-# بونوس پدافند در صورت داشتن گشت فعال از همان نوع (درصد اضافه)
-PATROL_DEFENSE_BONUS_PCT = 12.0
-# بونوس پدافند به ازای هر پایگاه نظامی فعال مدافع (درصد، با سقف)
-BASE_DEFENSE_BONUS_PCT = 4.0
-BASE_DEFENSE_BONUS_MAX_PCT = 20.0
-
-# ---------- تلفات ----------
-# درصد تلفات مهاجم از بخش رهگیری‌شده‌ی نیرو
-ATTACKER_LOSS_FROM_INTERCEPT_PCT = 60.0
-# درصد تلفات مدافع از بخش نفوذکرده
-DEFENDER_LOSS_BASE_PCT = 35.0
-# نوسان تصادفی تلفات (±درصد)
-LOSS_RANDOM_VARIANCE_PCT = 15.0
-
-# ---------- تلفات غیرنظامی ----------
-# تلفات غیرنظامی به ازای هر واحد قدرت نفوذکرده در هدف شهری
-CIVILIAN_CASUALTIES_PER_POWER = 8.0
-# ضریب جمعیت (کشور پرجمعیت‌تر تلفات بیشتری می‌دهد)
-CIVILIAN_POPULATION_FACTOR = 0.00000004
-CIVILIAN_CASUALTIES_MAX = 50_000  # سقف تلفات یک عملیات (واقع‌گرایی بازی)
-
-# ---------- اثرات اقتصادی ----------
-# اثر روی مدافع به ازای هر ۱۰٪ خسارت زیرساخت
-DEFENDER_SATISFACTION_PER_10PCT = -1.8
-DEFENDER_STABILITY_PER_10PCT = -1.5
-DEFENDER_INFLATION_PER_10PCT = 0.8
-DEFENDER_BUDGET_LOSS_PER_10PCT = 2_000_000_000.0  # خسارت مالی
-
-# اثر روی خودِ مهاجم (هزینه‌ی جنگ — طبق خواسته‌ی آپدیت)
-ATTACKER_SATISFACTION_PER_OP = -0.8       # افکار عمومی داخلی
-ATTACKER_STABILITY_PER_OP = -0.4
-ATTACKER_INFLATION_PER_OP = 0.5           # هزینه‌ی جنگ تورم‌زاست
-ATTACKER_BUDGET_COST_BASE = 1_500_000_000.0   # هزینه‌ی پایه‌ی عملیات
-ATTACKER_BUDGET_COST_PER_UNIT = 25_000_000.0  # به ازای هر واحد تجهیزات
-
-# اگر عملیات علیه غیرنظامیان باشد، انزوای بین‌المللی سنگین‌تر است
-CIVILIAN_STRIKE_EXTRA_SATISFACTION = -2.5
-CIVILIAN_STRIKE_EXTRA_STABILITY = -1.0
-
-# ---------- شدت عملیات و فازهای خبری ----------
-# شدت (۱ تا ۱۰) از حجم نیرو و خسارت محاسبه می‌شود و تعداد فازهای خبری را تعیین می‌کند.
-# هر ردیف: (سقف شدت، تعداد فاز، فاصله‌ی بین فازها به دقیقه)
-OPERATION_INTENSITY_PHASES: list[tuple[int, int, int]] = [
-    (3, 3, 1),    # شدت ۱–۳ → ۳ فاز، هر ۱ دقیقه (≈۳ دقیقه)
-    (6, 5, 1),    # شدت ۴–۶ → ۵ فاز (≈۵ دقیقه)
-    (8, 7, 2),    # شدت ۷–۸ → ۷ فاز، هر ۲ دقیقه (≈۱۴ دقیقه)
-    (10, 9, 2),   # شدت ۹–۱۰ → ۹ فاز (≈۱۸ دقیقه)
-]
-
-# ---------- فیلتر کانال خبری ----------
-# خبر فقط وقتی به کانال نظامی می‌رود که یکی از طرفین VIP باشد و شدت از این حد بگذرد.
-NEWS_CHANNEL_MIN_INTENSITY = 5
-# اگر هیچ‌کدام VIP نباشند، شدت باید از این حد بالاتر باشد تا به کانال برود
-NEWS_CHANNEL_NONVIP_MIN_INTENSITY = 9
-
-# ---------- گشت (Patrol) ----------
-PATROL_DURATION_HOURS = 12                # مدت هر گشت
-PATROL_MAX_ACTIVE_PER_COUNTRY = 3         # حداکثر گشت فعال هم‌زمان
-PATROL_FUEL_COST = 0.8                    # میلیون بشکه به ازای هر گشت
-PATROL_DETECT_SABOTAGE_PCT = 45.0         # شانس کشف خرابکاری علیه خود
-PATROL_DETECT_ASSASSINATION_PCT = 35.0    # شانس خنثی‌سازی ترور
-PATROL_INTERCEPT_BONUS_PCT = 25.0         # بونوس شانس رهگیری محموله
-
-# ---------- رزمایش (Drill) ----------
-DRILL_DURATION_HOURS = 6                  # مدت اجرای رزمایش
-DRILL_READINESS_GAIN_SOLO = 8.0           # افزایش آمادگی رزمی (رزمایش تکی)
-DRILL_READINESS_GAIN_JOINT = 14.0         # افزایش آمادگی (رزمایش مشترک)
-DRILL_READINESS_MAX = 40.0                # سقف آمادگی رزمی
-DRILL_READINESS_DECAY_PER_DAY = 3.0       # افت روزانه‌ی آمادگی
-DRILL_COOLDOWN_HOURS = 12                 # فاصله‌ی بین دو رزمایش
-DRILL_FUEL_COST = 1.5                     # میلیون بشکه
-DRILL_BUDGET_COST = 3_000_000_000.0       # هزینه‌ی دلاری رزمایش
-# رزمایش مشترک رضایت عمومی هر دو طرف را کمی بالا می‌برد (نمایش قدرت)
-DRILL_SATISFACTION_GAIN = 1.5
-
-# ---------- ترور (Assassination) ----------
-# (v2.1) شانس پایه از ۳۵ به ۲۸ کاهش یافت تا ترور فرمانده برای همه سخت‌تر شود؛
-# برتری کشورهای قوی از ضریب رده‌ی اطلاعاتی می‌آید، نه از شانس پایه‌ی بالا.
-ASSASSINATION_BASE_SUCCESS_PCT = 28.0        # شانس پایه علیه فرمانده NPC
-ASSASSINATION_PRESIDENT_SUCCESS_PCT = 8.0    # شانس پایه علیه رئیس‌جمهور بازیکن
-ASSASSINATION_EXPOSURE_ON_FAIL_PCT = 70.0    # شانس افشا در صورت شکست
-ASSASSINATION_EXPOSURE_ON_SUCCESS_PCT = 25.0 # شانس افشا حتی در صورت موفقیت
-COMMANDER_REPLACEMENT_HOURS = 48             # زمان انتصاب جانشین فرمانده
-LEADERSHIP_CRISIS_HOURS = 6                  # مدت «بحران رهبری» پس از ترور رئیس‌جمهور
-LEADERSHIP_CRISIS_STABILITY_HIT = -20.0      # افت ثبات در بحران رهبری
-ASSASSINATION_FAIL_DIPLOMATIC_HIT = -5.0     # افت رضایت مهاجم در صورت افشای شکست
 
 # بونوس هر فرمانده به شاخه‌ی تخصصی خودش (درصد افزایش قدرت)
 COMMANDER_BONUS_PCT: dict[CommanderRole, float] = {
     CommanderRole.GROUND: 10.0,
     CommanderRole.AIR: 10.0,
     CommanderRole.NAVAL: 10.0,
-    CommanderRole.INTELLIGENCE: 8.0,   # بونوس روی عملیات مخفیانه
-    CommanderRole.NUCLEAR: 0.0,        # اثرش روی سرعت برنامه‌ی هسته‌ای است
+    CommanderRole.INTELLIGENCE: 8.0,
+    CommanderRole.NUCLEAR: 0.0,
 }
 
-# تعداد فرماندهان هر کشور هنگام seed
 COMMANDERS_PER_COUNTRY_MIN = 3
 COMMANDERS_PER_COUNTRY_MAX = 5
+NUCLEAR_DETERRENCE_MAX_PCT = 30.0
 
-# ---------- رهگیری محموله (Interception) ----------
+
+# ============================================================
+#  ⚓ رهگیری و اسکورت محموله WTO (v1.10.7)
+# ============================================================
+
 INTERCEPTION_BASE_SUCCESS_PCT = 40.0       # شانس پایه‌ی رهگیری موفق
 INTERCEPTION_SEIZE_PCT = 55.0              # در صورت موفقیت: شانس مصادره (وگرنه نابودی)
 INTERCEPTION_DIPLOMATIC_HIT = -4.0         # افت رضایت رهگیرنده (بحران دیپلماتیک)
 INTERCEPTION_FAIL_SATISFACTION_HIT = -2.0  # افت رضایت در صورت شکست
 
-# ---------- آمادگی رزمی ----------
-# ضریب تبدیل آمادگی رزمی به افزایش قدرت (readiness=40 → +۲۰٪ قدرت)
-READINESS_TO_POWER_FACTOR = 0.5
-
-# ---------- بازدارندگی هسته‌ای ----------
-NUCLEAR_DETERRENCE_MAX_PCT = 30.0  # سقف کاهش تلفات مدافع دارای زرادخانه
-
-# ---------- ضریب آسیب‌پذیری هر نوع هدف ----------
-# هرچه عدد بالاتر، آن هدف در برابر حمله آسیب‌پذیرتر است (ضریب خسارت زیرساخت).
-TARGET_VULNERABILITY: dict[TargetType, float] = {
-    TargetType.MILITARY_BASE: 0.8,     # سخت‌تر — مقاوم‌سازی‌شده
-    TargetType.CITY: 1.3,              # نرم‌ترین هدف
-    TargetType.OIL_PLATFORM: 1.4,      # بسیار آسیب‌پذیر و پرارزش
-    TargetType.FACTORY: 1.1,
-    TargetType.NUCLEAR_SITE: 0.5,      # زیرزمینی/مقاوم — سخت‌ترین هدف
-    TargetType.AIRPORT: 1.2,
-    TargetType.PORT: 1.2,
-    TargetType.DEPLOYED_FORCE: 1.0,
-    TargetType.SHIPMENT: 1.5,          # بی‌دفاع در مسیر
-}
-
-# اهدافی که فقط با نوع حمله‌ی مشخصی قابل هدف‌گیری‌اند (بقیه: هر نوع حمله)
-TARGET_ALLOWED_OPERATIONS: dict[TargetType, frozenset[OperationType]] = {
-    TargetType.PORT: frozenset({
-        OperationType.NAVAL_STRIKE, OperationType.AIR_STRIKE, OperationType.SABOTAGE,
-    }),
-    TargetType.SHIPMENT: frozenset({OperationType.INTERCEPTION}),
-    TargetType.NUCLEAR_SITE: frozenset({
-        OperationType.AIR_STRIKE, OperationType.SABOTAGE,
-    }),
-}
-
-# ---------- هزینه‌ی سوخت هر نوع گشت (میلیون بشکه در هر دوره) ----------
-PATROL_FUEL_BY_TYPE: dict[PatrolType, float] = {
-    PatrolType.AIR: 1.2,      # گشت هوایی پرهزینه‌ترین
-    PatrolType.GROUND: 0.5,
-    PatrolType.NAVAL: 1.0,
-}
-
-# نگاشت نوع گشت به branchهای تجهیزات لازم (هماهنگ با countries.json)
-PATROL_REQUIRED_BRANCHES: dict[PatrolType, frozenset[str]] = {
-    PatrolType.AIR: frozenset({"نیروی هوایی", "سامانه‌های حمله هوایی"}),
-    PatrolType.GROUND: frozenset({"نیروی زمینی", "خودروهای زمینی", "سامانه‌های دفاعی"}),
-    PatrolType.NAVAL: frozenset({"نیروی دریایی"}),
-}
-
-
-# ============================================================
-#  🕵️ جاسوسی و اسکورت محموله (v1.10.7)
-# ============================================================
-
-# ---------- عملیات جاسوسی (پیش‌نیاز ترور) ----------
-# بدون اطلاعات معتبر، ترور فرمانده اصلاً ممکن نیست.
-# (v2.1) جاسوسی سخت‌تر و پرهزینه‌تر شد و شانس ثابت جای خود را به «قدرت اطلاعاتی»
-# کشورها داد (INTEL_POWER پایین‌تر در همین فایل). این عدد فقط به‌عنوان
-# پشتیبان/مرجع تاریخی نگه داشته شده است؛ محاسبه‌ی واقعی در intel_power_service.
-ESPIONAGE_BASE_SUCCESS_PCT = 35.0       # شانس پایه‌ی موفقیت جاسوسی (رده‌ی برابر)
-ESPIONAGE_COST_USD = 1_200_000_000.0    # هزینه‌ی هر عملیات جاسوسی
-ESPIONAGE_COOLDOWN_HOURS = 8            # فاصله‌ی بین دو جاسوسی
-ESPIONAGE_INTEL_VALID_HOURS = 36        # مدت اعتبار اطلاعات به‌دست‌آمده
-ESPIONAGE_DETECTION_BASE_PCT = 30.0     # شانس پایه‌ی لو رفتن جاسوس
-
-# کیفیت اطلاعات (۰ تا ۱۰۰) از این بازه‌ی تصادفی تعیین می‌شود
-ESPIONAGE_QUALITY_MIN = 35.0
-ESPIONAGE_QUALITY_MAX = 90.0
-# بونوس کیفیت بابت ماهواره‌ی فعال و فرمانده‌ی اطلاعات
-ESPIONAGE_SATELLITE_QUALITY_BONUS = 15.0
-ESPIONAGE_COMMANDER_QUALITY_FACTOR = 1.5   # ضرب در بونوس فرمانده اطلاعات
-
-# حداقل کیفیت اطلاعات برای اینکه ترور مجاز باشد
-ASSASSINATION_MIN_INTEL_QUALITY = 30.0
-# اثر کیفیت اطلاعات روی شانس ترور:
-# شانس = پایه × (INTEL_SUCCESS_FLOOR + کیفیت/۱۰۰ × INTEL_SUCCESS_SCALE)
-INTEL_SUCCESS_FLOOR = 0.4
-INTEL_SUCCESS_SCALE = 0.9
-
-# ---------- اسکورت محموله ----------
 # فروشنده می‌تواند نیروی محافظ همراه محموله بفرستد.
 ESCORT_MAX_UNITS = 40                   # حداکثر واحد اسکورت هر محموله
 ESCORT_FUEL_PER_UNIT = 0.03             # میلیون بشکه به ازای هر واحد
@@ -768,144 +531,17 @@ ESCORT_ALLOWED_BRANCHES: frozenset[str] = frozenset({
     "نیروی دریایی", "نیروی هوایی", "سامانه‌های دفاعی",
 })
 
-# (v1.11.1) اسکورت محموله فقط با جنگنده انجام می‌شود؛ موشک، پهپاد، بالگرد و
-# شناورها نقش اسکورت ندارند. این فیلتر روی «دسته» (category) اعمال می‌شود و
-# از ESCORT_ALLOWED_BRANCHES سخت‌گیرانه‌تر است.
+# اسکورت محموله فقط با جنگنده انجام می‌شود
 ESCORT_ALLOWED_CATEGORIES: frozenset[str] = frozenset({"جنگنده"})
 
-# نیروی رهگیرِ محموله همچنان می‌تواند از همه‌ی شاخه‌های ESCORT_ALLOWED_BRANCHES
-# باشد (رهگیری با ناوچه/پدافند منطقی است)؛ محدودیت جنگنده فقط برای اسکورت است.
-
-# ---------- رهگیری محموله: سقف نیرو و تخلیه‌ی پدافند (v1.11.2) ----------
-# حداکثر واحدی که می‌توان برای رهگیری یک محموله اعزام کرد (قرینه‌ی سقف اسکورت).
+# حداکثر واحدی که می‌توان برای رهگیری یک محموله اعزام کرد
 INTERCEPTOR_MAX_UNITS = 40
 
-# سامانه‌های این شاخه‌ها پس از رهگیری «تخلیه» می‌شوند: کل تعداد اعزام‌شده از
-# موجودی حذف می‌شود، نه فقط سهم تلفات. منطق واقع‌گرایانه: موشک پدافندی شلیک
-# می‌شود و از بین می‌رود، در حالی‌که جنگنده و ناوچه به پایگاه برمی‌گردند.
+# سامانه‌های این شاخه‌ها پس از رهگیری «تخلیه» می‌شوند
 INTERCEPTOR_DEPLETED_BRANCHES: frozenset[str] = frozenset({"سامانه‌های دفاعی"})
 
 
-# ============================================================
-#  🕵️ قدرت اطلاعاتی کشورها (v2.1)
-# ============================================================
-#
-# پیش از v2.1 شانس جاسوسی برای همه‌ی کشورها ۵۵٪ ثابت بود؛ یعنی یمن دقیقاً مثل
-# آمریکا جاسوسی می‌کرد. اکنون هر کشور یک «قدرت اطلاعاتی» (۰ تا ۱۰۰) دارد که
-# بر اساس توان واقعی سرویس‌های اطلاعاتی‌اش در دنیای ۲۰۲۶ تعیین شده است.
-#
-# اختلاف قدرت اطلاعاتی دو کشور (gap) هم شانس موفقیت جاسوسی را تعیین می‌کند،
-# هم کیفیت اطلاعات به‌دست‌آمده، و هم شانس ترور. اگر اختلاف از INTEL_BLOCK_GAP
-# بدتر باشد، عملیات اصلاً ممکن نیست (کشور ضعیف نمی‌تواند قدرت‌ها را هدف بگیرد).
-#
-# منطق محاسبه در `services/intel_power_service.py` است (مستقل و قابل‌تست).
-# کلیدها `name_en` هستند — دقیقاً مطابق `data/countries.json`.
-
-INTEL_POWER: dict[str, float] = {
-    # ⭐ نخبه (۹۰–۱۰۰) — سرویس‌های اطلاعاتی جهانی با شبکه‌ی فراقاره‌ای
-    "USA": 98.0,          # CIA/NSA — گسترده‌ترین شبکه‌ی سیگنالی و انسانی جهان
-    "Israel": 96.0,       # موساد/آمان — نفوذ عمیق در منطقه، نسبت به اندازه بی‌نظیر
-    "Britain": 92.0,      # MI6/GCHQ — شبکه‌ی تاریخی و عضو Five Eyes
-    "Russia": 90.0,       # SVR/FSB/GRU — سنت قوی جاسوسی و ضدجاسوسی
-    "China": 90.0,        # MSS — سایبری و اقتصادی در مقیاس عظیم
-
-    # 🔵 قوی (۷۰–۸۵) — سرویس حرفه‌ای با توان منطقه‌ای/فراملی
-    "France": 82.0,       # DGSE — حضور قوی در آفریقا و خاورمیانه
-    "Germany": 78.0,      # BND
-    "Iran": 76.0,         # وزارت اطلاعات و اطلاعات سپاه — نفوذ منطقه‌ای
-    "SouthKorea": 76.0,   # NIS — تمرکز شدید روی کره‌ی شمالی
-    "India": 74.0,        # RAW
-    "Canada": 74.0,       # CSIS — عضو Five Eyes
-    "Pakistan": 72.0,     # ISI — قدرتمند در منطقه
-    "Japan": 72.0,        # PSIA/CIRO
-    "Australia": 72.0,    # ASIS — عضو Five Eyes
-    "Turkey": 70.0,       # MİT
-
-    # 🟡 متوسط (۴۵–۶۵) — توان جدی ولی محدود به منطقه‌ی خود
-    "NorthKorea": 65.0,   # RGB — سایبری و عملیات ویژه
-    "Taiwan": 62.0,       # NSB — تمرکز روی چین
-    "SaudiArabia": 58.0,
-    "Sweden": 58.0,       # MUST — سیگنالی قوی نسبت به اندازه
-    "Switzerland": 55.0,
-    "UAE": 55.0,
-    "Italy": 55.0,        # AISE
-    "Spain": 52.0,        # CNI
-    "Poland": 52.0,
-    "Norway": 52.0,       # E-tjenesten — شنود شمال اروپا
-    "Ukraine": 50.0,      # HUR/SBU — تجربه‌ی جنگی بالا، منابع محدود
-    "Egypt": 50.0,
-    "Qatar": 48.0,
-    "Brazil": 48.0,       # ABIN
-    "Greece": 45.0,
-    "Azerbaijan": 45.0,
-    "Mexico": 45.0,
-    "Oman": 45.0,
-
-    # 🔴 ضعیف (۲۰–۴۰) — سرویس فرسوده یا درگیر بحران داخلی
-    "Argentina": 35.0,
-    "Iraq": 32.0,
-    "Colombia": 32.0,
-    "Syria": 30.0,
-    "Yemen": 22.0,
-    "Afghanistan": 20.0,
-}
-
-# قدرت اطلاعاتی پیش‌فرض برای کشوری که در فهرست بالا نیست (کشور تازه‌اضافه‌شده)
-INTEL_POWER_DEFAULT = 40.0
-
-# رده‌بندی برای نمایش به بازیکن: (حد پایین، برچسب فارسی)
-INTEL_TIERS: list[tuple[float, str]] = [
-    (90.0, "⭐ نخبه"),
-    (70.0, "🔵 قوی"),
-    (45.0, "🟡 متوسط"),
-    (0.0, "🔴 ضعیف"),
-]
-
-# اگر (قدرت جاسوس − قدرت هدف) از این عدد بدتر باشد، عملیات جاسوسی/ترور
-# اصلاً ممکن نیست. مثال: یمن (۲۲) علیه آمریکا (۹۸) → اختلاف ۷۶− → مسدود.
-INTEL_BLOCK_GAP = -45.0
-
-# شانس جاسوسی = ESPIONAGE_BASE_SUCCESS_PCT + اختلاف × این ضریب (سپس clamp)
-INTEL_ESPIONAGE_GAP_FACTOR = 0.45
-INTEL_ESPIONAGE_CHANCE_MIN = 5.0
-INTEL_ESPIONAGE_CHANCE_MAX = 85.0
-
-# اثر اختلاف روی کیفیت اطلاعات به‌دست‌آمده (نفوذ به کشور قوی‌تر = اطلاعات ناقص‌تر)
-INTEL_QUALITY_GAP_FACTOR = 0.35
-
-# ضریب رده‌ای ترور فرمانده: ۱ + اختلاف ÷ این عدد (سپس clamp به بازه‌ی زیر)
-INTEL_ASSASSINATION_GAP_DIVISOR = 200.0
-INTEL_ASSASSINATION_FACTOR_MIN = 0.55
-INTEL_ASSASSINATION_FACTOR_MAX = 1.35
-
-# اثر اختلاف روی شانس ترور رئیس‌جمهور (شانس پایه ۸٪ + اختلاف × این ضریب)
-INTEL_PRESIDENT_GAP_FACTOR = 0.06
-
-
-# ============================================================
-#  🔒 عملیات غیرفعال‌شده و قفل آپشن‌ها (v2.1)
-# ============================================================
-
-# حمله‌ی نظامی علنی و خرابکاری از داخل ربات غیرفعال شده‌اند؛ بازیکن باید
-# رول را از طریق پشتیبانی ارسال کند (تصمیم مالک بازی).
-DISABLED_OPERATIONS: frozenset[OperationType] = frozenset({
-    OperationType.GROUND_ASSAULT,
-    OperationType.AIR_STRIKE,
-    OperationType.NAVAL_STRIKE,
-    OperationType.SABOTAGE,
-})
-
-# نشانی پشتیبانی برای ارسال رول عملیات‌های غیرفعال‌شده
-SUPPORT_USERNAME = "@GameOfEarth_Support"
-
-OPERATION_DISABLED_TEXT = (
-    "🔒 <b>این بخش از داخل ربات غیرفعال است.</b>\n\n"
-    f"برای ارسال رول به نشانی {SUPPORT_USERNAME} مراجعه کنید."
-)
-
 # ---------- آپشن‌های قابل‌قفل توسط مالک (پنل /god → قفل آپشن‌ها) ----------
-# کلید → (نام فارسی، دسته). مالک می‌تواند هر آپشن را برای یک/چند/همه‌ی
-# کشورها ببندد. اعمال در `handlers/deps.assert_feature`.
 FEATURE_CAT_MILITARY = "⚔️ نظامی"
 FEATURE_CAT_ECONOMY = "💰 اقتصاد"
 FEATURE_CAT_DIPLOMACY = "🤝 دیپلماسی"
@@ -920,12 +556,7 @@ FEATURE_CATEGORIES: list[str] = [
 
 LOCKABLE_FEATURES: dict[str, tuple[str, str]] = {
     # ⚔️ نظامی
-    "covert.assassination": ("🎯 ترور", FEATURE_CAT_MILITARY),
-    "covert.espionage": ("🔍 جاسوسی", FEATURE_CAT_MILITARY),
-    "military.attack": ("💥 حمله نظامی", FEATURE_CAT_MILITARY),
     "military.interception": ("⚓ رهگیری محموله", FEATURE_CAT_MILITARY),
-    "military.patrol": ("🛩 گشت دفاعی", FEATURE_CAT_MILITARY),
-    "military.drill": ("🎪 رزمایش", FEATURE_CAT_MILITARY),
     "military.base": ("🏗 پایگاه نظامی", FEATURE_CAT_MILITARY),
     "military.satellite": ("📡 ماهواره فضایی", FEATURE_CAT_MILITARY),
     "military.deploy": ("🪖 استقرار نیرو", FEATURE_CAT_MILITARY),
@@ -949,7 +580,6 @@ LOCKABLE_FEATURES: dict[str, tuple[str, str]] = {
     "dip.sanction": ("🚫 تحریم", FEATURE_CAT_DIPLOMACY),
     "dip.alliance": ("🤝 اتحاد", FEATURE_CAT_DIPLOMACY),
     "dip.speech": ("🎤 سخنرانی", FEATURE_CAT_DIPLOMACY),
-    "dip.war": ("🚨 اعلام جنگ", FEATURE_CAT_DIPLOMACY),
     # 🏛 حاکمیت
     "gov.system": ("🏛 تغییر نظام حاکمیتی", FEATURE_CAT_GOVERNANCE),
     "gov.tax": ("💵 مالیات", FEATURE_CAT_GOVERNANCE),

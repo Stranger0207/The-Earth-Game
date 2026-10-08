@@ -5,7 +5,7 @@ from __future__ import annotations
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from ..enums import ATTACK_FA, MIL_FACTORY_FA, AttackType, MilitaryFactoryType
+from ..enums import MIL_FACTORY_FA, MilitaryFactoryType
 from ..utils.ui import STYLE_MAIN, STYLE_NO, STYLE_OK
 
 
@@ -45,7 +45,6 @@ def military_menu_kb() -> InlineKeyboardMarkup:
     """منوی اصلی نظامی."""
     builder = InlineKeyboardBuilder()
     builder.button(text="⚔️ گزارش تجهیزات", callback_data="mil:report", style=STYLE_MAIN)
-    builder.button(text="💥 حمله", callback_data="mil:attack", style=STYLE_NO)
     builder.button(text="🏗 پایگاه‌های نظامی", callback_data="mil:base", style=STYLE_MAIN)
     builder.button(text="📡 ماهواره فضایی", callback_data="mil:sat", style=STYLE_MAIN)
     builder.button(text="☢️ تأسیسات هسته‌ای", callback_data="mil:nuclear", style=STYLE_NO)
@@ -53,7 +52,7 @@ def military_menu_kb() -> InlineKeyboardMarkup:
     builder.button(text="💰 فروش تجهیزات", callback_data="mil:sell", style=STYLE_OK)
     builder.button(text="🪖 استقرار نیرو", callback_data="mil:deploy", style=STYLE_MAIN)
     builder.button(text="🔙 بازگشت", callback_data="menu:main", style=STYLE_MAIN)
-    builder.adjust(2, 2, 1, 2, 1, 1)
+    builder.adjust(2, 2, 2, 1, 1)
     return builder.as_markup()
 
 
@@ -107,16 +106,4 @@ def military_factory_types_kb() -> InlineKeyboardMarkup:
         builder.button(text=MIL_FACTORY_FA[ftype], callback_data=f"milfac_type:{ftype.value}", style=STYLE_OK)
     builder.button(text="🔙 بازگشت", callback_data="mil:factory", style=STYLE_MAIN)
     builder.adjust(2, 2, 2, 2, 2, 2, 1)
-    return builder.as_markup()
-
-
-def attack_types_kb() -> InlineKeyboardMarkup:
-    """انتخاب نوع حمله (همه قرمز — کنش تهاجمی)."""
-    builder = InlineKeyboardBuilder()
-    for atype in AttackType:
-        builder.button(
-            text=ATTACK_FA[atype], callback_data=f"atk_type:{atype.value}", style=STYLE_NO
-        )
-    builder.button(text="🔙 بازگشت", callback_data="menu:military", style=STYLE_MAIN)
-    builder.adjust(2, 2, 1)
     return builder.as_markup()

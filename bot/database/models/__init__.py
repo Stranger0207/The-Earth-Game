@@ -4,16 +4,14 @@
 """
 
 from .alliance import Alliance, AllianceMember
-from .attack import Attack
-from .battle import Battle, WarDeclaration
+from .auction import Auction, AuctionBid
+from .bank_loan import BankLoan
 from .bot_state import BotState
 from .claim import ClaimRequest
 from .commander import Commander
-from .commander_intel import CommanderIntel
 from .cooldown import Cooldown
 from .country import Country
 from .deployment import Deployment
-from .drill import Drill
 from .diplomacy import (
     Contract,
     GroupMeeting,
@@ -34,7 +32,6 @@ from .military import MilitaryAsset
 from .military_base import BaseEquipment, MilitaryBase
 from .military_factory import MilitaryFactory
 from .military_sale import MilitarySale
-from .news_fingerprint import NewsFingerprint
 from .nuclear import (
     NuclearFacility,
     NuclearInspection,
@@ -43,12 +40,8 @@ from .nuclear import (
     NuclearTest,
     NuclearWarhead,
 )
-from .operation import Operation
-from .patrol import Patrol
 from .reserves import Reserve
 from .satellite import Satellite
-from .auction import Auction, AuctionBid
-from .bank_loan import BankLoan
 from .tariff import TariffRate
 from .trade import ResourceSale
 from .user import User
@@ -56,21 +49,17 @@ from .user import User
 __all__ = [
     "Alliance",
     "AllianceMember",
-    "Attack",
     "Auction",
     "AuctionBid",
     "BankLoan",
     "BaseEquipment",
-    "Battle",
     "BotState",
     "ClaimRequest",
     "Commander",
-    "CommanderIntel",
     "Contract",
     "Cooldown",
     "Country",
     "Deployment",
-    "Drill",
     "Facility",
     "FeatureLock",
     "Investment",
@@ -84,15 +73,12 @@ __all__ = [
     "MilitaryBase",
     "MilitaryFactory",
     "MilitarySale",
-    "NewsFingerprint",
     "NuclearFacility",
     "NuclearInspection",
     "NuclearProgram",
     "NuclearTech",
     "NuclearTest",
     "NuclearWarhead",
-    "Operation",
-    "Patrol",
     "PhoneCall",
     "PhoneCallMessage",
     "Protest",
@@ -104,5 +90,4 @@ __all__ = [
     "TariffRate",
     "User",
     "VisaRequirement",
-    "WarDeclaration",
 ]

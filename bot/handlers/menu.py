@@ -31,26 +31,35 @@ async def cb_main(
     await state.clear()
     await call.answer()
     if getattr(db_user, "active_gamemode", "global") == "cabinet":
-        from ..database.repositories import cabinet as cabinet_repo
-        from ..keyboards.cabinet import cabinet_main_menu_kb, cabinet_roles_list_kb
-        from ..services.cabinet_service import render_official_profile
-
-        member = await cabinet_repo.get_member_by_user(session, db_user.telegram_id)
-        if member is not None:
-            await safe_edit(
-                call,
-                render_official_profile(member.role_key, db_user.first_name),
-                reply_markup=cabinet_main_menu_kb(member.role_key),
+        from ..config import get_settings
+        if not get_settings().is_admin(db_user.telegram_id):
+            db_user.active_gamemode = "global"
+            await session.commit()
+            await call.answer(
+                "دسترسی به این گیم مود توسط تیم مدیریت کره زمین بسته شده. لطفا گیم مود دیگری را امتحان کنید.",
+                show_alert=True,
             )
         else:
-            members = await cabinet_repo.list_members(session)
-            await safe_edit(
-                call,
-                "🏛 <b>دولت فدرال ایالات متحده آمریکا (گیم‌مود مقاماتی)</b>\n\n"
-                "شما سمتی در دولت ندارید. لطفاً یک سمت خالی را انتخاب کنید:",
-                reply_markup=cabinet_roles_list_kb(members, db_user.telegram_id),
-            )
-        return
+            from ..database.repositories import cabinet as cabinet_repo
+            from ..keyboards.cabinet import cabinet_main_menu_kb, cabinet_roles_list_kb
+            from ..services.cabinet_service import render_official_profile
+
+            member = await cabinet_repo.get_member_by_user(session, db_user.telegram_id)
+            if member is not None:
+                await safe_edit(
+                    call,
+                    render_official_profile(member.role_key, db_user.first_name),
+                    reply_markup=cabinet_main_menu_kb(member.role_key),
+                )
+            else:
+                members = await cabinet_repo.list_members(session)
+                await safe_edit(
+                    call,
+                    "🏛 <b>دولت فدرال ایالات متحده آمریکا (گیم‌مود مقاماتی)</b>\n\n"
+                    "شما سمتی در دولت ندارید. لطفاً یک سمت خالی را انتخاب کنید:",
+                    reply_markup=cabinet_roles_list_kb(members, db_user.telegram_id),
+                )
+            return
 
     await show_menu(call, PANEL_TITLE, main_menu_kb(), image_key="main")
 

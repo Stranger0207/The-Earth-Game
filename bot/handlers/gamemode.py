@@ -95,6 +95,15 @@ async def cb_set_cabinet(
     call: CallbackQuery, session: AsyncSession, db_user: User
 ) -> None:
     """تغییر حالت به کشوری مقاماتی (دولت فدرال آمریکا)."""
+    from ..config import get_settings
+
+    if not get_settings().is_admin(call.from_user.id):
+        await call.answer(
+            "دسترسی به این گیم مود توسط تیم مدیریت کره زمین بسته شده. لطفا گیم مود دیگری را امتحان کنید.",
+            show_alert=True,
+        )
+        return
+
     await call.answer("حالت بازی به کشوری مقاماتی تغییر یافت ✅")
     db_user.active_gamemode = "cabinet"
     await session.commit()

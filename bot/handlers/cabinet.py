@@ -45,6 +45,31 @@ from ..utils.ui import STYLE_MAIN, STYLE_NO, STYLE_OK
 router = Router(name="cabinet")
 
 
+@router.callback_query.middleware()
+async def cabinet_cb_guard(handler, event: CallbackQuery, data: dict):
+    from ..config import get_settings
+
+    if not get_settings().is_admin(event.from_user.id):
+        await event.answer(
+            "دسترسی به این گیم مود توسط تیم مدیریت کره زمین بسته شده. لطفا گیم مود دیگری را امتحان کنید.",
+            show_alert=True,
+        )
+        return None
+    return await handler(event, data)
+
+
+@router.message.middleware()
+async def cabinet_msg_guard(handler, event: Message, data: dict):
+    from ..config import get_settings
+
+    if not get_settings().is_admin(event.from_user.id):
+        await event.answer(
+            "دسترسی به این گیم مود توسط تیم مدیریت کره زمین بسته شده. لطفا گیم مود دیگری را امتحان کنید."
+        )
+        return None
+    return await handler(event, data)
+
+
 def _back_to_desk_kb(role_key: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[[

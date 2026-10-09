@@ -493,3 +493,31 @@ class AuctionStatus(str, enum.Enum):
     ACTIVE = "active"          # در حال برگزاری
     COMPLETED = "completed"    # به اتمام رسیده و برنده مشخص شده
     CANCELLED = "cancelled"    # لغوشده توسط فروشنده یا منقضی بدون پیشنهاد
+
+
+class GameMode(str, enum.Enum):
+    """حالت‌های بازی (v2.5 — مگاآپدیت گیم‌مود مقاماتی)."""
+
+    GLOBAL = "global"     # کشوری جهانی (کلاسیک — اداره یک کشور در جهان)
+    CABINET = "cabinet"   # کشوری مقاماتی (کابینه دولت ایالات متحده آمریکا)
+
+
+class CabinetRole(str, enum.Enum):
+    """۱۵ مقام ارشد دولت ایالات متحده آمریکا در گیم‌مود مقاماتی."""
+
+    PRESIDENT = "president"                     # ۱. رئیس‌جمهور: Donald J. Trump
+    VICE_PRESIDENT = "vice_president"           # ۲. معاون رئیس‌جمهور: JD Vance
+    SECRETARY_STATE = "secretary_state"         # ۳. وزیر امور خارجه: Marco Rubio
+    SECRETARY_DEFENSE = "secretary_defense"     # ۴. وزیر دفاع: Pete Hegseth
+    CENTCOM_COMMANDER = "centcom_commander"     # ۵. فرمانده کل ارتش / سنتکام: Brad Cooper
+    CIA_DIRECTOR = "cia_director"               # ۶. مدیر سیا: John Ratcliffe
+    HOMELAND_SECURITY = "homeland_security"     # ۷. وزیر امنیت داخلی: Markwayne Mullin
+    PRESS_SECRETARY = "press_secretary"         # ۸. سخنگوی کاخ سفید: Karoline Leavitt
+    TREASURY_SECRETARY = "treasury_secretary"   # ۹. وزیر خزانه‌داری: Scott Bessent
+    TECH_EFFICIENCY = "tech_efficiency"         # ۱۰. دپارتمان کارآمدی و هوش مصنوعی DOGE: Elon Musk / Vivek Ramaswamy
+    ATTORNEY_GENERAL = "attorney_general"       # ۱۱. دادستان کل / وزیر دادگستری: Todd Blanche
+    AEROSPACE_DEFENSE = "aerospace_defense"     # ۱۲. سازمان هوافضا و صنایع دفاعی: Bill Nelson
+    HEALTH_CRISIS = "health_crisis"             # ۱۳. وزیر بهداشت و بحران: Robert F. Kennedy Jr.
+    JOINT_CHIEFS = "joint_chiefs"               # ۱۴. رئیس ستاد مشترک و نقشه‌برداری: Dan Caine
+    NATIONAL_SECURITY = "national_security"     # ۱۵. مشاور امنیت ملی: Michael Waltz
+

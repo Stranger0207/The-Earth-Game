@@ -86,6 +86,26 @@ async def cmd_start(
             await show_auction_details(message, session, db_user, auc_id)
             return
 
+    if getattr(db_user, "active_gamemode", "global") == "cabinet":
+        from ..database.repositories import cabinet as cabinet_repo
+        from ..keyboards.cabinet import cabinet_main_menu_kb, cabinet_roles_list_kb
+        from ..services.cabinet_service import render_official_profile
+
+        member = await cabinet_repo.get_member_by_user(session, db_user.telegram_id)
+        if member is not None:
+            await message.answer(
+                render_official_profile(member.role_key, db_user.first_name),
+                reply_markup=cabinet_main_menu_kb(member.role_key),
+            )
+        else:
+            members = await cabinet_repo.list_members(session)
+            await message.answer(
+                "🏛 <b>دولت فدرال ایالات متحده آمریکا (گیم‌مود مقاماتی)</b>\n\n"
+                "شما سمتی در دولت ندارید. لطفاً یک سمت خالی را انتخاب کنید:",
+                reply_markup=cabinet_roles_list_kb(members, db_user.telegram_id),
+            )
+        return
+
     country = await get_player_country(session, db_user)
     if country is not None:
         await show_menu(
@@ -105,7 +125,27 @@ async def cmd_menu(
     session: AsyncSession,
     db_user: User,
 ) -> None:
-    """نمایش پنل اصلی (در صورت داشتن کشور)."""
+    """نمایش پنل اصلی (در صورت داشتن کشور یا سمت در کابینه)."""
+    if getattr(db_user, "active_gamemode", "global") == "cabinet":
+        from ..database.repositories import cabinet as cabinet_repo
+        from ..keyboards.cabinet import cabinet_main_menu_kb, cabinet_roles_list_kb
+        from ..services.cabinet_service import render_official_profile
+
+        member = await cabinet_repo.get_member_by_user(session, db_user.telegram_id)
+        if member is not None:
+            await message.answer(
+                render_official_profile(member.role_key, db_user.first_name),
+                reply_markup=cabinet_main_menu_kb(member.role_key),
+            )
+        else:
+            members = await cabinet_repo.list_members(session)
+            await message.answer(
+                "🏛 <b>دولت فدرال ایالات متحده آمریکا (گیم‌مود مقاماتی)</b>\n\n"
+                "شما سمتی در دولت ندارید. لطفاً یک سمت خالی را انتخاب کنید:",
+                reply_markup=cabinet_roles_list_kb(members, db_user.telegram_id),
+            )
+        return
+
     country = await get_player_country(session, db_user)
     if country is None:
         await message.answer("ابتدا باید کشوری بگیرید. /claim", reply_markup=_claim_kb())

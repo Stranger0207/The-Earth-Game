@@ -76,6 +76,8 @@ _COLUMN_MIGRATIONS = [
     # v2.2 — رتبه‌بندی اعتباری وام بانکی و مزایده
     ("countries", "credit_rating", "VARCHAR(16) NOT NULL DEFAULT 'normal'"),
     ("auctions", "channel_message_id", "BIGINT"),
+    # v2.5 — گیم‌مود مقاماتی
+    ("users", "active_gamemode", "VARCHAR(24) NOT NULL DEFAULT 'global'"),
 ]
 
 

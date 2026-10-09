@@ -36,6 +36,13 @@ from .operations import (
     InterceptionForm,
 )
 from .satellite import SatelliteForm
+from .cabinet import (
+    CabinetExecutiveOrderForm,
+    CabinetInquiryForm,
+    CabinetInspectionForm,
+    CabinetMemoForm,
+    CabinetPressBriefingForm,
+)
 
 __all__ = [
     "AdvisorForm",

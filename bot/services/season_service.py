@@ -65,6 +65,12 @@ from ..database.models import (
     Satellite,
     TariffRate,
     User,
+    CabinetActionLog,
+    CabinetInquiry,
+    CabinetInspection,
+    CabinetMeeting,
+    CabinetMember,
+    CabinetMemo,
 )
 from ..database.repositories import countries as countries_repo
 
@@ -142,13 +148,20 @@ async def reset_season(session: AsyncSession) -> dict[str, int]:
     await session.execute(delete(AuctionBid))
     await session.execute(delete(Auction))
     await session.execute(delete(BankLoan))
+    # --- گیم‌مود مقاماتی (v2.5) ---
+    await session.execute(delete(CabinetActionLog))
+    await session.execute(delete(CabinetMeeting))
+    await session.execute(delete(CabinetInspection))
+    await session.execute(delete(CabinetInquiry))
+    await session.execute(delete(CabinetMemo))
+    await session.execute(delete(CabinetMember))
 
     # --- ۲) آزادسازی مالکیت همه‌ی کشورها و رفع تعلیق کاربران ---
     await session.execute(
         update(Country).values(owner_user_id=None, is_claimed=False)
     )
     await session.execute(
-        update(User).values(is_suspended=False)
+        update(User).values(is_suspended=False, active_gamemode="global")
     )
 
     # --- ۳) بازگرداندن داده‌ی هر کشور به حالت اولیه ---

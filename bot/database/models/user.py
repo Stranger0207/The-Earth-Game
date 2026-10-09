@@ -13,6 +13,7 @@ from ...enums import UserRole
 
 if TYPE_CHECKING:
     from .country import Country
+    from .cabinet import CabinetMember
 
 
 def _utcnow() -> datetime:
@@ -45,9 +46,18 @@ class User(Base):
         DateTime(timezone=True), default=_utcnow, nullable=False
     )
 
+    # گیم‌مود فعال کاربر (v2.5): global (کشوری جهانی) یا cabinet (کشوری مقاماتی)
+    active_gamemode: Mapped[str] = mapped_column(
+        String(24), default="global", nullable=False
+    )
+
     # کشوری که این کاربر مالک آن است (در صورت وجود)
     country: Mapped["Country | None"] = relationship(
         back_populates="owner", uselist=False
+    )
+    # سمت مقاماتی در دولت آمریکا (در صورت وجود در گیم‌مود مقاماتی)
+    cabinet_member: Mapped["CabinetMember | None"] = relationship(
+        back_populates="user", uselist=False
     )
 
     def __repr__(self) -> str:  # برای دیباگ

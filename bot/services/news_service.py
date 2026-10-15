@@ -61,6 +61,24 @@ async def send_log(bot: Bot, text: str, reply_markup=None) -> None:
         logger.warning("Failed to send log: %s", exc)
 
 
+async def send_log_photo(
+    bot: Bot, photo, caption: str = "", reply_markup=None
+) -> None:
+    """ارسال یک تصویر به همراه کپشن به گروه لاگ مدیران."""
+    if settings.log_group_id is None:
+        logger.info("Log group not configured. Photo log: %s", caption)
+        return
+    try:
+        await bot.send_photo(
+            settings.log_group_id,
+            photo=photo,
+            caption=caption,
+            reply_markup=reply_markup,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Failed to send log photo: %s", exc)
+
+
 async def send_log_document(
     bot: Bot, document, caption: str = "", reply_markup=None
 ) -> None:
@@ -77,4 +95,5 @@ async def send_log_document(
         )
     except Exception as exc:  # noqa: BLE001
         logger.warning("Failed to send log document: %s", exc)
+
 

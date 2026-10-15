@@ -59,3 +59,22 @@ async def send_log(bot: Bot, text: str, reply_markup=None) -> None:
         await bot.send_message(settings.log_group_id, text, reply_markup=reply_markup)
     except Exception as exc:  # noqa: BLE001
         logger.warning("Failed to send log: %s", exc)
+
+
+async def send_log_document(
+    bot: Bot, document, caption: str = "", reply_markup=None
+) -> None:
+    """ارسال یک فایل سند به همراه کپشن به گروه لاگ مدیران."""
+    if settings.log_group_id is None:
+        logger.info("Log group not configured. Document log: %s", caption)
+        return
+    try:
+        await bot.send_document(
+            settings.log_group_id,
+            document=document,
+            caption=caption,
+            reply_markup=reply_markup,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Failed to send log document: %s", exc)
+

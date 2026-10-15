@@ -14,3 +14,10 @@ openai>=1.40.0
 # --- کانفیگ از روی فایل env ---
 pydantic-settings>=2.3.0
 python-dotenv>=1.0.1
+
+# --- تولید اسناد رسمی PDF دیپلماتیک (v2.7) ---
+fpdf2>=2.8.0
+uharfbuzz>=0.40.0
+arabic-reshaper>=3.0.0
+python-bidi>=0.6.0
+

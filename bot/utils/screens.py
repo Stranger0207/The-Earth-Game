@@ -43,6 +43,10 @@ async def safe_edit(call: CallbackQuery, text: str, reply_markup=None, **kwargs)
             except Exception:  # noqa: BLE001 — حذف ممکن است شکست بخورد؛ مهم نیست
                 pass
             await msg.answer(text, reply_markup=reply_markup, **kwargs)
+        elif msg.document:
+            # (v2.7) پیام حاوی سند/فایل PDF است (مانند نامه‌های رسمی دیپلماتیک).
+            # نباید فایل سند از چت حذف شود، بلکه فرم یا پیام متنی در پیام تازه باز شود.
+            await msg.answer(text, reply_markup=reply_markup, **kwargs)
         else:
             await msg.edit_text(text, reply_markup=reply_markup, **kwargs)
     except Exception as exc:  # noqa: BLE001 — خطای تلگرام نباید جریان بازی را قطع کند

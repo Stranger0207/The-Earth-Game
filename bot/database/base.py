@@ -86,6 +86,30 @@ _COLUMN_MIGRATIONS = [
 ]
 
 
+_OBSOLETE_TABLES = [
+    "commander_intel",
+    "attacks",
+    "battles",
+    "drills",
+    "operations",
+    "patrols",
+    "war_declarations",
+    "news_fingerprints",
+]
+
+
+def _cleanup_obsolete_tables(sync_conn) -> None:
+    """جدول‌های منسوخ‌شده که مدل ندارند را حذف می‌کند تا کلیدهای خارجی‌شان مانع ریست نشوند."""
+    from sqlalchemy import inspect, text
+
+    inspector = inspect(sync_conn)
+    existing_tables = set(inspector.get_table_names())
+    cascade = " CASCADE" if sync_conn.dialect.name == "postgresql" else ""
+    for tbl in _OBSOLETE_TABLES:
+        if tbl in existing_tables:
+            sync_conn.execute(text(f"DROP TABLE IF EXISTS {tbl}{cascade};"))
+
+
 def _apply_column_migrations(sync_conn) -> None:
     """
     ستون‌های جدید را به جدول‌های موجود اضافه می‌کند (مستقل از نوع دیتابیس).
@@ -113,5 +137,7 @@ async def init_db() -> None:
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        # پاک‌سازی جدول‌های منسوخ‌شده برای رفع وابستگی‌های باقیمانده
+        await conn.run_sync(_cleanup_obsolete_tables)
         # مهاجرت سبک: افزودن ستون‌های جدید به جدول‌های از قبل موجود
         await conn.run_sync(_apply_column_migrations)

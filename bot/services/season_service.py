@@ -16,7 +16,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from sqlalchemy import delete, update
+from sqlalchemy import delete, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
@@ -107,6 +107,14 @@ async def reset_season(session: AsyncSession) -> dict[str, int]:
     seed = _load_seed()
     now = datetime.now(timezone.utc)
     yield_until = now + timedelta(hours=DEFAULT_RESERVE_YIELD_HOURS)
+
+    # --- پاک‌سازی جدول‌های منسوخ‌شده در صورت باقیماندن در دیتابیس (رفع قفل کلید خارجی) ---
+    cascade = " CASCADE" if session.bind and session.bind.dialect.name == "postgresql" else ""
+    for tbl in ("commander_intel", "attacks", "battles", "drills", "operations", "patrols", "war_declarations", "news_fingerprints"):
+        try:
+            await session.execute(text(f"DROP TABLE IF EXISTS {tbl}{cascade};"))
+        except Exception:
+            pass
 
     # --- ۱) پاک کردن همه‌ی جدول‌های وضعیت/تراکنش فصل ---
     # (ترتیب مهم است: جدول‌های وابسته اول)

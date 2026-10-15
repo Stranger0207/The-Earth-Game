@@ -18,7 +18,15 @@ import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
-from fpdf import FPDF
+# ایمپورت امن fpdf با پیشگیری از خطای ModuleNotFoundError در سرور
+HAS_FPDF = False
+FPDF = object  # پیش‌فرض تا کلاس‌ها هنگام نبود پکیج کرش نکنند
+try:
+    from fpdf import FPDF as _RealFPDF
+    FPDF = _RealFPDF
+    HAS_FPDF = True
+except ImportError:
+    pass
 
 from ..utils.numbers import to_fa_digits
 
@@ -39,6 +47,45 @@ _FONT_BOLD_PATH = _FONTS_DIR / "Vazirmatn-Bold.ttf"
 
 _URL_REGULAR = "https://raw.githubusercontent.com/rastikerdar/vazirmatn/master/fonts/ttf/Vazirmatn-Regular.ttf"
 _URL_BOLD = "https://raw.githubusercontent.com/rastikerdar/vazirmatn/master/fonts/ttf/Vazirmatn-Bold.ttf"
+
+
+def is_pdf_supported() -> bool:
+    """
+    بررسی دسترسی به پکیج fpdf2 در سیستم.
+    در صورت نبود پکیج، ابتدا یک بار تلاش می‌کند تا آن را با pip نصب کند.
+    """
+    global HAS_FPDF, FPDF
+    if HAS_FPDF:
+        return True
+    try:
+        from fpdf import FPDF as _RealFPDF
+        FPDF = _RealFPDF
+        HAS_FPDF = True
+        return True
+    except ImportError:
+        pass
+
+    # تلاش برای نصب خودکار در پس‌زمینه
+    try:
+        import subprocess
+        import sys
+        logger.info("fpdf not found. Attempting automatic installation via pip...")
+        res = subprocess.run(
+            [sys.executable, "-m", "pip", "install", "fpdf2", "uharfbuzz", "arabic-reshaper", "python-bidi"],
+            capture_output=True,
+            timeout=90,
+            check=False,
+        )
+        if res.returncode == 0:
+            from fpdf import FPDF as _RealFPDF
+            FPDF = _RealFPDF
+            HAS_FPDF = True
+            logger.info("fpdf2 and dependencies installed successfully.")
+            return True
+    except Exception as exc:
+        logger.warning("Automatic pip install of fpdf2 failed: %s", exc)
+
+    return False
 
 
 def _ensure_fonts() -> tuple[str, str]:
@@ -81,61 +128,63 @@ def _ensure_fonts() -> tuple[str, str]:
     return reg_str, bold_str
 
 
-class DiplomaticLetterPDF(FPDF):
-    """کلاس سفارشی FPDF برای رسم اسناد رسمی مکاتبات دیپلماتیک."""
+def _create_pdf_instance(sender_country_name: str):
+    """ساخت نمونه کلاس DiplomaticLetterPDF با ارث‌بری از FPDF واقعی."""
+    class DiplomaticLetterPDF(FPDF):
+        def __init__(self, sender_country: str) -> None:
+            super().__init__(orientation="P", unit="mm", format="A4")
+            self.sender_country = sender_country
+            self.set_margins(16, 16, 16)
+            self.set_auto_page_break(auto=True, margin=26)
 
-    def __init__(self, sender_country: str) -> None:
-        super().__init__(orientation="P", unit="mm", format="A4")
-        self.sender_country = sender_country
-        self.set_margins(16, 16, 16)
-        self.set_auto_page_break(auto=True, margin=26)
+        def header(self) -> None:
+            """کادر و حاشیه‌بندی صفحات سند."""
+            # کادر خارجی ضخیم سرمه‌ای
+            self.set_line_width(0.9)
+            self.set_draw_color(*COLOR_NAVY)
+            self.rect(10, 10, 190, 277)
 
-    def header(self) -> None:
-        """کادر و حاشیه‌بندی صفحات سند."""
-        # کادر خارجی ضخیم سرمه‌ای
-        self.set_line_width(0.9)
-        self.set_draw_color(*COLOR_NAVY)
-        self.rect(10, 10, 190, 277)
+            # کادر داخلی نازک طلایی
+            self.set_line_width(0.35)
+            self.set_draw_color(*COLOR_GOLD)
+            self.rect(12, 12, 186, 273)
 
-        # کادر داخلی نازک طلایی
-        self.set_line_width(0.35)
-        self.set_draw_color(*COLOR_GOLD)
-        self.rect(12, 12, 186, 273)
+            # سربرگ خلاصه برای صفحات ۲ به بعد
+            if self.page_no() > 1:
+                self.set_y(15)
+                self.set_font("Vazirmatn", "", 8)
+                self.set_text_color(*COLOR_TEXT_MUTED)
+                self.cell(
+                    0,
+                    5,
+                    f"سند رسمی مکاتبات دیپلماتیک — {self.sender_country} (صفحه {self.page_no()})",
+                    align="C",
+                    new_x="LMARGIN",
+                    new_y="NEXT",
+                )
+                self.ln(2)
 
-        # سربرگ خلاصه برای صفحات ۲ به بعد
-        if self.page_no() > 1:
-            self.set_y(15)
+        def footer(self) -> None:
+            """پاورقی رسمی با درج ثبت دبیرخانه و شماره صفحه."""
+            self.set_y(-22)
             self.set_font("Vazirmatn", "", 8)
             self.set_text_color(*COLOR_TEXT_MUTED)
             self.cell(
                 0,
-                5,
-                f"سند رسمی مکاتبات دیپلماتیک — {self.sender_country} (صفحه {self.page_no()})",
+                4,
+                "ثبت‌شده در دبیرخانه دیپلماسی جهانی (The Earth Game)",
                 align="C",
                 new_x="LMARGIN",
                 new_y="NEXT",
             )
-            self.ln(2)
+            self.cell(
+                0,
+                4,
+                f"صفحه {self.page_no()}",
+                align="C",
+            )
 
-    def footer(self) -> None:
-        """پاورقی رسمی با درج ثبت دبیرخانه و شماره صفحه."""
-        self.set_y(-22)
-        self.set_font("Vazirmatn", "", 8)
-        self.set_text_color(*COLOR_TEXT_MUTED)
-        self.cell(
-            0,
-            4,
-            "ثبت‌شده در دبیرخانه دیپلماسی جهانی (The Earth Game)",
-            align="C",
-            new_x="LMARGIN",
-            new_y="NEXT",
-        )
-        self.cell(
-            0,
-            4,
-            f"صفحه {self.page_no()}",
-            align="C",
-        )
+    return DiplomaticLetterPDF(sender_country=sender_country_name)
 
 
 def generate_diplomatic_letter_pdf(
@@ -152,27 +201,18 @@ def generate_diplomatic_letter_pdf(
     parent_id: int | None = None,
     is_allies: bool = False,
     is_all: bool = False,
-) -> bytes:
+) -> bytes | None:
     """
     تولید فایل PDF رسمی دیپلماتیک در حافظه RAM و بازگرداندن بایت‌های آن.
-
-    پارامترها:
-    - letter_id: شناسه رکورد نامه در دیتابیس
-    - sender_country_name: نام فارسی کشور فرستنده
-    - sender_flag: پرچم فرستنده (اختیاری)
-    - sender_leader_name: نام رهبر/رئیس‌جمهور فرستنده در صورت وجود
-    - recipient_country_name: نام فارسی کشور گیرنده
-    - recipient_flag: پرچم گیرنده (اختیاری)
-    - letter_type: عنوان موضوع سند (در صورت ارسال نشدن خودکار تعیین می‌شود)
-    - body: متن کامل نامه
-    - created_at: زمان ارسال
-    - parent_id: شناسه نامه والد در صورت پاسخ بودن
-    - is_allies: آیا نامه به اعضای اتحاد است؟
-    - is_all: آیا نامه سراسری به تمام کشورهاست؟
+    در صورت عدم نصب fpdf2 روی سیستم مقدار None برمی‌گرداند تا برنامه کرش نکند.
     """
-    font_reg, font_bold = _ensure_fonts()
+    if not is_pdf_supported():
+        logger.warning("fpdf2 is not available; skipping PDF generation.")
+        return None
 
-    pdf = DiplomaticLetterPDF(sender_country=sender_country_name)
+    font_reg, font_bold = _ensure_fonts()
+    pdf = _create_pdf_instance(sender_country_name=sender_country_name)
+
 
     # فعال‌سازی شکل‌دهی متن راست به چپ (RTL) با HarfBuzz
     shaping_enabled = False

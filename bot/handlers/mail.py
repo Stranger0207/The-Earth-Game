@@ -318,20 +318,27 @@ async def msg_mail_body(message: Message, state: FSMContext, session: AsyncSessi
             first_letter_id = letter.id
 
         if target.owner_user_id:
-            caption = (
-                f"{emoji} <b>{title}</b>\n"
-                f"📤 <b>فرستنده:</b> {country.flag} {country.name_fa}\n"
-                f"📥 <b>گیرنده:</b> {target.flag} {target.name_fa}\n\n"
-                f"📄 <i>متن کامل نامه در سند رسمی PDF پیوست درج شده است.</i>"
-            )
-            doc = BufferedInputFile(pdf_bytes, filename=f"Diplomatic_Letter_{letter.id}.pdf")
             try:
-                await bot.send_document(
-                    target.owner_user_id,
-                    document=doc,
-                    caption=caption,
-                    reply_markup=_reply_kb(letter.id),
-                )
+                if pdf_bytes is not None:
+                    caption = (
+                        f"{emoji} <b>{title}</b>\n"
+                        f"📤 <b>فرستنده:</b> {country.flag} {country.name_fa}\n"
+                        f"📥 <b>گیرنده:</b> {target.flag} {target.name_fa}\n\n"
+                        f"📄 <i>متن کامل نامه در سند رسمی PDF پیوست درج شده است.</i>"
+                    )
+                    doc = BufferedInputFile(pdf_bytes, filename=f"Diplomatic_Letter_{letter.id}.pdf")
+                    await bot.send_document(
+                        target.owner_user_id,
+                        document=doc,
+                        caption=caption,
+                        reply_markup=_reply_kb(letter.id),
+                    )
+                else:
+                    await bot.send_message(
+                        target.owner_user_id,
+                        f"{emoji} <b>{title} از {country.flag} {country.name_fa}</b>\n\n{message.text}",
+                        reply_markup=_reply_kb(letter.id),
+                    )
                 sent_count += 1
             except Exception:  # noqa: BLE001
                 pass
@@ -423,38 +430,49 @@ async def msg_mail_reply(message: Message, state: FSMContext, session: AsyncSess
     )
 
     if original_sender and original_sender.owner_user_id:
-        caption = (
-            f"📩 <b>پاسخ رسمی دیپلماتیک</b>\n"
-            f"📤 <b>فرستنده:</b> {country.flag} {country.name_fa}\n"
-            f"📥 <b>گیرنده:</b> {original_sender.flag} {original_sender.name_fa}\n"
-            f"↩️ <b>در پاسخ به نامه شماره #{fa_number(letter.id)}</b>\n\n"
-            f"📄 <i>متن کامل در سند رسمی PDF پیوست درج شده است.</i>"
-        )
-        doc = BufferedInputFile(pdf_bytes, filename=f"Diplomatic_Reply_{reply_letter.id}.pdf")
         try:
-            # (v1.11.1) روی خودِ پاسخ هم دکمه‌ی پاسخ می‌گذاریم تا زنجیره‌ی گفتگو
-            # ادامه پیدا کند و طرف مقابل مجبور نباشد از اول کشور را پیدا کند.
-            await bot.send_document(
-                original_sender.owner_user_id,
-                document=doc,
-                caption=caption,
-                reply_markup=_reply_kb(reply_letter.id),
-            )
+            if pdf_bytes is not None:
+                caption = (
+                    f"📩 <b>پاسخ رسمی دیپلماتیک</b>\n"
+                    f"📤 <b>فرستنده:</b> {country.flag} {country.name_fa}\n"
+                    f"📥 <b>گیرنده:</b> {original_sender.flag} {original_sender.name_fa}\n"
+                    f"↩️ <b>در پاسخ به نامه شماره #{fa_number(letter.id)}</b>\n\n"
+                    f"📄 <i>متن کامل در سند رسمی PDF پیوست درج شده است.</i>"
+                )
+                doc = BufferedInputFile(pdf_bytes, filename=f"Diplomatic_Reply_{reply_letter.id}.pdf")
+                # (v1.11.1) روی خودِ پاسخ هم دکمه‌ی پاسخ می‌گذاریم تا زنجیره‌ی گفتگو
+                # ادامه پیدا کند و طرف مقابل مجبور نباشد از اول کشور را پیدا کند.
+                await bot.send_document(
+                    original_sender.owner_user_id,
+                    document=doc,
+                    caption=caption,
+                    reply_markup=_reply_kb(reply_letter.id),
+                )
+            else:
+                await bot.send_message(
+                    original_sender.owner_user_id,
+                    f"📩 <b>پاسخ نامه از {country.flag} {country.name_fa}</b>\n\n{message.text}",
+                    reply_markup=_reply_kb(reply_letter.id),
+                )
         except Exception:  # noqa: BLE001
             pass
 
     from ..keyboards.diplomacy import diplomacy_menu_kb
-    await message.answer("✅ پاسخ شما به صورت سند رسمی PDF ارسال شد.", reply_markup=diplomacy_menu_kb())
+    sent_note = "✅ پاسخ شما ارسال شد." if pdf_bytes is None else "✅ پاسخ شما به صورت سند رسمی PDF ارسال شد."
+    await message.answer(sent_note, reply_markup=diplomacy_menu_kb())
 
     log_caption = (
-        f"📩 <b>پاسخ رسمی دیپلماتیک (سند PDF)</b>\n"
+        f"📩 <b>پاسخ رسمی دیپلماتیک</b>\n"
         f"📤 <b>فرستنده:</b> {country.flag} {country.name_fa}\n"
         f"📥 <b>گیرنده:</b> {original_sender.flag if original_sender else ''} {original_sender.name_fa if original_sender else '?'}\n"
         f"↩️ <b>در پاسخ به نامه شماره #{fa_number(letter.id)}</b>\n\n"
         f"📝 <b>متن:</b>\n{message.text}"
     )
-    log_doc = BufferedInputFile(pdf_bytes, filename=f"Diplomatic_Reply_{reply_letter.id}.pdf")
-    await send_log_document(bot, log_doc, caption=log_caption)
+    if pdf_bytes is not None:
+        log_doc = BufferedInputFile(pdf_bytes, filename=f"Diplomatic_Reply_{reply_letter.id}.pdf")
+        await send_log_document(bot, log_doc, caption=log_caption)
+    else:
+        await send_log(bot, log_caption)
 
 
 # ----- صندوق پستی -----
@@ -498,7 +516,7 @@ async def cb_mail_inbox(call: CallbackQuery, session: AsyncSession, db_user: Use
 # ----- دریافت مجدد فایل PDF نامه از صندوق پستی (v2.7) -----
 @router.callback_query(F.data.startswith("mail_pdf:"))
 async def cb_mail_pdf(call: CallbackQuery, session: AsyncSession, db_user: User) -> None:
-    await call.answer("در حال ساخت سند PDF...")
+    await call.answer("در حال آماده‌سازی سند PDF...")
     letter_id = int(call.data.split(":")[1])
     letter = await letters_repo.get_letter(session, letter_id)
     country = await get_player_country(session, db_user)
@@ -534,6 +552,10 @@ async def cb_mail_pdf(call: CallbackQuery, session: AsyncSession, db_user: User)
         parent_id=letter.parent_id,
     )
 
+    if pdf_bytes is None:
+        await call.answer("سرویس ساخت فایل PDF در سرور فعال نیست.", show_alert=True)
+        return
+
     filename = f"Diplomatic_Letter_{letter.id}.pdf"
     doc = BufferedInputFile(pdf_bytes, filename=filename)
     caption = (
@@ -547,4 +569,5 @@ async def cb_mail_pdf(call: CallbackQuery, session: AsyncSession, db_user: User)
         caption=caption,
         reply_markup=reply_markup,
     )
+
 

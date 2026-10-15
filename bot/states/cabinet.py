@@ -40,3 +40,18 @@ class CabinetPressBriefingForm(StatesGroup):
     """فرم انتشار کنفرانس مطبوعاتی و بیانیه رسمی سخنگوی کاخ سفید."""
 
     entering_text = State()
+
+
+class CabinetBudgetRequestForm(StatesGroup):
+    """فرم ثبت درخواست تخصیص بودجه وزارتخانه از خزانه فدرال."""
+
+    entering_amount = State()
+    entering_reason = State()
+
+
+class CabinetLeakForm(StatesGroup):
+    """فرم درز ناشناس اطلاعات محرمانه به رسانه‌ها."""
+
+    choosing_target = State()
+    entering_headline = State()
+    entering_content = State()

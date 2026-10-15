@@ -521,3 +521,42 @@ class CabinetRole(str, enum.Enum):
     JOINT_CHIEFS = "joint_chiefs"               # ۱۴. رئیس ستاد مشترک و نقشه‌برداری: Dan Caine
     NATIONAL_SECURITY = "national_security"     # ۱۵. مشاور امنیت ملی: Michael Waltz
 
+
+class CabinetOperationStatus(str, enum.Enum):
+    """وضعیت پرونده‌ها و عملیات‌های زنجیره‌ای کابینه (v2.6)."""
+
+    PENDING = "PENDING"
+    DOGE_FROZEN = "DOGE_FROZEN"
+    DOJ_SUSPENDED = "DOJ_SUSPENDED"
+    VETOED = "VETOED"
+    COMPLETED = "COMPLETED"
+    EXPIRED = "EXPIRED"
+
+
+class CabinetOperationType(str, enum.Enum):
+    """انواع زنجیره‌های عملیاتی اجباری کابینه (v2.6)."""
+
+    MILITARY_DEPLOYMENT = "military_deployment"    # زنجیره عملیات و استقرار نظامی
+    DIPLOMATIC_ECONOMIC = "diplomatic_economic"    # زنجیره معاهدات، تعرفه و تحریم خارجی
+    AEROSPACE_RD = "aerospace_rd"                  # زنجیره صنایع دفاعی، هوافضا و ماهواره
+    INTEL_SECURITY = "intel_security"              # زنجیره عملیات اطلاعاتی و امنیتی مشترک
+    CONGRESSIONAL_BILL = "congressional_bill"      # زنجیره لوایح کنگره و بودجه اضطراری
+
+
+class CabinetCrisisStatus(str, enum.Enum):
+    """وضعیت بحران‌های دوره‌ای کابینه (v2.6)."""
+
+    ACTIVE = "ACTIVE"
+    RESOLVED = "RESOLVED"
+    FAILED = "FAILED"
+
+
+class CabinetBudgetStatus(str, enum.Enum):
+    """وضعیت درخواست‌های تخصیص بودجه وزارتخانه‌ها (v2.6)."""
+
+    PENDING = "pending"
+    APPROVED = "approved"
+    ADJUSTED = "adjusted"
+    REJECTED = "rejected"
+
+

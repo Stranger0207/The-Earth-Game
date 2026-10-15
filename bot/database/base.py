@@ -78,6 +78,11 @@ _COLUMN_MIGRATIONS = [
     ("auctions", "channel_message_id", "BIGINT"),
     # v2.5 — گیم‌مود مقاماتی
     ("users", "active_gamemode", "VARCHAR(24) NOT NULL DEFAULT 'global'"),
+    # v2.6 — شاخص‌های قدرت و بودجه کابینه
+    ("cabinet_members", "political_capital", "INTEGER NOT NULL DEFAULT 50"),
+    ("cabinet_members", "allocated_budget", "DOUBLE PRECISION NOT NULL DEFAULT 10000"),
+    ("cabinet_members", "leak_suspicion", "INTEGER NOT NULL DEFAULT 0"),
+    ("cabinet_members", "efficiency_score", "INTEGER NOT NULL DEFAULT 80"),
 ]
 
 

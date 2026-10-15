@@ -37,9 +37,11 @@ from .operations import (
 )
 from .satellite import SatelliteForm
 from .cabinet import (
+    CabinetBudgetRequestForm,
     CabinetExecutiveOrderForm,
     CabinetInquiryForm,
     CabinetInspectionForm,
+    CabinetLeakForm,
     CabinetMemoForm,
     CabinetPressBriefingForm,
 )
@@ -77,6 +79,11 @@ __all__ = [
     "SaleForm",
     "SanctionForm",
     "SatelliteForm",
-    "SpeechForm",
-    "TariffForm",
+    "CabinetBudgetRequestForm",
+    "CabinetExecutiveOrderForm",
+    "CabinetInquiryForm",
+    "CabinetInspectionForm",
+    "CabinetLeakForm",
+    "CabinetMemoForm",
+    "CabinetPressBriefingForm",
 ]

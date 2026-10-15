@@ -585,6 +585,12 @@ LOCKABLE_FEATURES: dict[str, tuple[str, str]] = {
     "gov.system": ("🏛 تغییر نظام حاکمیتی", FEATURE_CAT_GOVERNANCE),
     "gov.tax": ("💵 مالیات", FEATURE_CAT_GOVERNANCE),
     "gov.legislation": ("📋 قانونگذاری", FEATURE_CAT_GOVERNANCE),
+    # 🏛 کابینه دولت آمریکا (v2.6)
+    "cab.operation": ("🔗 عملیات زنجیره‌ای کابینه", FEATURE_CAT_GOVERNANCE),
+    "cab.crisis": ("🚨 سیستم بحران‌های کابینه", FEATURE_CAT_GOVERNANCE),
+    "cab.exec_order": ("📜 فرامین اجرایی رئیس‌جمهور", FEATURE_CAT_GOVERNANCE),
+    "cab.budget_req": ("🏦 درخواست بودجه وزارتخانه‌ها", FEATURE_CAT_GOVERNANCE),
+    "cab.leak": ("📰 درز اطلاعات به رسانه", FEATURE_CAT_GOVERNANCE),
 }
 
 # پیام پیش‌فرض هنگام تلاش برای استفاده از آپشن قفل‌شده
@@ -730,4 +736,104 @@ CABINET_ROLES_DATA: dict[CabinetRole, dict] = {
         "allowed_domains": ["military", "intel", "diplomacy"],
     },
 }
+
+
+# ============================================================
+#  🏛 قوانین، شاخص‌ها و زنجیره‌های مگاآپدیت کابینه (v2.6)
+# ============================================================
+
+# بودجه پیش‌فرض اولیه وزارتخانه‌ها (بر حسب میلیون/میلیارد دلار)
+CABINET_DEFAULT_BUDGET: dict[str, float] = {
+    "president": 50_000.0,
+    "vice_president": 20_000.0,
+    "secretary_state": 15_000.0,
+    "secretary_defense": 80_000.0,
+    "centcom_commander": 60_000.0,
+    "cia_director": 25_000.0,
+    "homeland_security": 20_000.0,
+    "press_secretary": 5_000.0,
+    "treasury_secretary": 100_000.0,
+    "tech_efficiency": 30_000.0,
+    "attorney_general": 15_000.0,
+    "aerospace_defense": 45_000.0,
+    "health_crisis": 25_000.0,
+    "joint_chiefs": 40_000.0,
+    "national_security": 30_000.0,
+}
+
+OPERATION_STEP_REWARD_CAPITAL = 5          # پاداش سرمایه سیاسی برای امضای هر مرحله
+OPERATION_COMPLETE_REWARD_CAPITAL = 10     # پاداش سرمایه سیاسی آغازگر پس از تکمیل زنجیره
+OPERATION_UNFREEZE_COST_CAPITAL = 15       # هزینه سرمایه سیاسی رئیس‌جمهور/معاون برای شکستن قفل DOGE یا دادستان
+EXECUTIVE_ORDER_COST_CAPITAL = 25          # هزینه صدور فرمان اجرایی رئیس‌جمهور
+EXECUTIVE_ORDER_COOLDOWN_HOURS = 12        # کول‌داون صدور فرمان اجرایی
+SENATE_LOBBY_COST_CAPITAL = 10             # هزینه لابی‌گری معاون در سنا
+
+CRISIS_TIMEOUT_HOURS = 2                   # مهلت حل هر بحران (ساعت)
+CRISIS_RESOLVE_REWARD_CAPITAL = 10         # پاداش مهار بحران
+CRISIS_RESOLVE_REWARD_EFFICIENCY = 5       # پاداش کارآمدی مهار بحران
+CRISIS_FAIL_PENALTY_CAPITAL = 10           # جریمه انقضای بحران
+CRISIS_FAIL_PENALTY_EFFICIENCY = 10        # افت امتیاز کارآمدی در شکست بحران
+
+LEAK_TARGET_CAPITAL_PENALTY = 10           # کسر سرمایه سیاسی از قربانی درز اطلاعات
+LEAK_SUSPICION_GAIN = 30                   # افزایش شاخص سوءظن افشاگر
+AGENDA_REWARD_CAPITAL = 15                 # پاداش تکمیل ماموریت محرمانه
+
+# پیکربندی ۵ زنجیره عملیاتی اجباری
+OPERATION_CHAINS_CONFIG = {
+    "military_deployment": {
+        "title": "عملیات و استقرار نظامی",
+        "description": "طراحی مسیر و لجستیک، تصویب بودجه، تایید پنتاگون و شلیک/حرکت نهایی سنتکام.",
+        "budget_cost": 2500.0,
+        "steps": [
+            {"step": 1, "role": "joint_chiefs", "title": "طراحی نقشه مسیر و برآورد سوخت"},
+            {"step": 2, "role": "treasury_secretary", "title": "تایید بودجه و هزینه لجستیک"},
+            {"step": 3, "role": "secretary_defense", "title": "صدور مجوز پنتاگون"},
+            {"step": 4, "role": "centcom_commander", "title": "دستور شلیک و حرکت نهایی سنتکام"},
+        ],
+    },
+    "diplomatic_economic": {
+        "title": "معاهدات، تعرفه و تحریم خارجی",
+        "description": "تدوین بسته دیپلماتیک، پیوست امنیتی، ارزیابی اقتصادی و توشیح رئیس‌جمهور.",
+        "budget_cost": 1000.0,
+        "steps": [
+            {"step": 1, "role": "secretary_state", "title": "آماده‌سازی پیش‌نویس تحریم یا قرارداد"},
+            {"step": 2, "role": "national_security", "title": "تایید پیوست امنیتی و راهبردی"},
+            {"step": 3, "role": "treasury_secretary", "title": "امضا و ارزیابی اثر تعرفه‌ای/مالی"},
+            {"step": 4, "role": "president", "title": "توشیح، ابلاغ و اجرای نهایی رئیس‌جمهور"},
+        ],
+    },
+    "aerospace_rd": {
+        "title": "صنایع دفاعی، هوافضا و ماهواره",
+        "description": "تعریف پروژه دفاعی/فضایی، استاندارد فنی DOGE، آزادسازی بودجه و کلید پرتاب.",
+        "budget_cost": 3500.0,
+        "steps": [
+            {"step": 1, "role": "aerospace_defense", "title": "تعریف پروژه ساخت کارخانه یا پرتاب ماهواره"},
+            {"step": 2, "role": "tech_efficiency", "title": "تایید استانداردهای فنی و بهینه‌سازی DOGE"},
+            {"step": 3, "role": "treasury_secretary", "title": "تخصیص و آزادسازی بودجه توسعه"},
+            {"step": 4, "role": "aerospace_defense", "title": "کلید پرتاب به مدار یا بهره‌برداری کارخانه"},
+        ],
+    },
+    "intel_security": {
+        "title": "عملیات اطلاعاتی و امنیتی مشترک",
+        "description": "گشایش پرونده سیا، پیوست ضدجاسوسی امنیت داخلی و مجوز قضایی دادستان کل.",
+        "budget_cost": 1500.0,
+        "steps": [
+            {"step": 1, "role": "cia_director", "title": "گشایش پرونده نفوذ یا عملیات برون‌مرزی"},
+            {"step": 2, "role": "homeland_security", "title": "تایید پیوست ضدجاسوسی و امنیت داخلی"},
+            {"step": 3, "role": "attorney_general", "title": "صدور مجوز قضایی و قانونی عملیات"},
+        ],
+    },
+    "congressional_bill": {
+        "title": "لوایح کنگره و بودجه اضطراری",
+        "description": "ثبت لایحه توسط وزیر، لابی سنا، انطباق با قانون اساسی و امضا یا وتوی رئیس‌جمهور.",
+        "budget_cost": 5000.0,
+        "steps": [
+            {"step": 1, "role": "any", "title": "ثبت پیش‌نویس لایحه قانونی توسط وزیر"},
+            {"step": 2, "role": "vice_president", "title": "لابی‌گری در صحن سنا و جلب آرای اکثریت"},
+            {"step": 3, "role": "attorney_general", "title": "تایید انطباق با قانون اساسی ایالات متحده"},
+            {"step": 4, "role": "president", "title": "امضا جهت تبدیل به قانون یا وتوی ریاست‌جمهوری"},
+        ],
+    },
+}
+
 

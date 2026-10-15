@@ -39,7 +39,7 @@ logger = logging.getLogger(__name__)
 
 
 def _is_owner(user_id: int) -> bool:
-    return settings.is_owner(user_id)
+    return settings.is_owner(user_id) or settings.is_admin(user_id)
 
 
 @router.callback_query(F.data.startswith("claim_approve:"))
@@ -357,8 +357,9 @@ async def cmd_run_yields(message: Message, session: AsyncSession) -> None:
 
 @router.message(Command("endseason"))
 async def cmd_endseason(message: Message) -> None:
-    """نمایش هشدار و دکمه‌ی تأیید پایان فصل (فقط برای مالک)."""
+    """نمایش هشدار و دکمه‌ی تأیید پایان فصل (فقط برای مالک و مدیران)."""
     if not _is_owner(message.from_user.id):
+        await message.answer("⛔️ این دستور فقط مخصوص مالک و مدیران بازی است.")
         return
     kb = InlineKeyboardMarkup(
         inline_keyboard=[

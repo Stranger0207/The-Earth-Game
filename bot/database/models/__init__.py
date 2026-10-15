@@ -44,11 +44,16 @@ from .reserves import Reserve
 from .satellite import Satellite
 from .cabinet import (
     CabinetActionLog,
+    CabinetAgenda,
+    CabinetBudgetRequest,
+    CabinetCrisis,
     CabinetInquiry,
     CabinetInspection,
+    CabinetLeak,
     CabinetMeeting,
     CabinetMember,
     CabinetMemo,
+    CabinetOperation,
 )
 from .tariff import TariffRate
 from .trade import ResourceSale
@@ -63,11 +68,16 @@ __all__ = [
     "BaseEquipment",
     "BotState",
     "CabinetActionLog",
+    "CabinetAgenda",
+    "CabinetBudgetRequest",
+    "CabinetCrisis",
     "CabinetInquiry",
     "CabinetInspection",
+    "CabinetLeak",
     "CabinetMeeting",
     "CabinetMember",
     "CabinetMemo",
+    "CabinetOperation",
     "ClaimRequest",
     "Commander",
     "Contract",

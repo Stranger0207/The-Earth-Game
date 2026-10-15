@@ -135,6 +135,7 @@ def _home_kb() -> InlineKeyboardMarkup:
     builder.button(text="💥 سیستم تلفات", callback_data="god:casualty", style=STYLE_NO)
     builder.button(text="🔒 غیرفعال‌کردن آپشن", callback_data="god:locks", style=STYLE_NO)
     builder.button(text="⛔️ مدیریت بن کاربران", callback_data="god:ban_list", style=STYLE_NO)
+    builder.button(text="🔴 پایان و ریست کامل فصل", callback_data="god:endseason", style=STYLE_NO)
     builder.adjust(1)
     return builder.as_markup()
 
@@ -162,6 +163,37 @@ async def cb_home(call: CallbackQuery, state: FSMContext) -> None:
     await call.answer()
     await state.clear()
     await call.message.edit_text(_HOME_TEXT, reply_markup=_home_kb())
+
+
+@router.callback_query(F.data == "god:endseason")
+async def cb_god_endseason(call: CallbackQuery, state: FSMContext) -> None:
+    """درخواست ریست فصل از درون پنل گاد مود."""
+    if not await _guard(call):
+        return
+    await call.answer()
+    await state.clear()
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="🔴 بله، فصل را ریست کن", callback_data="season_reset_confirm",
+                    style=STYLE_NO,
+                )
+            ],
+            [InlineKeyboardButton(text="❌ انصراف", callback_data="god:home", style=STYLE_MAIN)],
+        ]
+    )
+    await call.message.edit_text(
+        "⚠️ <b>پایان فصل و ریست کامل بازی</b>\n\n"
+        "با این کار تمام تغییرات فصل به حالت اولیه برمی‌گردد:\n"
+        "• اقتصاد، ذخایر و رضایت همه‌ی کشورها بازنشانی می‌شود\n"
+        "• تجهیزات نظامی (تلفات‌ها) به تعداد اولیه برمی‌گردد\n"
+        "• تأسیسات، کارخانه‌های نظامی، قراردادها، حملات، تماس‌ها، دیدارها و فروش‌ها پاک می‌شوند\n"
+        "• <b>مالکیت همه‌ی کشورها آزاد می‌شود</b> و بازیکن‌ها باید دوباره کشورگیری کنند\n\n"
+        "❗️ این عملیات <b>غیرقابل‌بازگشت</b> است. مطمئن هستید؟",
+        reply_markup=kb,
+    )
+
 
 
 # ============================================================

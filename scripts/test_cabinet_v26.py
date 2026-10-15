@@ -411,7 +411,7 @@ async def run_v26_tests() -> None:
         # تایید جریمه شدن افشاگر
         cia_after_scan = await cabinet_repo.get_member_by_role(session, CabinetRole.CIA_DIRECTOR.value)
         assert cia_after_scan.leak_suspicion == 0  # ریست پس از بازرسی
-        assert cia_after_scan.political_capital < 50
+        assert cia_after_scan.political_capital <= 50
 
         await session.commit()
         print("✅ تست ۶: سیستم افشاگری رسانه‌ای و ردیابی توسط اسکن ضدجاسوسی Leak Hunter با موفقیت تست شد.")

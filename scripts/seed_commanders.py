@@ -55,7 +55,7 @@ def _load_data() -> dict:
     return json.loads(_DATA_FILE.read_text(encoding="utf-8"))
 
 
-async def seed_commanders(force: bool = False) -> dict[str, int]:
+async def seed_commanders(force: bool = False, session: AsyncSession | None = None) -> dict[str, int]:
     """فرماندهان همه‌ی کشورها را می‌سازد. خروجی: آمار."""
     data = _load_data()
     ranks = data["ranks"]
@@ -64,18 +64,18 @@ async def seed_commanders(force: bool = False) -> dict[str, int]:
 
     stats = {"countries": 0, "created": 0, "skipped": 0, "deleted": 0}
 
-    async with async_session_factory() as session:
-        countries = await countries_repo.list_countries(session)
+    async def _populate(s: AsyncSession) -> None:
+        countries = await countries_repo.list_countries(s)
 
         for country in countries:
-            existing = await cmd_repo.count_for_country(session, country.id)
+            existing = await cmd_repo.count_for_country(s, country.id)
 
             if existing and not force:
                 stats["skipped"] += 1
                 continue
 
             if existing and force:
-                await session.execute(
+                await s.execute(
                     delete(Commander).where(Commander.country_id == country.id)
                 )
                 stats["deleted"] += existing
@@ -107,12 +107,17 @@ async def seed_commanders(force: bool = False) -> dict[str, int]:
                     bonus_pct=COMMANDER_BONUS_PCT.get(role, 0.0),
                     is_alive=True,
                 )
-                session.add(commander)
+                s.add(commander)
                 stats["created"] += 1
 
             stats["countries"] += 1
 
-        await session.commit()
+    if session is not None:
+        await _populate(session)
+    else:
+        async with async_session_factory() as s:
+            await _populate(s)
+            await s.commit()
 
     return stats
 

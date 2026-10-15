@@ -31,6 +31,7 @@ from ..services.news_service import send_log
 from ..services.season_service import reset_season
 from ..states import AnnounceForm
 from ..utils.numbers import fa_number
+from ..utils.screens import safe_edit
 from ..utils.ui import PICK_OFF, PICK_ON, STYLE_MAIN, STYLE_OK
 
 router = Router(name="admin")
@@ -391,7 +392,7 @@ async def cb_season_cancel(call: CallbackQuery) -> None:
         await call.answer("فقط مالک بازی مجاز است.", show_alert=True)
         return
     await call.answer("لغو شد")
-    await call.message.edit_text("✅ ریست فصل لغو شد. هیچ تغییری اعمال نشد.")
+    await safe_edit(call, "✅ ریست فصل لغو شد. هیچ تغییری اعمال نشد.")
 
 
 @router.callback_query(F.data == "season_reset_confirm")
@@ -403,34 +404,42 @@ async def cb_season_confirm(
         await call.answer("فقط مالک بازی مجاز است.", show_alert=True)
         return
     await call.answer("در حال ریست فصل...")
-    await call.message.edit_text("⏳ در حال ریست کامل بازی... لطفاً صبر کنید.")
+    await safe_edit(call, "⏳ در حال ریست کامل بازی... لطفاً صبر کنید.")
 
     try:
         result = await reset_season(session)
     except Exception as exc:  # noqa: BLE001 — خطا باید به مالک نمایش داده شود، نه اینکه پیام روی «⏳» بماند
         logger.exception("Season reset failed")
         await session.rollback()
-        await call.message.edit_text(
+        err_msg = (
             "❌ <b>ریست فصل انجام نشد.</b>\n\n"
             "هیچ تغییری روی دیتابیس اعمال نشد (تراکنش برگشت خورد).\n\n"
             f"<b>خطا:</b> <code>{type(exc).__name__}: {exc}</code>"
         )
-        await send_log(bot, f"❌ <b>خطا در ریست فصل</b>\n<code>{type(exc).__name__}: {exc}</code>")
+        await safe_edit(call, err_msg)
+        try:
+            await send_log(bot, f"❌ <b>خطا در ریست فصل</b>\n<code>{type(exc).__name__}: {exc}</code>")
+        except Exception:
+            pass
         return
 
-    await call.message.edit_text(
+    success_msg = (
         "🎉 <b>فصل با موفقیت به پایان رسید و بازی ریست شد.</b>\n\n"
         f"✅ {fa_number(result['countries_reset'])} کشور به حالت اولیه بازگشتند.\n"
         f"🎖 {fa_number(result['commanders_created'])} فرمانده بازسازی شد.\n"
         "همه‌ی کشورها اکنون آزاد هستند و بازیکن‌ها می‌توانند برای فصل جدید "
         "کشورگیری کنند. (/claim)"
     )
-    await send_log(
-        bot,
-        "♻️ <b>پایان فصل (مالک)</b>\n"
-        f"کشورهای ریست‌شده: {result['countries_reset']} | "
-        f"فرماندهان بازسازی‌شده: {result['commanders_created']}",
-    )
+    await safe_edit(call, success_msg)
+    try:
+        await send_log(
+            bot,
+            "♻️ <b>پایان فصل (مالک)</b>\n"
+            f"کشورهای ریست‌شده: {result['countries_reset']} | "
+            f"فرماندهان بازسازی‌شده: {result['commanders_created']}",
+        )
+    except Exception:
+        pass
 
 
 # ============================================================

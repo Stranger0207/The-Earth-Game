@@ -243,17 +243,17 @@ async def reset_season(session: AsyncSession) -> dict[str, int]:
 
         reset_count += 1
 
-    await session.commit()
-
     # --- بازسازی فرماندهان NPC (v1.10.6) ---
     # بدون فرمانده، سیستم ترور هدفی ندارد و بونوس شاخه‌ها از بین می‌رود.
     commanders_created = 0
     try:
         from scripts.seed_commanders import seed_commanders
 
-        stats = await seed_commanders(force=True)
+        stats = await seed_commanders(force=True, session=session)
         commanders_created = stats.get("created", 0)
     except Exception as exc:  # noqa: BLE001 — خطای seed نباید ریست فصل را بشکند
         logger.warning("Commander re-seed after season reset failed: %s", exc)
+
+    await session.commit()
 
     return {"countries_reset": reset_count, "commanders_created": commanders_created}

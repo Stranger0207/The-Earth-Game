@@ -76,13 +76,6 @@ _COLUMN_MIGRATIONS = [
     # v2.2 — رتبه‌بندی اعتباری وام بانکی و مزایده
     ("countries", "credit_rating", "VARCHAR(16) NOT NULL DEFAULT 'normal'"),
     ("auctions", "channel_message_id", "BIGINT"),
-    # v2.5 — گیم‌مود مقاماتی
-    ("users", "active_gamemode", "VARCHAR(24) NOT NULL DEFAULT 'global'"),
-    # v2.6 — شاخص‌های قدرت و بودجه کابینه
-    ("cabinet_members", "political_capital", "INTEGER NOT NULL DEFAULT 50"),
-    ("cabinet_members", "allocated_budget", "DOUBLE PRECISION NOT NULL DEFAULT 10000"),
-    ("cabinet_members", "leak_suspicion", "INTEGER NOT NULL DEFAULT 0"),
-    ("cabinet_members", "efficiency_score", "INTEGER NOT NULL DEFAULT 80"),
 ]
 
 
@@ -95,6 +88,18 @@ _OBSOLETE_TABLES = [
     "patrols",
     "war_declarations",
     "news_fingerprints",
+    # جدول‌های حذف‌شده گیم‌مود مقاماتی کابینه آمریکا
+    "cabinet_action_logs",
+    "cabinet_agendas",
+    "cabinet_budget_requests",
+    "cabinet_crises",
+    "cabinet_inquiries",
+    "cabinet_inspections",
+    "cabinet_leaks",
+    "cabinet_meetings",
+    "cabinet_memos",
+    "cabinet_operations",
+    "cabinet_members",
 ]
 
 

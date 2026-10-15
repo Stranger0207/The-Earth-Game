@@ -1123,53 +1123,6 @@ async def process_auctions(bot: Bot) -> None:
         await session.commit()
 
 
-async def process_cabinet_crises(bot: Bot) -> None:
-    """
-    موتور بحران‌های ساعتی و خودکار کابینه ایالات متحده (v2.6):
-    1. پردازش انقضای بحران‌های مهلت‌گذشته (expires_at <= now) و اعمال جریمه‌ها.
-    2. تولید بحران جدید اگر تعداد بحران‌های فعال کمتر از ۳ باشد و از آخرین بحران حداقل ۲ ساعت گذشته باشد.
-    """
-    from ..services.cabinet_service import process_crisis_expiration, generate_new_crisis
-    from ..database.repositories import cabinet as cabinet_repo
-
-    async with async_session_factory() as session:
-        # ۱. بررسی انقضای بحران‌ها
-        await process_crisis_expiration(session, bot)
-
-        # ۲. بررسی نیاز به ساخت بحران تازه
-        active_count = await cabinet_repo.count_crises(session, status="ACTIVE")
-        if active_count < 3:
-            crises = await cabinet_repo.list_crises(session, limit=1)
-            should_create = False
-            if not crises:
-                should_create = True
-            else:
-                last_crisis = crises[0]
-                now = _utcnow()
-                created_at = _aware(last_crisis.created_at)
-                if created_at and (now - created_at).total_seconds() >= 7200:  # ۲ ساعت
-                    should_create = True
-
-            if should_create:
-                new_c = await generate_new_crisis(session)
-                if new_c and bot:
-                    from ..services.news_service import send_log, publish_news
-                    from ..enums import NewsCategory
-                    notice = (
-                        f"🚨 <b>اعلام وقوع بحران ملی در ایالات متحده آمریکا</b>\n\n"
-                        f"📌 <b>عنوان:</b> {new_c.title}\n"
-                        f"⚠️ <b>شرح بحران:</b> {new_c.description}\n\n"
-                        f"⏳ <b>مهلت حل:</b> ۲ ساعت"
-                    )
-                    try:
-                        await send_log(bot, notice)
-                        await publish_news(bot, NewsCategory.DIPLOMACY, notice)
-                    except Exception:
-                        pass
-
-        await session.commit()
-
-
 async def _tick(bot: Bot) -> None:
     """جاب اصلی که هر دقیقه همه‌ی پردازش‌های زمان‌دار را اجرا می‌کند.
 
@@ -1191,7 +1144,6 @@ async def _tick(bot: Bot) -> None:
         ("process_nuclear", lambda: process_nuclear(bot)),
         ("process_taxes", lambda: process_taxes(bot)),
         ("process_protests", lambda: process_protests(bot)),
-        ("process_cabinet_crises", lambda: process_cabinet_crises(bot)),
     )
     for name, run in jobs:
         try:

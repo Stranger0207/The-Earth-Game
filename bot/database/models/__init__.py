@@ -42,19 +42,6 @@ from .nuclear import (
 )
 from .reserves import Reserve
 from .satellite import Satellite
-from .cabinet import (
-    CabinetActionLog,
-    CabinetAgenda,
-    CabinetBudgetRequest,
-    CabinetCrisis,
-    CabinetInquiry,
-    CabinetInspection,
-    CabinetLeak,
-    CabinetMeeting,
-    CabinetMember,
-    CabinetMemo,
-    CabinetOperation,
-)
 from .tariff import TariffRate
 from .trade import ResourceSale
 from .user import User
@@ -67,17 +54,6 @@ __all__ = [
     "BankLoan",
     "BaseEquipment",
     "BotState",
-    "CabinetActionLog",
-    "CabinetAgenda",
-    "CabinetBudgetRequest",
-    "CabinetCrisis",
-    "CabinetInquiry",
-    "CabinetInspection",
-    "CabinetLeak",
-    "CabinetMeeting",
-    "CabinetMember",
-    "CabinetMemo",
-    "CabinetOperation",
     "ClaimRequest",
     "Commander",
     "Contract",

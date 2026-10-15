@@ -65,17 +65,6 @@ from ..database.models import (
     Satellite,
     TariffRate,
     User,
-    CabinetActionLog,
-    CabinetAgenda,
-    CabinetBudgetRequest,
-    CabinetCrisis,
-    CabinetInquiry,
-    CabinetInspection,
-    CabinetLeak,
-    CabinetMeeting,
-    CabinetMember,
-    CabinetMemo,
-    CabinetOperation,
 )
 from ..database.repositories import countries as countries_repo
 
@@ -110,7 +99,12 @@ async def reset_season(session: AsyncSession) -> dict[str, int]:
 
     # --- پاک‌سازی جدول‌های منسوخ‌شده در صورت باقیماندن در دیتابیس (رفع قفل کلید خارجی) ---
     cascade = " CASCADE" if session.bind and session.bind.dialect.name == "postgresql" else ""
-    for tbl in ("commander_intel", "attacks", "battles", "drills", "operations", "patrols", "war_declarations", "news_fingerprints"):
+    obsolete_tables = (
+        "commander_intel", "attacks", "battles", "drills", "operations", "patrols", "war_declarations", "news_fingerprints",
+        "cabinet_action_logs", "cabinet_agendas", "cabinet_budget_requests", "cabinet_crises", "cabinet_inquiries",
+        "cabinet_inspections", "cabinet_leaks", "cabinet_meetings", "cabinet_memos", "cabinet_operations", "cabinet_members",
+    )
+    for tbl in obsolete_tables:
         try:
             await session.execute(text(f"DROP TABLE IF EXISTS {tbl}{cascade};"))
         except Exception:
@@ -161,25 +155,13 @@ async def reset_season(session: AsyncSession) -> dict[str, int]:
     await session.execute(delete(AuctionBid))
     await session.execute(delete(Auction))
     await session.execute(delete(BankLoan))
-    # --- گیم‌مود مقاماتی (v2.5 و v2.6) ---
-    await session.execute(delete(CabinetLeak))
-    await session.execute(delete(CabinetAgenda))
-    await session.execute(delete(CabinetBudgetRequest))
-    await session.execute(delete(CabinetCrisis))
-    await session.execute(delete(CabinetOperation))
-    await session.execute(delete(CabinetActionLog))
-    await session.execute(delete(CabinetMeeting))
-    await session.execute(delete(CabinetInspection))
-    await session.execute(delete(CabinetInquiry))
-    await session.execute(delete(CabinetMemo))
-    await session.execute(delete(CabinetMember))
 
     # --- ۲) آزادسازی مالکیت همه‌ی کشورها و رفع تعلیق کاربران ---
     await session.execute(
         update(Country).values(owner_user_id=None, is_claimed=False)
     )
     await session.execute(
-        update(User).values(is_suspended=False, active_gamemode="global", president_name=None)
+        update(User).values(is_suspended=False, president_name=None)
     )
 
     # --- ۳) بازگرداندن داده‌ی هر کشور به حالت اولیه ---

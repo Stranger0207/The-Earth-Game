@@ -8,13 +8,11 @@ from . import (
     alliance,
     auction,
     bank,
-    cabinet,
     claim,
     command_center,
     deployment,
     diplomacy,
     economy,
-    gamemode,
     god_locks,
     godmode,
     governance,
@@ -43,8 +41,6 @@ def register_all_routers(dp: Dispatcher) -> None:
     dp.include_router(maintenance.router)
     dp.include_router(godmode.router)
     dp.include_router(god_locks.router)
-    dp.include_router(gamemode.router)
-    dp.include_router(cabinet.router)
     dp.include_router(menu.router)
     dp.include_router(economy.router)
     dp.include_router(auction.router)

@@ -82,6 +82,8 @@ _COLUMN_MIGRATIONS = [
     ("countries", "econ_sat_unlocked", "BOOLEAN NOT NULL DEFAULT FALSE"),
     # v3.0 — معاهدات چندجانبه
     ("contracts", "is_multilateral", "BOOLEAN NOT NULL DEFAULT FALSE"),
+    # Update 10 — رسید پرداخت کشورگیری VIP
+    ("claim_requests", "photo_file_id", "VARCHAR(256)"),
 ]
 
 

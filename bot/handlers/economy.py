@@ -48,8 +48,9 @@ from ..config import get_settings
 from ..loader import bot
 from ..services.ai import evaluators
 from ..services.economy_service import EconomyError, build_facility, transfer_sale
+from ..enums import AdminGroupType
 from ..services.media import send_photo_news
-from ..services.news_service import publish_news, send_log
+from ..services.news_service import publish_news, send_log, send_to_admin_group
 from ..states import FacilityForm, SaleForm, TariffForm
 from ..utils.formatting import render_economy_panel, render_reserves_panel
 from ..utils.numbers import fa_money, fa_number, parse_amount
@@ -853,7 +854,7 @@ async def cb_sale_accept(
                 )
             except Exception:  # noqa: BLE001
                 pass
-        await send_log(bot, f"🇺🇸 آمریکا {fa_money(duty)} بابت تعرفه اجرایی روی کشور {y} بدست آورد.")
+        await send_to_admin_group(bot, AdminGroupType.SANCTION_BILL, f"🇺🇸 آمریکا {fa_money(duty)} بابت تعرفه اجرایی روی کشور {y} بدست آورد.")
 
     # خبر فوری ارسال محموله در کانال WTO: عکس تصادفی + فرمت جدید اطلاع‌رسانی
     unit = RESOURCE_UNIT_FA[ResourceType(sale.resource)]
@@ -1010,9 +1011,10 @@ async def msg_tariff_percent(message: Message, state: FSMContext, session: Async
             "این درصد از هر فروش آن کشور کسر و به خزانه‌ی آمریکا واریز می‌شود.",
             reply_markup=economy_menu_kb(is_usa=True),
         )
-        # لاگ وضع تعرفه به گروه لاگ (v1.6)
-        await send_log(
+        # لاگ وضع تعرفه به گروه تحریم و لایحه (گروه ۱)
+        await send_to_admin_group(
             bot,
+            AdminGroupType.SANCTION_BILL,
             f"🇺🇸 <b>تعرفه جدید</b>\n"
             f"کشور: {target.flag} {target.name_fa}\n"
             f"درصد تعرفه اجرایی: {fa_number(percent)}٪",

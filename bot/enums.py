@@ -198,6 +198,30 @@ class NewsCategory(str, enum.Enum):
     WTO = "wto"                # کانال سازمان انتقالات
 
 
+class AdminGroupType(str, enum.Enum):
+    """انواع گروه‌های تخصصی ۷گانه مدیریت و نظارت بازی (آپدیت شماره ۱۰)."""
+
+    SANCTION_BILL = "sanction_bill"    # گروه ۱: تحریم و لایحه
+    MAIN_LOG = "main_log"              # گروه ۲: لاگ اصلی بازی
+    ROLE_ECON = "role_econ"            # گروه ۳: بررسی رول اقتصادی
+    ROLE_ATTACK = "role_attack"        # گروه ۴: بررسی رول حمله
+    ROLE_SABOTAGE = "role_sabotage"    # گروه ۵: بررسی رول خرابکاری
+    ROLE_SECURITY = "role_security"    # گروه ۶: بررسی رول امنیتی
+    PAYMENT = "payment"                # گروه ۷: پرداختی‌ها و فیش‌های واریزی
+
+
+ADMIN_GROUP_FA: dict[AdminGroupType, str] = {
+    AdminGroupType.SANCTION_BILL: "گروه ۱ — تحریم و لایحه",
+    AdminGroupType.MAIN_LOG: "گروه ۲ — لاگ اصلی",
+    AdminGroupType.ROLE_ECON: "گروه ۳ — بررسی رول اقتصادی",
+    AdminGroupType.ROLE_ATTACK: "گروه ۴ — بررسی رول حمله",
+    AdminGroupType.ROLE_SABOTAGE: "گروه ۵ — بررسی رول خرابکاری",
+    AdminGroupType.ROLE_SECURITY: "گروه ۶ — بررسی رول امنیتی",
+    AdminGroupType.PAYMENT: "گروه ۷ — گروه پرداختی‌ها",
+}
+
+
+
 class AdvisorDomain(str, enum.Enum):
     """دامنه‌ی مشاور هوش مصنوعی."""
 

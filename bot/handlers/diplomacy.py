@@ -44,7 +44,7 @@ from ..database.models import (
 from ..database.repositories import cooldowns as cd_repo
 from ..database.repositories import countries as countries_repo
 from ..database.repositories import diplomacy as dip_repo
-from ..enums import SANCTION_FA, DiplomacyStatus, NewsCategory, SanctionType
+from ..enums import AdminGroupType, SANCTION_FA, DiplomacyStatus, NewsCategory, SanctionType
 from ..keyboards.common import countries_kb
 from ..keyboards.diplomacy import (
     diplomacy_menu_kb,
@@ -56,7 +56,13 @@ from ..keyboards.diplomacy import (
 from ..loader import bot
 from ..services.letter_image_service import render_contract_image
 from ..services.media import send_photo_news, send_specific_photo
-from ..services.news_service import publish_news, send_log, send_log_photo
+from ..services.news_service import (
+    get_admin_group_id,
+    publish_news,
+    send_log,
+    send_log_photo,
+    send_to_admin_group,
+)
 from ..services.sanction_service import apply_sanction_effects
 from ..database.repositories import users as users_repo
 from ..states import CallForm, ContractForm, MeetingForm, SanctionForm, SpeechForm
@@ -2067,9 +2073,10 @@ async def cb_sanction_do_cancel(call: CallbackQuery, session: AsyncSession, db_u
         except Exception:  # noqa: BLE001
             pass
 
-    # لاگ رفع تحریم به گروه لاگ (v1.9)
-    await send_log(
+    # لاگ رفع تحریم به گروه تحریم و لایحه (گروه ۱)
+    await send_to_admin_group(
         bot,
+        AdminGroupType.SANCTION_BILL,
         f"✅ <b>رفع تحریم</b>\nتحریم‌کننده: {y}\nکشور هدف: {x}\nنوع: {stype_fa}",
     )
 
@@ -2107,14 +2114,14 @@ async def cb_sanction_type(call: CallbackQuery, state: FSMContext, session: Asyn
     x = f"{country.flag} {country.name_fa}"
     y = f"{target.flag} {target.name_fa}"
 
-    if settings.log_group_id is None:
+    if get_admin_group_id(AdminGroupType.SANCTION_BILL) is None:
         await safe_edit(call,
-            "⛔️ امکان ثبت درخواست تحریم نیست (گروه لاگ تنظیم نشده). با مدیریت تماس بگیرید.",
+            "⛔️ امکان ثبت درخواست تحریم نیست (گروه تحریم و لایحه تنظیم نشده). با مدیریت تماس بگیرید.",
             reply_markup=diplomacy_menu_kb(),
         )
         return
 
-    # کیبورد تأیید/رد برای مالک در گروه لاگ: انتخاب شدت یا رد
+    # کیبورد تأیید/رد برای مالک در گروه تحریم و لایحه: انتخاب شدت یا رد
     builder = InlineKeyboardBuilder()
     base = f"{country.id}:{target.id}:{stype.value}"
     builder.button(text="🟢 خفیف", callback_data=f"sancok:{base}:low", style=STYLE_OK)
@@ -2123,8 +2130,9 @@ async def cb_sanction_type(call: CallbackQuery, state: FSMContext, session: Asyn
     builder.button(text="❌ رد", callback_data=f"sancno:{base}", style=STYLE_NO)
     builder.adjust(3, 1)
 
-    await bot.send_message(
-        settings.log_group_id,
+    await send_to_admin_group(
+        bot,
+        AdminGroupType.SANCTION_BILL,
         "🚫 <b>درخواست تحریم (نیازمند تأیید مالک)</b>\n\n"
         f"🔴 تحریم‌کننده: {x}\n"
         f"🔵 هدف: {y}\n"
@@ -2185,8 +2193,9 @@ async def cb_sanction_approve(call: CallbackQuery, session: AsyncSession) -> Non
             bot, settings.news_diplomacy_channel_id,
             f"embargo:{stype.value}", "embargo", stem, caption,
         )
-    await send_log(
+    await send_to_admin_group(
         bot,
+        AdminGroupType.SANCTION_BILL,
         f"🚫 <b>تحریم تأیید و وضع شد</b>\nتحریم‌کننده: {x}\nهدف: {y}\nنوع: {SANCTION_FA[stype]}\nشدت: {sev_fa}",
     )
 
@@ -2232,7 +2241,11 @@ async def cb_sanction_reject(call: CallbackQuery, session: AsyncSession) -> None
             )
         except Exception:  # noqa: BLE001
             pass
-    await send_log(bot, f"❌ <b>درخواست تحریم رد شد</b> (نوع: {SANCTION_FA[stype]}).")
+    await send_to_admin_group(
+        bot,
+        AdminGroupType.SANCTION_BILL,
+        f"❌ <b>درخواست تحریم رد شد</b> (نوع: {SANCTION_FA[stype]}).",
+    )
 
 
 # ============================================================

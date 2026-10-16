@@ -15,13 +15,15 @@ async def create_claim(
     country_id: int,
     president_name: str | None,
     note: str | None,
+    photo_file_id: str | None = None,
 ) -> ClaimRequest:
-    """ساخت درخواست کشورگیری جدید."""
+    """ساخت درخواست کشورگیری جدید (عادی یا VIP)."""
     claim = ClaimRequest(
         user_id=user_id,
         country_id=country_id,
         president_name=president_name,
         note=note,
+        photo_file_id=photo_file_id,
         status=ClaimStatus.PENDING,
     )
     session.add(claim)

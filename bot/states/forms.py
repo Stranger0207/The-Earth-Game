@@ -6,9 +6,10 @@ from aiogram.fsm.state import State, StatesGroup
 
 
 class ClaimForm(StatesGroup):
-    """فرم کشورگیری: انتخاب کشور و نام رئیس‌جمهور."""
+    """فرم کشورگیری: انتخاب کشور و نام رئیس‌جمهور (یا ارسال رسید VIP)."""
 
     choosing_country = State()
+    waiting_for_vip_receipt = State()  # ارسال عکس رسید پرداخت برای کشورهای VIP
     entering_president_name = State()
     entering_note = State()
     confirming = State()  # تأیید نهایی کشورگیری (v1.8)

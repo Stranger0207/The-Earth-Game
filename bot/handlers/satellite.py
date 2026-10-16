@@ -27,6 +27,7 @@ from ..database.models import EconSatReceipt, User
 from ..database.repositories import countries as countries_repo
 from ..database.repositories import satellites as sat_repo
 from ..keyboards.common import countries_kb
+from ..enums import AdminGroupType
 from ..keyboards.satellite import (
     admin_receipt_review_kb,
     econ_cancel_kb,
@@ -38,7 +39,7 @@ from ..keyboards.satellite import (
 )
 from ..loader import bot
 from ..services import satellite_service
-from ..services.news_service import send_log, send_log_photo
+from ..services.news_service import send_log, send_log_photo, send_photo_to_admin_group
 from ..states.satellite import SatelliteForm
 from ..utils.numbers import fa_money, fa_number
 from ..utils.screens import safe_edit
@@ -510,8 +511,9 @@ async def msg_econ_receipt_photo(
         f"💵 مبلغ: ۵۰,۰۰۰ تومان"
     )
 
-    await send_log_photo(
+    await send_photo_to_admin_group(
         bot,
+        AdminGroupType.PAYMENT,
         photo=photo_file_id,
         caption=caption,
         reply_markup=admin_receipt_review_kb(receipt.id),

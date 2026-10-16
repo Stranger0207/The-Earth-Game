@@ -23,16 +23,16 @@ from ..database.repositories import claims as claims_repo
 from ..database.repositories import countries as countries_repo
 from ..database.repositories import diplomacy as dip_repo
 from ..database.repositories import users as users_repo
-from ..enums import ClaimStatus
+from ..enums import AdminGroupType, ClaimStatus
 from ..keyboards.menu import main_menu_kb
 from ..loader import bot
 from ..services import media
-from ..services.news_service import send_log
+from ..services.news_service import send_log, send_to_admin_group
 from ..services.season_service import reset_season
 from ..states import AnnounceForm
 from ..utils.numbers import fa_number
 from ..utils.screens import safe_edit
-from ..utils.ui import PICK_OFF, PICK_ON, STYLE_MAIN, STYLE_OK
+from ..utils.ui import PICK_OFF, PICK_ON, STYLE_MAIN, STYLE_NO, STYLE_OK
 
 router = Router(name="admin")
 settings = get_settings()
@@ -141,6 +141,169 @@ async def cb_reject(call: CallbackQuery, session: AsyncSession) -> None:
         )
     except Exception:  # noqa: BLE001
         pass
+
+
+@router.callback_query(F.data.startswith("vip_claim_approve:"))
+async def cb_vip_claim_approve(
+    call: CallbackQuery, session: AsyncSession, db_user: User
+) -> None:
+    """تأیید رسید و درخواست کشورگیری VIP توسط مالک/ادمین در گروه پرداختی‌ها (آپدیت شماره ۱۰)."""
+    if not _is_owner(call.from_user.id):
+        await call.answer("فقط مدیر یا مالک بازی می‌تواند این درخواست را تأیید کند.", show_alert=True)
+        return
+
+    claim_id = int(call.data.split(":")[1])
+    claim = await claims_repo.get_claim(session, claim_id)
+    if claim is None or claim.status != ClaimStatus.PENDING:
+        await call.answer("این درخواست قبلاً بررسی شده است.", show_alert=True)
+        return
+
+    country = await countries_repo.get_country(session, claim.country_id)
+    if country is None or country.is_claimed:
+        await call.answer("این کشور دیگر در دسترس نیست یا قبلاً واگذار شده است.", show_alert=True)
+        await claims_repo.set_status(session, claim_id, ClaimStatus.REJECTED, call.from_user.id)
+        if call.message.caption:
+            await call.message.edit_caption(
+                caption=call.message.caption + "\n\n❌ <b>کشور دیگر در دسترس نیست</b>"
+            )
+        return
+
+    # واگذاری کشور VIP به کاربر
+    await countries_repo.assign_owner(session, claim.country_id, claim.user_id)
+    if claim.president_name:
+        await users_repo.set_president_name(session, claim.user_id, claim.president_name)
+    await claims_repo.set_status(session, claim_id, ClaimStatus.APPROVED, call.from_user.id)
+
+    # قانون انجماد سراسری (v2.1)
+    state = await bot_state_repo.get_state(session)
+    frozen = bool(getattr(state, "global_freeze", False))
+    if frozen:
+        await users_repo.set_suspended(session, claim.user_id, True)
+
+    await session.commit()
+    await call.answer("رسید تأیید و کشور واگذار شد ✅")
+
+    reviewer_name = call.from_user.full_name or str(call.from_user.id)
+    status_suffix = " (معلق — بازی منجمد است ⏸)" if frozen else ""
+    if call.message.caption:
+        await call.message.edit_caption(
+            caption=call.message.caption + f"\n\n✅ <b>تأیید شد توسط {reviewer_name}</b>{status_suffix}"
+        )
+    elif call.message.text:
+        await call.message.edit_text(
+            call.message.html_text + f"\n\n✅ <b>تأیید شد توسط {reviewer_name}</b>{status_suffix}"
+        )
+
+    # ثبت لاگ در گروه لاگ اصلی (MAIN_LOG)
+    target_user = await users_repo.get_user(session, claim.user_id)
+    uname = f"@{target_user.username}" if target_user and target_user.username else (claim.president_name or str(claim.user_id))
+    log_text = (
+        "👑 <b>واگذاری کشور VIP</b>\n\n"
+        f"🏴 کشور: {country.flag} {country.name_fa} (VIP ⭐️)\n"
+        f"👤 کاربر: {uname} (<code>{claim.user_id}</code>)\n"
+        f"💳 رسید پرداختی در گروه مالی تأیید شد.\n"
+        f"👮‍♂️ تأییدکننده: {reviewer_name}"
+    )
+    if frozen:
+        log_text += "\n⏸ <i>کاربر به دلیل انجماد سراسری بازی خودکار معلق شد.</i>"
+    await send_to_admin_group(bot, AdminGroupType.MAIN_LOG, log_text)
+
+    # اطلاع به بازیکن در پیوی
+    if frozen:
+        try:
+            await bot.send_message(
+                claim.user_id,
+                f"🎉 رسید پرداخت شما تأیید شد و شما رهبر کشور VIP {country.flag} "
+                f"<b>{country.name_fa}</b> شدید!\n\n"
+                "⏸ اما بازی در حال حاضر <b>منجمد/معلق</b> است و تا زمان رفع انجماد توسط مدیریت، "
+                "امکان انجام فعالیت وجود ندارد. به‌محض شروع بازی به شما اطلاع داده خواهد شد.",
+            )
+        except Exception:  # noqa: BLE001
+            pass
+        return
+
+    try:
+        await media.send_photo_news(
+            bot,
+            claim.user_id,
+            "ui_main",
+            f"🎉 تبریک! رسید واریز شما تأیید شد.\n"
+            f"شما اکنون رهبر کشور ابرقدرت {country.flag} <b>{country.name_fa}</b> هستید!\n\n"
+            "پنل مدیریت کشور:",
+            reply_markup=main_menu_kb(),
+        )
+    except Exception:  # noqa: BLE001
+        pass
+
+
+@router.callback_query(F.data.startswith("vip_claim_reject:"))
+async def cb_vip_claim_reject(call: CallbackQuery, session: AsyncSession) -> None:
+    """رد رسید و درخواست کشورگیری VIP توسط ادمین در گروه پرداختی‌ها (آپدیت شماره ۱۰)."""
+    if not _is_owner(call.from_user.id):
+        await call.answer("فقط مدیر یا مالک بازی می‌تواند رد کند.", show_alert=True)
+        return
+
+    claim_id = int(call.data.split(":")[1])
+    claim = await claims_repo.get_claim(session, claim_id)
+    if claim is None or claim.status != ClaimStatus.PENDING:
+        await call.answer("این درخواست قبلاً بررسی شده است.", show_alert=True)
+        return
+
+    await claims_repo.set_status(session, claim_id, ClaimStatus.REJECTED, call.from_user.id)
+    await session.commit()
+    await call.answer("رسید رد شد ❌")
+
+    reviewer_name = call.from_user.full_name or str(call.from_user.id)
+    if call.message.caption:
+        await call.message.edit_caption(
+            caption=call.message.caption + f"\n\n❌ <b>رد شد توسط {reviewer_name}</b>"
+        )
+    elif call.message.text:
+        await call.message.edit_text(call.message.html_text + f"\n\n❌ <b>رد شد توسط {reviewer_name}</b>")
+
+    try:
+        await bot.send_message(
+            claim.user_id,
+            "❌ متأسفانه رسید پرداخت و درخواست کشورگیری VIP شما توسط مدیریت تأیید نشد. "
+            "جهت پیگیری با پشتیبانی در ارتباط باشید یا کشور دیگری انتخاب کنید: /claim",
+        )
+    except Exception:  # noqa: BLE001
+        pass
+
+
+@router.message(Command("checkgroups"))
+async def cmd_check_groups(message: Message) -> None:
+    """بررسی وضعیت اتصال و دسترسی ربات به هر ۷ گروه مدیریتی (آپدیت شماره ۱۰)."""
+    if not settings.is_admin(message.from_user.id):
+        return
+
+    from ..enums import ADMIN_GROUP_FA, AdminGroupType
+    from ..services.news_service import get_admin_group_id
+
+    status_msg = await message.answer("⏳ در حال بررسی اتصال به ۷ گروه مدیریتی...")
+    results = []
+
+    for g_type in AdminGroupType:
+        fa_name = ADMIN_GROUP_FA.get(g_type, g_type.value)
+        gid = get_admin_group_id(g_type)
+        if gid is None:
+            results.append(f"⚪️ <b>{fa_name}</b>:\n   تنظیم نشده (None)")
+            continue
+
+        try:
+            chat = await bot.get_chat(gid)
+            chat_title = chat.title or str(gid)
+            await bot.send_message(
+                gid,
+                f"🤖 <b>تست اتصال ربات</b>\nگروه: {fa_name}\nوضعیت: 🟢 فعال و متصل"
+            )
+            results.append(f"🟢 <b>{fa_name}</b>:\n   نام گروه: «{chat_title}»\n   شناسه: <code>{gid}</code> (ارسال موفق)")
+        except Exception as exc:  # noqa: BLE001
+            results.append(f"🔴 <b>{fa_name}</b>:\n   شناسه: <code>{gid}</code>\n   خطا: <code>{type(exc).__name__}: {exc}</code>")
+
+    report = "📋 <b>گزارش وضعیت اتصال به گروه‌های ۷گانه مدیریتی:</b>\n\n" + "\n\n".join(results)
+    await status_msg.edit_text(report)
+
 
 
 @router.message(Command("pending"))

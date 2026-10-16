@@ -59,6 +59,14 @@ class Settings(BaseSettings):
     log_group_id: int | None = None
     tweet_channel_id: int = -1004317808331
 
+    # --- گروه‌های ۷گانه مدیریتی و بررسی (آپدیت شماره ۱۰) ---
+    sanction_bill_group_id: int = -1004474739499  # گروه ۱: تحریم و لایحه
+    role_econ_group_id: int = -1004359181892      # گروه ۳: بررسی رول اقتصادی
+    role_attack_group_id: int = -1004424329237    # گروه ۴: بررسی رول حمله
+    role_sabotage_group_id: int = -1004317304087  # گروه ۵: بررسی رول خرابکاری
+    role_security_group_id: int = -1004317826815  # گروه ۶: بررسی رول امنیتی
+    payment_group_id: int = -1004337037351        # گروه ۷: پرداختی‌ها (فیش‌های واریزی)
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

@@ -344,6 +344,14 @@ ECON_SAT_ACTIVATION_PRICE_TOMAN = 50_000
 ECON_SAT_CARD_NUMBER = "6219861843148577"
 ECON_SAT_CARD_HOLDER = "رضائی"
 
+# ============================================================
+#  ⭐️ کشورگیری کشورهای VIP (آپدیت شماره ۱۰)
+# ============================================================
+VIP_CLAIM_PRICE_INFO = "طبق قیمت اعلامی در چنل @GameOfEarth"
+VIP_CLAIM_CARD_NUMBER = "6219861843148577"
+VIP_CLAIM_CARD_HOLDER = "رضائی"
+
+
 ECON_SAT_BUILD_COST_USD = 100_000_000.0    # ۱۰۰ میلیون دلار هزینه ساخت اولیه
 ECON_SAT_STEEL_COST = 300_000.0            # ۳۰۰ هزار تن فولاد
 ECON_SAT_ALUMINUM_COST = 500_000.0         # ۵۰۰ هزار تن آلومینیوم

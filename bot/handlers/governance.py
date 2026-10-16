@@ -51,7 +51,8 @@ from ..services.governance_service import (
     refer_to_parliament,
     tax_satisfaction_delta,
 )
-from ..services.news_service import send_log
+from ..enums import AdminGroupType
+from ..services.news_service import send_log, send_to_admin_group
 from ..states import GovernanceForm, LawForm
 from ..utils.numbers import fa_money, fa_number, parse_amount
 from ..utils.screens import safe_edit
@@ -252,9 +253,10 @@ async def cb_select_government(
     ]
     await safe_edit(call, "\n".join(lines), reply_markup=governance_menu_kb())
 
-    # لاگ
-    await send_log(
+    # لاگ تغییر نظام به گروه تحریم و لایحه (گروه ۱)
+    await send_to_admin_group(
         bot,
+        AdminGroupType.SANCTION_BILL,
         f"🏛 <b>تغییر نظام</b>\n"
         f"کشور: {country.flag} {country.name_fa}\n"
         f"نظام جدید: {emoji} {fa}\n"
@@ -434,8 +436,9 @@ async def cb_parliament_ref(
     builder.button(text="❌ رد", callback_data=f"gov_admin:ref_no:{pid}", style=STYLE_NO)
     builder.adjust(2)
 
-    await send_log(
+    await send_to_admin_group(
         bot,
+        AdminGroupType.SANCTION_BILL,
         f"🏛 <b>ارجاع به مجلس</b>\n"
         f"کشور: {country.flag} {country.name_fa}\n"
         f"اعتراض #{pid}\n\n"
@@ -604,8 +607,9 @@ async def msg_set_tax(
         reply_markup=governance_menu_kb(),
     )
 
-    await send_log(
+    await send_to_admin_group(
         bot,
+        AdminGroupType.SANCTION_BILL,
         f"💰 <b>تغییر مالیات</b>\n"
         f"کشور: {country.flag} {country.name_fa}\n"
         f"نرخ: {old_rate:.1f}٪ → {new_rate:.1f}٪",
@@ -711,8 +715,9 @@ async def cb_visa_add_confirm(
         reply_markup=visa_law_kb(),
     )
 
-    await send_log(
+    await send_to_admin_group(
         bot,
+        AdminGroupType.SANCTION_BILL,
         f"🛂 <b>وضع ویزا</b>\n"
         f"کشور: {country.flag} {country.name_fa}\n"
         f"هدف: {target.flag} {target.name_fa}",
@@ -775,7 +780,7 @@ async def cb_visa_remove_confirm(
         await safe_edit(
             call, f"✅ ویزای {name} حذف شد.", reply_markup=visa_law_kb(),
         )
-        await send_log(bot, f"🛂 <b>حذف ویزا</b>\nکشور: {country.flag} {country.name_fa}\nهدف: {name}")
+        await send_to_admin_group(bot, AdminGroupType.SANCTION_BILL, f"🛂 <b>حذف ویزا</b>\nکشور: {country.flag} {country.name_fa}\nهدف: {name}")
     else:
         await safe_edit(call, "⚠️ ویزا یافت نشد.", reply_markup=visa_law_kb())
 
@@ -848,8 +853,9 @@ async def msg_law_body(
     builder.button(text="❌ رد", callback_data=f"gov_admin:law_no:{law.id}", style=STYLE_NO)
     builder.adjust(2)
 
-    await send_log(
+    await send_to_admin_group(
         bot,
+        AdminGroupType.SANCTION_BILL,
         f"🏛 <b>لایحه‌ی جدید در مجلس</b>\n"
         f"کشور: {country.flag} {country.name_fa}\n"
         f"عنوان: {title}\n\n"

@@ -14,12 +14,20 @@ from aiogram.types import (
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..config import get_settings
+from ..constants import (
+    VIP_CLAIM_CARD_HOLDER,
+    VIP_CLAIM_CARD_NUMBER,
+    VIP_CLAIM_PRICE_INFO,
+)
 from ..database.models import User
 from ..database.repositories import claims as claims_repo
 from ..database.repositories import countries as countries_repo
+from ..enums import AdminGroupType
 from ..keyboards.common import countries_kb
 from ..loader import bot
+from ..services.news_service import send_photo_to_admin_group, send_to_admin_group
 from ..states import ClaimForm
+from ..utils.ui import STYLE_NO, STYLE_OK
 from .deps import get_player_country
 
 router = Router(name="claim")
@@ -80,24 +88,146 @@ async def cb_claim_start(
 async def cb_pick_country(
     call: CallbackQuery, state: FSMContext, session: AsyncSession
 ) -> None:
-    """ثبت کشور انتخاب‌شده و پرسیدن نام رئیس‌جمهور."""
+    """ثبت کشور انتخاب‌شده (عادی یا VIP)."""
     await call.answer()
     country_id = int(call.data.split(":")[1])
     country = await countries_repo.get_country(session, country_id)
     if country is None or country.is_claimed:
         await call.message.answer("این کشور دیگر در دسترس نیست. لطفاً کشور دیگری انتخاب کنید.")
         return
+
     await state.update_data(country_id=country_id)
+
+    # اگر کشور VIP است: نمایش شرایط و هدایت به وضعیت دریافت فیش پرداختی
+    if country.is_vip:
+        await state.set_state(ClaimForm.waiting_for_vip_receipt)
+        vip_cancel_kb = InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="❌ انصراف و انتخاب کشور دیگر", callback_data="claim:start", style=STYLE_NO)
+        ]])
+        text = (
+            f"⭐️ کشور {country.flag} <b>{country.name_fa}</b> جزو <b>کشورهای ابرقدرت / VIP</b> بازی است.\n\n"
+            "💎 <b>قابلیت‌های انحصاری این کشور:</b>\n"
+            "• تشکیل و رهبری اتحاد‌های بین‌المللی\n"
+            "• برنامه‌ی توسعه و تحقیقات تسلیحات هسته‌ای\n"
+            "• احداث پایگاه‌های نظامی در خاک خود یا کشورهای دیگر\n"
+            "• ماهواره‌های جاسوسی فضایی نظامی\n"
+            "• استقرار و اعزام نیروهای راهبردی نظامی\n"
+            "• سقف ساخت نامحدود تأسیسات و صنایع\n\n"
+            f"💳 شماره کارت: <code>{VIP_CLAIM_CARD_NUMBER}</code>\n"
+            f"👤 به نام: <b>{VIP_CLAIM_CARD_HOLDER}</b>\n"
+            f"💵 مبلغ: <b>{VIP_CLAIM_PRICE_INFO}</b>\n\n"
+            "لطفاً پس از واریز، <b>تصویر رسید پرداخت</b> خود را در همین صفحه ارسال کنید تا برای مدیریت ارسال شود. "
+            "به‌محض تأیید رسید، وارد کشور خود خواهید شد."
+        )
+        await call.message.answer(text, reply_markup=vip_cancel_kb)
+        return
+
+    # کشورهای عادی: ادامه روال قبلی
     await state.set_state(ClaimForm.entering_president_name)
-    vip = "⭐️ (کشور VIP) " if country.is_vip else ""
     back_kb = InlineKeyboardMarkup(inline_keyboard=[[
         InlineKeyboardButton(text="🔙 بازگشت به فهرست کشورها", callback_data="claim:start", style="primary")
     ]])
     await call.message.answer(
-        f"{vip}شما کشور {country.flag} <b>{country.name_fa}</b> را انتخاب کردید.\n\n"
+        f"شما کشور {country.flag} <b>{country.name_fa}</b> را انتخاب کردید.\n\n"
         "لطفاً نام رئیس‌جمهور خود را وارد کنید (این نام در اخبار استفاده می‌شود):",
         reply_markup=back_kb,
     )
+
+
+@router.message(ClaimForm.waiting_for_vip_receipt, F.photo)
+async def msg_vip_receipt_photo(
+    message: Message, state: FSMContext, session: AsyncSession, db_user: User
+) -> None:
+    """دریافت تصویر فیش واریزی کشورگیری VIP و ارسال به گروه پرداختی‌ها."""
+    data = await state.get_data()
+    country_id = data.get("country_id")
+    if not country_id:
+        await state.clear()
+        await message.answer("خطا در بازیابی اطلاعات کشور. لطفاً مجدداً /claim بزنید.")
+        return
+
+    country = await countries_repo.get_country(session, country_id)
+    if country is None or country.is_claimed:
+        await state.clear()
+        await message.answer("این کشور دیگر در دسترس نیست. لطفاً کشور دیگری را از طریق /claim انتخاب کنید.")
+        return
+
+    # بررسی اینکه کاربر هم‌اکنون کشوری نداشته باشد یا درخواست دیگری در انتظار نداشته باشد
+    user_country = await get_player_country(session, db_user)
+    if user_country is not None:
+        await state.clear()
+        await message.answer(f"شما هم‌اکنون رهبر {user_country.flag} {user_country.name_fa} هستید.")
+        return
+
+    pending = await claims_repo.get_pending_for_user(session, db_user.telegram_id)
+    if pending is not None:
+        await state.clear()
+        await message.answer("⏳ شما از قبل یک درخواست در انتظار تأیید دارید.")
+        return
+
+    photo_file_id = message.photo[-1].file_id
+    claim = await claims_repo.create_claim(
+        session,
+        user_id=db_user.telegram_id,
+        country_id=country_id,
+        president_name=db_user.first_name,
+        note=None,
+        photo_file_id=photo_file_id,
+    )
+    await session.flush()
+    await state.clear()
+
+    await message.answer(
+        "✅ رسید پرداخت شما دریافت و به بخش مالی ارسال شد. "
+        "پس از بررسی و تأیید مدیریت، کشور به شما واگذار خواهد شد."
+    )
+
+    username_str = f"@{db_user.username}" if db_user.username else (db_user.first_name or "—")
+    caption = (
+        "💳 <b>درخواست کشورگیری VIP (رسید پرداختی)</b>\n\n"
+        f"🏴 کشور: {country.flag} {country.name_fa} (VIP ⭐️)\n"
+        f"👤 کاربر: {db_user.first_name or '—'} ({username_str})\n"
+        f"🆔 آیدی عددی: <code>{db_user.telegram_id}</code>\n"
+        f"🔢 شناسه درخواست: #{claim.id}\n"
+        f"💵 هزینه: {VIP_CLAIM_PRICE_INFO}"
+    )
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="✅ تأیید رسید و واگذاری کشور",
+                    callback_data=f"vip_claim_approve:{claim.id}",
+                    style=STYLE_OK,
+                ),
+                InlineKeyboardButton(
+                    text="❌ رد درخواست",
+                    callback_data=f"vip_claim_reject:{claim.id}",
+                    style=STYLE_NO,
+                ),
+            ]
+        ]
+    )
+    await send_photo_to_admin_group(
+        bot,
+        AdminGroupType.PAYMENT,
+        photo=photo_file_id,
+        caption=caption,
+        reply_markup=kb,
+    )
+
+
+@router.message(ClaimForm.waiting_for_vip_receipt, F.text)
+async def msg_vip_receipt_text_warning(message: Message) -> None:
+    """هشدار به کاربر برای ارسال عکس رسید به جای متن."""
+    cancel_kb = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="❌ انصراف و انتخاب کشور دیگر", callback_data="claim:start", style=STYLE_NO)
+    ]])
+    await message.answer(
+        "⚠️ لطفاً **تصویر رسید واریز** را ارسال کنید.\n\n"
+        "در صورتی که منصرف شده‌اید، می‌توانید از دکمه زیر برای انتخاب کشور دیگر استفاده کنید.",
+        reply_markup=cancel_kb,
+    )
+
 
 
 def _skip_note_kb() -> InlineKeyboardMarkup:
@@ -228,6 +358,10 @@ async def cb_claim_confirm(
             ]
         ]
     )
+    # ارسال به گروه لاگ اصلی (MAIN_LOG)
+    await send_to_admin_group(bot, AdminGroupType.MAIN_LOG, text, reply_markup=kb)
+
+    # ارسال به پیوی مالک‌ها به عنوان پشتیبان
     for owner_id in settings.owner_ids:
         try:
             await bot.send_message(owner_id, text, reply_markup=kb)

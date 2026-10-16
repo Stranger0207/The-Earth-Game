@@ -35,6 +35,8 @@ class ClaimRequest(Base):
     president_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
     # توضیح اختیاری کاربر
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # شناسه عکس فیش واریزی تلگرام برای کشورهای VIP (آپدیت شماره ۱۰)
+    photo_file_id: Mapped[str | None] = mapped_column(String(256), nullable=True)
 
     status: Mapped[str] = mapped_column(
         String(16), default=ClaimStatus.PENDING, nullable=False

@@ -61,6 +61,7 @@ from ..enums import (
     RESOURCE_FA,
     RESOURCE_UNIT_FA,
     SANCTION_FA,
+    AdminGroupType,
     DiplomacyStatus,
     FacilityType,
     MilitaryFactoryType,
@@ -70,7 +71,7 @@ from ..enums import (
 )
 from ..loader import bot
 from ..services.economy_service import facility_yield_for
-from ..services.news_service import send_log
+from ..services.news_service import send_log, send_to_admin_group
 from ..utils.formatting import render_economy_panel, render_military_panel, render_reserves_panel
 from ..utils.numbers import fa_money, fa_number, parse_amount
 from ..utils.ui import STYLE_MAIN, STYLE_NO, STYLE_OK, header
@@ -605,7 +606,7 @@ async def cb_god_sanction_delete(call: CallbackQuery, session: AsyncSession) -> 
         return
     await diplomacy_repo.deactivate_sanction(session, sid)
     await call.answer("تحریم لغو شد 🗑")
-    await send_log(bot, "🚫 <b>لغو تحریم توسط مدیریت</b>")
+    await send_to_admin_group(bot, AdminGroupType.SANCTION_BILL, "🚫 <b>لغو تحریم توسط مدیریت</b>")
     await _render_god_sanctions(call, session)
 
 
@@ -670,8 +671,9 @@ async def cb_god_sanction_create(call: CallbackQuery, session: AsyncSession) -> 
     await call.answer("تحریم اعمال شد ✅")
     frm_c = await countries_repo.get_country(session, frm)
     to_c = await countries_repo.get_country(session, to)
-    await send_log(
+    await send_to_admin_group(
         bot,
+        AdminGroupType.SANCTION_BILL,
         "🚫 <b>وضع تحریم توسط مدیریت</b>\n"
         f"{frm_c.name_fa if frm_c else '?'} → {to_c.name_fa if to_c else '?'}: "
         f"{SANCTION_FA.get(SanctionType(stype), stype)}",

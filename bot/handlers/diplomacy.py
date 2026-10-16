@@ -4,12 +4,19 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timedelta, timezone
 
 from aiogram import F, Router
 from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
-from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
+from aiogram.types import (
+    BufferedInputFile,
+    CallbackQuery,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    Message,
+)
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -37,8 +44,9 @@ from ..keyboards.diplomacy import (
     sanction_types_kb,
 )
 from ..loader import bot
+from ..services.letter_image_service import render_contract_image
 from ..services.media import send_photo_news, send_specific_photo
-from ..services.news_service import publish_news, send_log
+from ..services.news_service import publish_news, send_log, send_log_photo
 from ..services.sanction_service import apply_sanction_effects
 from ..database.repositories import users as users_repo
 from ..states import CallForm, ContractForm, MeetingForm, SanctionForm, SpeechForm
@@ -47,6 +55,7 @@ from ..utils.screens import safe_edit
 from ..utils.ui import STYLE_MAIN, STYLE_NO, STYLE_OK, header
 from .deps import NO_COUNTRY_TEXT, assert_feature, get_player_country
 
+logger = logging.getLogger(__name__)
 settings = get_settings()
 # نام کاربری ربات برای ساخت deep-link نقل قول (یک‌بار کش می‌شود)
 _bot_username: str | None = None
@@ -1158,27 +1167,92 @@ async def cb_sign_contract(call: CallbackQuery, session: AsyncSession, db_user: 
     contract.signed_b = True
     contract.status = DiplomacyStatus.ACTIVE
     await call.answer("امضا شد ✅")
-    await safe_edit(call,call.message.html_text + "\n\n✅ <b>قرارداد امضا و فعال شد</b>")
+    await safe_edit(call, call.message.html_text + "\n\n✅ <b>قرارداد امضا و فعال شد</b>")
 
     a = await countries_repo.get_country(session, contract.country_a)
     b = await countries_repo.get_country(session, contract.country_b)
+
+    # استخراج نام رهبران طرفین جهت درج در سند معاهده
+    user_a = await users_repo.get_user(session, a.owner_user_id) if (a and a.owner_user_id) else None
+    user_b = await users_repo.get_user(session, b.owner_user_id) if (b and b.owner_user_id) else None
+    leader_a = user_a.president_name if (user_a and user_a.president_name) else (user_a.first_name if user_a else None)
+    leader_b = user_b.president_name if (user_b and user_b.president_name) else (user_b.first_name if user_b else None)
+
+    # تولید تصویر رسمی سند معاهده با امضای طرفین (v2.9)
+    treaty_bytes: bytes | None = None
+    try:
+        treaty_bytes = render_contract_image(
+            contract_id=contract.id,
+            title=contract.title,
+            country_a_name=a.name_fa if a else "کشور اول",
+            country_a_flag=a.flag if a else "",
+            country_a_leader=leader_a,
+            country_b_name=b.name_fa if b else "کشور دوم",
+            country_b_flag=b.flag if b else "",
+            country_b_leader=leader_b,
+            body=contract.body,
+            created_at=contract.created_at,
+        )
+    except Exception as exc:
+        logger.exception("Failed to render treaty image for contract %s: %s", contract.id, exc)
+
+    doc_caption = (
+        f"📜 <b>معاهده رسمی منعقد شد</b>\n\n"
+        f"🏛 <b>عنوان:</b> {contract.title}\n"
+        f"🤝 <b>طرفین:</b> {a.flag if a else ''} {a.name_fa if a else '?'} ↔ {b.flag if b else ''} {b.name_fa if b else '?'}\n\n"
+        f"🖼 <i>سند رسمی بین‌المللی با امضای طرفین در تصویر فوق پیوست شد.</i>"
+    )
+    doc_kb = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="📜 قراردادهای من", callback_data="dip:contracts", style=STYLE_MAIN),
+        InlineKeyboardButton(text="🔙 منوی دیپلماسی", callback_data="menu:diplomacy", style=STYLE_MAIN),
+    ]])
+
+    # ارسال برای طرف اول معاهده
     if a and a.owner_user_id:
         try:
-            await bot.send_message(a.owner_user_id, f"✅ قرارداد «{contract.title}» امضا و فعال شد.")
+            if treaty_bytes:
+                photo_a = BufferedInputFile(treaty_bytes, filename=f"treaty_{contract.id}.png")
+                await bot.send_photo(a.owner_user_id, photo=photo_a, caption=doc_caption, reply_markup=doc_kb)
+            else:
+                await bot.send_message(a.owner_user_id, f"✅ قرارداد «{contract.title}» امضا و فعال شد.", reply_markup=doc_kb)
         except Exception:  # noqa: BLE001
             pass
+
+    # ارسال برای طرف دوم معاهده (امضاکننده)
+    if b and b.owner_user_id and b.owner_user_id != (a.owner_user_id if a else None):
+        try:
+            if treaty_bytes:
+                photo_b = BufferedInputFile(treaty_bytes, filename=f"treaty_{contract.id}.png")
+                await bot.send_photo(b.owner_user_id, photo=photo_b, caption=doc_caption, reply_markup=doc_kb)
+        except Exception:  # noqa: BLE001
+            pass
+
     await publish_news(
         bot,
         NewsCategory.DIPLOMACY,
-        f"🕊 قراردادی میان {a.name_fa if a else '?'} و {b.name_fa if b else '?'} منعقد شد.",
+        f"🕊 معاهده‌ی رسمی «{contract.title}» میان {a.name_fa if a else '?'} و {b.name_fa if b else '?'} منعقد و لازم‌الاجرا شد.",
     )
-    # لاگ انعقاد قرارداد به گروه لاگ (v1.9)
-    await send_log(
-        bot,
-        f"📜 <b>قرارداد منعقد شد</b>\n"
-        f"عنوان: {contract.title}\n"
-        f"طرفین: {a.flag if a else ''} {a.name_fa if a else '?'} ↔ {b.flag if b else ''} {b.name_fa if b else '?'}",
-    )
+
+    # ارسال لاگ به گروه مدیران (همراه با تصویر سند)
+    if treaty_bytes:
+        photo_log = BufferedInputFile(treaty_bytes, filename=f"treaty_{contract.id}.png")
+        await send_log_photo(
+            bot,
+            photo=photo_log,
+            caption=(
+                f"📜 <b>معاهده رسمی منعقد شد</b>\n"
+                f"شماره معاهده: #{contract.id}\n"
+                f"عنوان: {contract.title}\n"
+                f"طرفین: {a.flag if a else ''} {a.name_fa if a else '?'} ↔ {b.flag if b else ''} {b.name_fa if b else '?'}"
+            ),
+        )
+    else:
+        await send_log(
+            bot,
+            f"📜 <b>قرارداد منعقد شد</b>\n"
+            f"عنوان: {contract.title}\n"
+            f"طرفین: {a.flag if a else ''} {a.name_fa if a else '?'} ↔ {b.flag if b else ''} {b.name_fa if b else '?'}",
+        )
 
 
 @router.callback_query(F.data.startswith("reject_contract:"))
@@ -1264,6 +1338,11 @@ async def cb_contract_view(call: CallbackQuery, session: AsyncSession, db_user: 
     )
     builder = InlineKeyboardBuilder()
     builder.button(
+        text="🖼 دریافت تصویر رسمی معاهده",
+        callback_data=f"contract_img:{contract.id}",
+        style=STYLE_MAIN,
+    )
+    builder.button(
         text="❌ لغو یک‌طرفه قرارداد",
         callback_data=f"contract_cancel:{contract.id}",
         style=STYLE_NO,
@@ -1275,6 +1354,75 @@ async def cb_contract_view(call: CallbackQuery, session: AsyncSession, db_user: 
     )
     builder.adjust(1)
     await safe_edit(call, text, reply_markup=builder.as_markup())
+
+
+@router.callback_query(F.data.startswith("contract_img:"))
+async def cb_contract_image(call: CallbackQuery, session: AsyncSession, db_user: User) -> None:
+    """دریافت تصویر گرافیکی رسمی سند معاهده بین‌المللی با امضای طرفین."""
+    country = await get_player_country(session, db_user)
+    if country is None:
+        await call.answer("کشوری برای شما ثبت نشده است.", show_alert=True)
+        return
+    try:
+        cid = int(call.data.split(":")[1])
+    except (IndexError, ValueError):
+        await call.answer("شناسه نامعتبر است.", show_alert=True)
+        return
+
+    contract = await dip_repo.get_contract(session, cid)
+    if contract is None:
+        await call.answer("قرارداد یافت نشد.", show_alert=True)
+        return
+    if country.id not in (contract.country_a, contract.country_b):
+        await call.answer("شما طرف این معاهده نیستید.", show_alert=True)
+        return
+
+    await call.answer("در حال آماده‌سازی تصویر سند رسمی معاهده... ⏳")
+
+    a = await countries_repo.get_country(session, contract.country_a)
+    b = await countries_repo.get_country(session, contract.country_b)
+
+    user_a = await users_repo.get_user(session, a.owner_user_id) if (a and a.owner_user_id) else None
+    user_b = await users_repo.get_user(session, b.owner_user_id) if (b and b.owner_user_id) else None
+    leader_a = user_a.president_name if (user_a and user_a.president_name) else (user_a.first_name if user_a else None)
+    leader_b = user_b.president_name if (user_b and user_b.president_name) else (user_b.first_name if user_b else None)
+
+    try:
+        treaty_bytes = render_contract_image(
+            contract_id=contract.id,
+            title=contract.title,
+            country_a_name=a.name_fa if a else "کشور اول",
+            country_a_flag=a.flag if a else "",
+            country_a_leader=leader_a,
+            country_b_name=b.name_fa if b else "کشور دوم",
+            country_b_flag=b.flag if b else "",
+            country_b_leader=leader_b,
+            body=contract.body,
+            created_at=contract.created_at,
+        )
+    except Exception as exc:
+        logger.exception("Failed to render treaty image for contract %s: %s", contract.id, exc)
+        await call.answer("خطا در تولید تصویر سند معاهده.", show_alert=True)
+        return
+
+    caption = (
+        f"📜 <b>سند رسمی معاهده بین‌المللی</b>\n\n"
+        f"🏛 <b>عنوان:</b> {contract.title}\n"
+        f"🤝 <b>طرفین:</b> {a.flag if a else ''} {a.name_fa if a else '?'} ↔ {b.flag if b else ''} {b.name_fa if b else '?'}\n"
+        f"🔢 <b>شماره ثبت:</b> #{fa_number(contract.id)}\n\n"
+        f"✍️ <i>امضاهای رسمی و مهر دیپلماتیک در تصویر فوق درج شده است.</i>"
+    )
+    kb = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="🔙 بازگشت به قرارداد", callback_data=f"contract_view:{contract.id}", style=STYLE_MAIN),
+        InlineKeyboardButton(text="📜 فهرست قراردادها", callback_data="dip:contracts", style=STYLE_MAIN),
+    ]])
+    photo = BufferedInputFile(treaty_bytes, filename=f"treaty_{contract.id}.png")
+    try:
+        await bot.send_photo(call.from_user.id, photo=photo, caption=caption, reply_markup=kb)
+    except Exception as exc:
+        logger.warning("Could not send treaty photo via bot: %s", exc)
+        if call.message:
+            await call.message.answer_photo(photo=photo, caption=caption, reply_markup=kb)
 
 
 @router.callback_query(F.data.startswith("contract_cancel:"))

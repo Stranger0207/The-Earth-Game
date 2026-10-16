@@ -97,38 +97,14 @@ async def cb_pick_country(
         return
 
     await state.update_data(country_id=country_id)
-
-    # اگر کشور VIP است: نمایش شرایط و هدایت به وضعیت دریافت فیش پرداختی
-    if country.is_vip:
-        await state.set_state(ClaimForm.waiting_for_vip_receipt)
-        vip_cancel_kb = InlineKeyboardMarkup(inline_keyboard=[[
-            InlineKeyboardButton(text="❌ انصراف و انتخاب کشور دیگر", callback_data="claim:start", style=STYLE_NO)
-        ]])
-        text = (
-            f"⭐️ کشور {country.flag} <b>{country.name_fa}</b> جزو <b>کشورهای ابرقدرت / VIP</b> بازی است.\n\n"
-            "💎 <b>قابلیت‌های انحصاری این کشور:</b>\n"
-            "• تشکیل و رهبری اتحاد‌های بین‌المللی\n"
-            "• برنامه‌ی توسعه و تحقیقات تسلیحات هسته‌ای\n"
-            "• احداث پایگاه‌های نظامی در خاک خود یا کشورهای دیگر\n"
-            "• ماهواره‌های جاسوسی فضایی نظامی\n"
-            "• استقرار و اعزام نیروهای راهبردی نظامی\n"
-            "• سقف ساخت نامحدود تأسیسات و صنایع\n\n"
-            f"💳 شماره کارت: <code>{VIP_CLAIM_CARD_NUMBER}</code>\n"
-            f"👤 به نام: <b>{VIP_CLAIM_CARD_HOLDER}</b>\n"
-            f"💵 مبلغ: <b>{VIP_CLAIM_PRICE_INFO}</b>\n\n"
-            "لطفاً پس از واریز، <b>تصویر رسید پرداخت</b> خود را در همین صفحه ارسال کنید تا برای مدیریت ارسال شود. "
-            "به‌محض تأیید رسید، وارد کشور خود خواهید شد."
-        )
-        await call.message.answer(text, reply_markup=vip_cancel_kb)
-        return
-
-    # کشورهای عادی: ادامه روال قبلی
     await state.set_state(ClaimForm.entering_president_name)
+
+    vip_badge = " (⭐️ VIP)" if country.is_vip else ""
     back_kb = InlineKeyboardMarkup(inline_keyboard=[[
         InlineKeyboardButton(text="🔙 بازگشت به فهرست کشورها", callback_data="claim:start", style="primary")
     ]])
     await call.message.answer(
-        f"شما کشور {country.flag} <b>{country.name_fa}</b> را انتخاب کردید.\n\n"
+        f"شما کشور {country.flag} <b>{country.name_fa}</b>{vip_badge} را انتخاب کردید.\n\n"
         "لطفاً نام رئیس‌جمهور خود را وارد کنید (این نام در اخبار استفاده می‌شود):",
         reply_markup=back_kb,
     )
@@ -166,11 +142,12 @@ async def msg_vip_receipt_photo(
         return
 
     photo_file_id = message.photo[-1].file_id
+    president_name = data.get("president_name") or db_user.first_name
     claim = await claims_repo.create_claim(
         session,
         user_id=db_user.telegram_id,
         country_id=country_id,
-        president_name=db_user.first_name,
+        president_name=president_name,
         note=None,
         photo_file_id=photo_file_id,
     )
@@ -186,6 +163,7 @@ async def msg_vip_receipt_photo(
     caption = (
         "💳 <b>درخواست کشورگیری VIP (رسید پرداختی)</b>\n\n"
         f"🏴 کشور: {country.flag} {country.name_fa} (VIP ⭐️)\n"
+        f"🧑‍💼 نام رئیس‌جمهور: <b>{president_name}</b>\n"
         f"👤 کاربر: {db_user.first_name or '—'} ({username_str})\n"
         f"🆔 آیدی عددی: <code>{db_user.telegram_id}</code>\n"
         f"🔢 شناسه درخواست: #{claim.id}\n"
@@ -246,9 +224,43 @@ def _confirm_kb() -> InlineKeyboardMarkup:
 
 
 @router.message(ClaimForm.entering_president_name, F.text)
-async def msg_president_name(message: Message, state: FSMContext) -> None:
-    """ثبت نام رئیس‌جمهور و پرسیدن توضیح اختیاری."""
-    await state.update_data(president_name=message.text.strip())
+async def msg_president_name(
+    message: Message, state: FSMContext, session: AsyncSession
+) -> None:
+    """ثبت نام رئیس‌جمهور و بررسی کشور عادی یا VIP."""
+    president_name = message.text.strip()
+    await state.update_data(president_name=president_name)
+
+    data = await state.get_data()
+    country_id = data.get("country_id")
+    country = await countries_repo.get_country(session, country_id) if country_id else None
+
+    # اگر کشور VIP است: نمایش شرایط و هدایت به وضعیت دریافت فیش پرداختی
+    if country and country.is_vip:
+        await state.set_state(ClaimForm.waiting_for_vip_receipt)
+        vip_cancel_kb = InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="❌ انصراف و انتخاب کشور دیگر", callback_data="claim:start", style=STYLE_NO)
+        ]])
+        text = (
+            f"⭐️ کشور {country.flag} <b>{country.name_fa}</b> جزو <b>کشورهای ابرقدرت / VIP</b> بازی است.\n"
+            f"🧑‍💼 رئیس‌جمهور: <b>{president_name}</b>\n\n"
+            "💎 <b>قابلیت‌های انحصاری این کشور:</b>\n"
+            "• تشکیل و رهبری اتحاد‌های بین‌المللی\n"
+            "• برنامه‌ی توسعه و تحقیقات تسلیحات هسته‌ای\n"
+            "• احداث پایگاه‌های نظامی در خاک خود یا کشورهای دیگر\n"
+            "• ماهواره‌های جاسوسی فضایی نظامی\n"
+            "• استقرار و اعزام نیروهای راهبردی نظامی\n"
+            "• سقف ساخت نامحدود تأسیسات و صنایع\n\n"
+            f"💳 شماره کارت: <code>{VIP_CLAIM_CARD_NUMBER}</code>\n"
+            f"👤 به نام: <b>{VIP_CLAIM_CARD_HOLDER}</b>\n"
+            f"💵 مبلغ: <b>{VIP_CLAIM_PRICE_INFO}</b>\n\n"
+            "لطفاً پس از واریز، <b>تصویر رسید پرداخت</b> خود را در همین صفحه ارسال کنید تا برای مدیریت ارسال شود. "
+            "به‌محض تأیید رسید، وارد کشور خود خواهید شد."
+        )
+        await message.answer(text, reply_markup=vip_cancel_kb)
+        return
+
+    # کشورهای عادی: ادامه روال قبلی
     await state.set_state(ClaimForm.entering_note)
     await message.answer(
         "در صورت تمایل توضیحی برای مالک بازی بنویسید، یا این مرحله را رد کنید:",

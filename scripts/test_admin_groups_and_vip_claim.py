@@ -65,6 +65,7 @@ from bot.enums import ADMIN_GROUP_FA, AdminGroupType, ClaimStatus
 from bot.handlers.admin import cb_vip_claim_approve, cb_vip_claim_reject
 from bot.handlers.claim import (
     cb_pick_country,
+    msg_president_name,
     msg_vip_receipt_photo,
     msg_vip_receipt_text_warning,
 )
@@ -190,7 +191,7 @@ async def run_tests() -> None:
         call_normal.message.answer.assert_called()
         assert_check(fsm_data.get("country_id") == 10, "شناسه کشور عادی در state ذخیره شد")
 
-    # ۲. تست کلیک روی کشور VIP: باید وارد waiting_for_vip_receipt شود و اطلاعات کارت و @GameOfEarth نمایش داده شود
+    # ۲. تست کلیک روی کشور VIP: باید ابتدا وارد entering_president_name شود
     async with session_maker() as session:
         fsm_state = AsyncMock()
         fsm_data = {}
@@ -204,12 +205,22 @@ async def run_tests() -> None:
         call_vip.message.answer = AsyncMock()
 
         await cb_pick_country(call_vip, fsm_state, session)
+        fsm_state.set_state.assert_called_with(ClaimForm.entering_president_name)
+        assert_check(fsm_data.get("country_id") == 20, "شناسه کشور VIP در state ذخیره شد")
+
+        # ۲-ب. تست ارسال نام رئیس‌جمهور برای کشور VIP: باید وارد waiting_for_vip_receipt شود و اطلاعات کارت و @GameOfEarth نمایش داده شود
+        msg_president = MagicMock()
+        msg_president.text = "ژنرال آرش"
+        msg_president.answer = AsyncMock()
+
+        await msg_president_name(msg_president, fsm_state, session)
         fsm_state.set_state.assert_called_with(ClaimForm.waiting_for_vip_receipt)
-        vip_msg_text = call_vip.message.answer.call_args[0][0]
+        vip_msg_text = msg_president.answer.call_args[0][0]
         assert_check("@GameOfEarth" in vip_msg_text, "پیام انتخاب کشور VIP شامل آدرس کانال @GameOfEarth است")
         assert_check("6219861843148577" in vip_msg_text, "پیام انتخاب کشور VIP شامل شماره کارت است")
         assert_check("رضائی" in vip_msg_text, "پیام انتخاب کشور VIP شامل نام رضائی است")
-        assert_check(fsm_data.get("country_id") == 20, "شناسه کشور VIP در state ذخیره شد")
+        assert_check("ژنرال آرش" in vip_msg_text, "پیام انتخاب کشور VIP شامل نام رئیس‌جمهور واردشده است")
+        assert_check(fsm_data.get("president_name") == "ژنرال آرش", "نام رئیس‌جمهور در state ذخیره شد")
 
     # ۳. تست ارسال متن در وضعیت waiting_for_vip_receipt: هشدار ارسال تصویر
     msg_text_only = MagicMock()
@@ -218,10 +229,10 @@ async def run_tests() -> None:
     warn_text = msg_text_only.answer.call_args[0][0]
     assert_check("تصویر رسید" in warn_text, "هشدار ارسال عکس به کاربر نمایش داده شد")
 
-    # ۴. تست ارسال عکس فیش کشور VIP: ثبت در دیتابیس و ارسال به گروه PAYMENT
+    # ۴. تست ارسال عکس فیش کشور VIP: ثبت در دیتابیس با president_name و ارسال به گروه PAYMENT
     async with session_maker() as session:
         fsm_state = AsyncMock()
-        fsm_data = {"country_id": 20}
+        fsm_data = {"country_id": 20, "president_name": "ژنرال آرش"}
         fsm_state.get_data.side_effect = fake_get_data
         fsm_state.clear = AsyncMock()
 
@@ -246,11 +257,13 @@ async def run_tests() -> None:
             assert_check(args[1] == AdminGroupType.PAYMENT, "تصویر رسید به گروه AdminGroupType.PAYMENT فرستاده شد")
             assert_check(kwargs.get("photo") == "receipt_telegram_file_id_999", "شناسه عکس فیش صحیح است")
             assert_check("@GameOfEarth" in kwargs.get("caption", ""), "کپشن عکس فیش شامل @GameOfEarth است")
+            assert_check("ژنرال آرش" in kwargs.get("caption", ""), "کپشن عکس فیش شامل نام رئیس‌جمهور است")
 
             # بررسی ذخیره رکورد در دیتابیس
             claim_rec = await claims_repo.get_pending_for_user(session, 777)
             assert_check(claim_rec is not None, "درخواست ClaimRequest در دیتابیس ساخته شد")
             assert_check(claim_rec.country_id == 20, "درخواست برای کشور VIP شماره ۲۰ است")
+            assert_check(claim_rec.president_name == "ژنرال آرش", "نام رئیس‌جمهور واردشده در ClaimRequest ذخیره شد")
             assert_check(claim_rec.photo_file_id == "receipt_telegram_file_id_999", "شناسه عکس در ClaimRequest ذخیره شد")
             assert_check(claim_rec.status == ClaimStatus.PENDING, "وضعیت درخواست PENDING است")
             vip_claim_id = claim_rec.id
@@ -277,6 +290,8 @@ async def run_tests() -> None:
             c_vip = await countries_repo.get_country(session, 20)
             assert_check(c_vip.is_claimed is True, "کشور VIP به وضعیت claimed تغییر یافت")
             assert_check(c_vip.owner_user_id == 777, "مالکیت کشور به کاربر ۷۷۷ واگذار شد")
+            u777 = await users_repo.get_user(session, 777)
+            assert_check(u777.president_name == "ژنرال آرش", "نام رئیس‌جمهور VIP در جدول کاربران ثبت شد")
 
             # بررسی تغییر وضعیت claim
             c_req = await claims_repo.get_claim(session, vip_claim_id)

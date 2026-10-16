@@ -132,6 +132,7 @@ def _home_kb() -> InlineKeyboardMarkup:
     builder.button(text="✈️ پروازهای دیپلماتیک", callback_data="god:flights", style=STYLE_MAIN)
     builder.button(text="🚫 تحریم‌ها", callback_data="god:sanctions", style=STYLE_MAIN)
     builder.button(text="📈 سرمایه‌گذاری‌ها", callback_data="god:invest", style=STYLE_MAIN)
+    builder.button(text="🏗 پروژه‌های اقتصادی", callback_data="god:projects", style=STYLE_MAIN)
     builder.button(text="☢️ برنامه‌های هسته‌ای", callback_data="god:nuclear", style=STYLE_MAIN)
     builder.button(text="💥 سیستم تلفات", callback_data="god:casualty", style=STYLE_NO)
     builder.button(text="🔒 غیرفعال‌کردن آپشن", callback_data="god:locks", style=STYLE_NO)
@@ -231,6 +232,7 @@ async def _country_panel_kb(country: Country) -> InlineKeyboardMarkup:
         callback_data=f"godeconsat:{country.id}",
         style=STYLE_OK if getattr(country, "econ_sat_unlocked", False) else STYLE_NO,
     )
+    builder.button(text="🏗 پروژه‌ها", callback_data=f"godproj:{country.id}", style=STYLE_MAIN)
     if country.is_claimed:
         builder.button(text="🚪 آزادسازی (اخراج)", callback_data=f"godrelease:{country.id}", style=STYLE_NO)
         builder.button(text="⛔️ بن مالک", callback_data=f"godban:{country.id}", style=STYLE_NO)
@@ -239,9 +241,9 @@ async def _country_panel_kb(country: Country) -> InlineKeyboardMarkup:
         builder.button(text="▶️ رفع تعلیق", callback_data=f"godunsuspend:{country.id}", style=STYLE_OK)
     builder.button(text="🔙 بازگشت", callback_data="god:countries", style=STYLE_MAIN)
     if country.is_claimed:
-        builder.adjust(2, 2, 1, 3, 2, 1)
+        builder.adjust(2, 2, 2, 3, 2, 1)
     else:
-        builder.adjust(2, 2, 1, 1)
+        builder.adjust(2, 2, 2, 1)
     return builder.as_markup()
 
 
@@ -1853,3 +1855,97 @@ async def cb_god_nuclear_wipe(call: CallbackQuery, session: AsyncSession) -> Non
             f"کشور: {country.flag} {country.name_fa}",
         )
     await _render_god_nuclear_list(call, session)
+
+
+# ============================================================
+#  🏗 مدیریت پروژه‌های اقتصادی در گاد مود (آپدیت شماره ۹)
+# ============================================================
+
+@router.callback_query(F.data == "god:projects")
+async def cb_god_projects_all(call: CallbackQuery, session: AsyncSession) -> None:
+    """مشاهده تمام پروژه‌های فعال در پنل گاد مود."""
+    if not await _guard(call):
+        return
+    await call.answer()
+    from ..database.repositories import economic_projects as proj_repo
+    from ..enums import ECONOMIC_PROJECT_STATUS_FA, EconomicProjectStatus
+
+    projects = await proj_repo.list_all_active(session)
+    builder = InlineKeyboardBuilder()
+
+    text_lines = [header("مدیریت پروژه‌های اقتصادی (گاد مود)", "🏗"), ""]
+    if not projects:
+        text_lines.append("در حال حاضر هیچ پروژه فعالی در بازی وجود ندارد.")
+    else:
+        text_lines.append(f"تعداد پروژه‌های فعال: {fa_number(len(projects))}\n")
+        for p in projects:
+            c = await countries_repo.get_country(session, p.country_id)
+            c_name = f"{c.flag} {c.name_fa}" if c else "—"
+            text_lines.append(
+                f"• <b>{p.title}</b> ({c_name})\n"
+                f"   سود ۷۲ساعته: {fa_money(p.yield_cash_72h)} | شناسه: #{p.id}"
+            )
+            builder.button(text=f"🗑 حذف #{p.id} ({p.title[:12]})", callback_data=f"godproj_del:{p.id}")
+
+    builder.adjust(1)
+    builder.row(InlineKeyboardButton(text="🔙 بازگشت", callback_data="god:home", style=STYLE_MAIN))
+    await safe_edit(call, "\n".join(text_lines), reply_markup=builder.as_markup())
+
+
+@router.callback_query(F.data.startswith("godproj:"))
+async def cb_god_country_projects(call: CallbackQuery, session: AsyncSession) -> None:
+    """مشاهده پروژه‌های یک کشور در پنل گاد مود."""
+    if not await _guard(call):
+        return
+    await call.answer()
+    from ..database.repositories import economic_projects as proj_repo
+    from ..enums import ECONOMIC_PROJECT_STATUS_FA, EconomicProjectStatus
+
+    cid = int(call.data.split(":")[1])
+    country = await countries_repo.get_country(session, cid)
+    if not country:
+        await safe_edit(call, "❌ کشور یافت نشد.")
+        return
+
+    projects = await proj_repo.list_all_by_country(session, cid)
+    builder = InlineKeyboardBuilder()
+
+    text_lines = [
+        header(f"پروژه‌های اقتصادی {country.name_fa}", "🏗"),
+        f"کشور: {country.flag} <b>{country.name_fa}</b>\n",
+    ]
+    if not projects:
+        text_lines.append("این کشور هیچ پروژه‌ای ندارد.")
+    else:
+        for p in projects:
+            st_fa = ECONOMIC_PROJECT_STATUS_FA.get(EconomicProjectStatus(p.status), p.status)
+            text_lines.append(
+                f"• <b>{p.title}</b> [{st_fa}]\n"
+                f"   بودجه پیشنهادی: {fa_money(p.proposed_budget)} | سود: {fa_money(p.yield_cash_72h)}"
+            )
+            builder.button(text=f"🗑 حذف #{p.id} ({p.title[:12]})", callback_data=f"godproj_del:{p.id}")
+
+    builder.adjust(1)
+    builder.row(InlineKeyboardButton(text="🔙 بازگشت به کشور", callback_data=f"godcountry:{cid}", style=STYLE_MAIN))
+    await safe_edit(call, "\n".join(text_lines), reply_markup=builder.as_markup())
+
+
+@router.callback_query(F.data.startswith("godproj_del:"))
+async def cb_god_project_delete(call: CallbackQuery, session: AsyncSession) -> None:
+    """حذف یک پروژه توسط ادمین در پنل گاد مود."""
+    if not await _guard(call):
+        return
+    from ..database.repositories import economic_projects as proj_repo
+
+    pid = int(call.data.split(":")[1])
+    proj = await proj_repo.get_project(session, pid)
+    if proj:
+        cid = proj.country_id
+        await proj_repo.delete_project(session, proj)
+        await session.commit()
+        await call.answer("پروژه با موفقیت حذف گردید 🗑", show_alert=True)
+        # بازگشت به لیست پروژه‌های همان کشور
+        call.data = f"godproj:{cid}"
+        await cb_god_country_projects(call, session)
+    else:
+        await call.answer("پروژه یافت نشد.", show_alert=True)

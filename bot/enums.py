@@ -519,3 +519,24 @@ class AuctionStatus(str, enum.Enum):
     CANCELLED = "cancelled"    # لغوشده توسط فروشنده یا منقضی بدون پیشنهاد
 
 
+class EconomicProjectStatus(str, enum.Enum):
+    """وضعیت پروژه‌ها / رول‌های اقتصادی (آپدیت شماره ۹)."""
+
+    DRAFT = "draft"                                # پیش‌نویس (قابل ویرایش)
+    PENDING_REVIEW = "pending_review"              # در انتظار بررسی مدیریت
+    APPROVED_AWAITING_LAUNCH = "awaiting_launch"    # تأییدشده در انتظار پرداخت هزینه افتتاح
+    ACTIVE = "active"                              # فعال و در حال سوددهی ۷۲ ساعته
+    REJECTED = "rejected"                          # ردشده توسط مدیریت
+    CANCELLED = "cancelled"                        # لغوشده یا حذف‌شده
+
+
+ECONOMIC_PROJECT_STATUS_FA: dict[EconomicProjectStatus, str] = {
+    EconomicProjectStatus.DRAFT: "📝 پیش‌نویس",
+    EconomicProjectStatus.PENDING_REVIEW: "⏳ در حال بررسی مدیریت",
+    EconomicProjectStatus.APPROVED_AWAITING_LAUNCH: "🟡 تأییدشده (در انتظار افتتاح)",
+    EconomicProjectStatus.ACTIVE: "🟢 فعال (در حال سوددهی)",
+    EconomicProjectStatus.REJECTED: "❌ ردشده",
+    EconomicProjectStatus.CANCELLED: "🗑 لغوشده",
+}
+
+

@@ -176,6 +176,13 @@ AUCTION_MIN_HOURS = 1                         # حداقل مدت مزایده (
 AUCTION_MAX_HOURS = 72                        # حداکثر مدت مزایده (ساعت)
 
 # ============================================================
+#  سیستم رول و پروژه‌های اقتصادی (آپدیت شماره ۹)
+# ============================================================
+MAX_ROLE_PAGE_LEN = 4000               # حداکثر کاراکتر مجاز هر صفحه رول
+ECON_PROJECT_HEADER_MAX_LEN = 96       # سقف رزروشده سربرگ ربات برای جلوگیری از رد شدن از ۴۰۹۶
+ECON_PROJECT_YIELD_INTERVAL_HOURS = 72 # چرخه بازدهی ۷۲ ساعته سود پروژه
+
+# ============================================================
 #  کول‌داون کنش‌های دیپلماتیک (v1.9)
 # ============================================================
 MEETING_COOLDOWN_HOURS = 3            # دیدار حضوری: هر ۳ ساعت ۱ نشست
@@ -626,6 +633,8 @@ LOCKABLE_FEATURES: dict[str, tuple[str, str]] = {
     "econ.investment": ("📈 سرمایه‌گذاری", FEATURE_CAT_ECONOMY),
     "econ.satellite": ("💰 ماهواره اقتصادی", FEATURE_CAT_ECONOMY),
     "econ_satellite": ("💰 ماهواره اقتصادی", FEATURE_CAT_ECONOMY),
+    "econ.projects": ("🏗 پروژه‌های اقتصادی", FEATURE_CAT_ECONOMY),
+    "econ_projects": ("🏗 پروژه‌های اقتصادی", FEATURE_CAT_ECONOMY),
     # 🤝 دیپلماسی
     "dip.letter": ("✉️ نامه", FEATURE_CAT_DIPLOMACY),
     "dip.call": ("📞 تماس تلفنی", FEATURE_CAT_DIPLOMACY),

@@ -25,6 +25,7 @@ def economy_menu_kb(is_usa: bool = False) -> InlineKeyboardMarkup:
     builder.button(text="📊 گزارش اقتصادی", callback_data="econ:report", style=STYLE_MAIN)
     builder.button(text="📦 ذخایر", callback_data="econ:reserves", style=STYLE_MAIN)
     builder.button(text="🏗 احداث تأسیسات", callback_data="econ:build", style=STYLE_OK)
+    builder.button(text="🏗 پروژه‌ها (رول اقتصادی)", callback_data="econ:projects", style=STYLE_OK)
     builder.button(text="💱 فروش ذخیره", callback_data="econ:sell", style=STYLE_OK)
     builder.button(text="🏦 بانک", callback_data="econ:bank", style=STYLE_MAIN)
     builder.button(text="📈 سرمایه‌گذاری", callback_data="econ:invest", style=STYLE_MAIN)
@@ -34,9 +35,9 @@ def economy_menu_kb(is_usa: bool = False) -> InlineKeyboardMarkup:
         builder.button(text="🇺🇸 تعرفه بین‌المللی", callback_data="econ:tariffs", style=STYLE_NO)
     builder.button(text="🔙 بازگشت", callback_data="menu:main", style=STYLE_MAIN)
     if is_usa:
-        builder.adjust(2, 2, 2, 2, 1, 1)
+        builder.adjust(2, 2, 2, 2, 1, 1, 1)
     else:
-        builder.adjust(2, 2, 2, 2, 1)
+        builder.adjust(2, 2, 2, 2, 1, 1)
     return builder.as_markup()
 
 

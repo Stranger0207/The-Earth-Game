@@ -255,3 +255,22 @@ class TweetForm(StatesGroup):
     entering_content = State()      # متن توییت (حداکثر ۲۸۰ کاراکتر)
     confirming = State()            # پیش‌نمایش و تأیید نهایی انتشار
 
+
+class EconProjectDraftForm(StatesGroup):
+    """فرم ایجاد و ویرایش پیش‌نویس پروژه اقتصادی (آپدیت شماره ۹)."""
+
+    entering_title = State()        # عنوان پروژه
+    entering_page_1 = State()       # متن صفحه اول (اجباری تا ۴۰۰۰ کاراکتر)
+    entering_page_2 = State()       # متن صفحه دوم (اختیاری تا ۴۰۰۰ کاراکتر)
+    entering_budget = State()       # بودجه پیشنهادی
+    editing_field = State()         # ویرایش یکی از فیلدها
+
+
+class AdminProjectReviewForm(StatesGroup):
+    """فرم داوری ادمین در گروه رول اقتصادی."""
+
+    entering_reject_reason = State()    # دلیل رد پروژه
+    entering_custom_cash = State()      # ورود دستی هزینه افتتاح
+    entering_custom_yield = State()     # ورود دستی سود ۷۲ ساعته
+    entering_resource_amount = State()  # ورود مقدار منبع انتخابی برای هزینه افتتاح
+

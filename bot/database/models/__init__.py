@@ -24,6 +24,7 @@ from .diplomacy import (
     Speech,
 )
 from .econ_sat_receipt import EconSatReceipt
+from .economic_project import EconomicProject
 from .facility import Facility
 from .feature_lock import FeatureLock
 from .governance import Law, Protest, VisaRequirement
@@ -65,6 +66,7 @@ __all__ = [
     "Country",
     "Deployment",
     "EconSatReceipt",
+    "EconomicProject",
     "Facility",
     "FeatureLock",
     "Investment",

@@ -639,6 +639,72 @@ async def process_military_shipments(bot: Bot) -> None:
         await send_log(bot, text)
 
 
+async def process_economic_projects(bot: Bot | None = None, session_override: AsyncSession | None = None) -> None:
+    """پردازش سود و بازدهی ۷۲ ساعته پروژه‌های فعال اقتصادی (آپدیت شماره ۹)."""
+    from ..database.repositories import countries as countries_repo
+    from ..database.repositories import economic_projects as proj_repo
+    from ..services.economic_project_service import format_resources_dict, process_project_payout
+    from ..services.news_service import send_log
+    from ..utils.numbers import fa_money
+
+    now = _utcnow()
+    pings: list[tuple[int, str]] = []
+    log_msgs: list[str] = []
+
+    async def _process(session: AsyncSession) -> None:
+        active_projects = await proj_repo.list_all_active(session)
+        for proj in active_projects:
+            next_at = _aware(proj.next_yield_at)
+            if next_at and now < next_at:
+                continue
+
+            country = await countries_repo.get_country(session, proj.country_id)
+            if not country:
+                continue
+
+            payout = await process_project_payout(session, proj, country, now)
+
+            cash_str = fa_money(payout["cash"])
+            res_str = format_resources_dict(payout["resources"])
+            res_line = f"\n📦 بازدهی ذخایر: {res_str}" if payout["resources"] else ""
+
+            log_msgs.append(
+                f"🏗 <b>واریز سود ۷۲ ساعته پروژه اقتصادی</b>\n"
+                f"کشور: {country.flag} {country.name_fa}\n"
+                f"پروژه: <b>{proj.title}</b>\n"
+                f"مبلغ سود: {cash_str}{res_line}\n"
+                f"موعد بعدی: ۷۲ ساعت دیگر"
+            )
+
+            if country.owner_user_id:
+                pings.append((
+                    country.owner_user_id,
+                    f"🏗 <b>گزارش بازدهی ۷۲ ساعته پروژه «{proj.title}»:</b>\n\n"
+                    f"💰 مبلغ <b>{cash_str}</b> به خزانه کشور واریز شد.{res_line}\n\n"
+                    f"⏳ بازدهی بعدی: ۷۲ ساعت دیگر",
+                ))
+
+        await session.commit()
+
+    if session_override is not None:
+        await _process(session_override)
+    else:
+        async with async_session_factory() as session:
+            await _process(session)
+
+    if bot is not None:
+        for owner_id, text in pings:
+            try:
+                await bot.send_message(owner_id, text)
+            except Exception:
+                pass
+        for text in log_msgs:
+            try:
+                await send_log(bot, text)
+            except Exception:
+                pass
+
+
 async def process_satellites(bot: Bot | None = None) -> None:
     from ..services import satellite_service
     async with async_session_factory() as session:
@@ -1159,6 +1225,7 @@ async def _tick(bot: Bot) -> None:
         ("process_bank_loans", lambda: process_bank_loans(bot)),
         ("process_auctions", lambda: process_auctions(bot)),
         ("process_satellites", lambda: process_satellites(bot)),
+        ("process_economic_projects", lambda: process_economic_projects(bot)),
         ("process_nuclear", lambda: process_nuclear(bot)),
         ("process_taxes", lambda: process_taxes(bot)),
         ("process_protests", lambda: process_protests(bot)),

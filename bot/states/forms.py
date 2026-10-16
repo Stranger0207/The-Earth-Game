@@ -239,3 +239,18 @@ class AuctionBidForm(StatesGroup):
 
     entering_bid = State()          # مبلغ پیشنهادی
     confirming = State()            # تأیید کسر کارمزد و ثبت پیشنهاد
+
+
+class TwitterOnboardingForm(StatesGroup):
+    """فرم ثبت‌نام اولیه و تنظیم پروفایل توییتر (X)."""
+
+    entering_username = State()     # نام کاربری (انگلیسی، ارقام، آندرلاین)
+    uploading_avatar = State()      # ارسال تصویر پروفایل
+
+
+class TweetForm(StatesGroup):
+    """فرم نگارش و انتشار توییت جدید در کانال رسمی توییتر (X)."""
+
+    entering_content = State()      # متن توییت (حداکثر ۲۸۰ کاراکتر)
+    confirming = State()            # پیش‌نمایش و تأیید نهایی انتشار
+

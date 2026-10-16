@@ -439,14 +439,15 @@ def render_contract_image(
     *,
     contract_id: int,
     title: str,
-    country_a_name: str,
+    country_a_name: str = "",
     country_a_flag: str = "",
     country_a_leader: str | None = None,
-    country_b_name: str,
+    country_b_name: str = "",
     country_b_flag: str = "",
     country_b_leader: str | None = None,
     body: str,
     created_at: datetime | None = None,
+    parties: list[dict[str, Any]] | None = None,
 ) -> bytes:
     """
     رندر کردن تصویر گرافیکی سند رسمی معاهده بین‌المللی در حافظه RAM و بازگرداندن بایت‌های PNG.
@@ -456,7 +457,7 @@ def render_contract_image(
     - سربرگ تشریفاتی دوزبانه معاهدات بین‌المللی.
     - جدول جامع مشخصات طرفین، شماره ثبت معاهده و تاریخ UTC.
     - محاسبه پویا و داینامیک ارتفاع بوم در Pillow جهت جلوگیری از بریدگی متن.
-    - دو ستون مجزا در پایین سند برای امضای طرفین با خطوط امضای جوهری خوش‌نویسی و مهر موم رسمی دیپلماتیک.
+    - شبکه امضای پویا (Dynamic Multi-Signature Grid) از ۲ تا N کشور با امضای جوهری منحصربه‌فرد برای هر کشور.
     """
     font_reg_path, font_bold_path = _ensure_fonts()
 
@@ -475,11 +476,44 @@ def render_contract_image(
         font_title = font_sub = font_meta_bold = font_meta_reg = ImageFont.load_default()
         font_body_bold = font_body = font_sig_title = font_sig_meta = font_sig_small = font_foot = ImageFont.load_default()
 
-    clean_title = clean_emojis(title).strip() or "معاهده دوجانبه"
-    clean_a = clean_emojis(country_a_name).strip()
-    clean_b = clean_emojis(country_b_name).strip()
-    clean_leader_a = clean_emojis(country_a_leader).strip() if country_a_leader else "رهبر رسمی کشور"
-    clean_leader_b = clean_emojis(country_b_leader).strip() if country_b_leader else "رهبر رسمی کشور"
+    clean_title = clean_emojis(title).strip() or "معاهده بین‌المللی"
+
+    # آماده‌سازی فهرست طرفین معاهده
+    if not parties:
+        clean_a = clean_emojis(country_a_name).strip() or "کشور اول"
+        clean_b = clean_emojis(country_b_name).strip() or "کشور دوم"
+        clean_leader_a = clean_emojis(country_a_leader).strip() if country_a_leader else "رهبر رسمی کشور"
+        clean_leader_b = clean_emojis(country_b_leader).strip() if country_b_leader else "رهبر رسمی کشور"
+        parties = [
+            {
+                "name": clean_a,
+                "flag": country_a_flag,
+                "leader": clean_leader_a,
+                "seed": f"{clean_a}_{clean_leader_a}_{contract_id}_a",
+            },
+            {
+                "name": clean_b,
+                "flag": country_b_flag,
+                "leader": clean_leader_b,
+                "seed": f"{clean_b}_{clean_leader_b}_{contract_id}_b",
+            },
+        ]
+    else:
+        normalized_parties = []
+        for idx, p in enumerate(parties):
+            c_name = p.get("country_name") or p.get("name") or f"کشور #{idx+1}"
+            c_flag = p.get("country_flag") or p.get("flag") or ""
+            c_leader = p.get("leader_name") or p.get("leader") or "رهبر رسمی کشور"
+            c_seed = p.get("seed") or f"{c_name}_{c_leader}_{contract_id}_{idx}"
+            normalized_parties.append({
+                "name": clean_emojis(c_name).strip(),
+                "flag": c_flag,
+                "leader": clean_emojis(c_leader).strip() if c_leader else "رهبر رسمی کشور",
+                "seed": c_seed,
+            })
+        parties = normalized_parties
+
+    num_parties = len(parties)
 
     # فرمت‌بندی تاریخ
     if created_at is None:
@@ -498,7 +532,17 @@ def render_contract_image(
     body_total_height = max(len(lines) * line_height, 80)
 
     sig_y = body_start_y + body_total_height + 30
-    sig_block_height = 175
+
+    # محاسبه ابعاد شبکه امضاها
+    if num_parties == 2:
+        sig_block_height = 175
+    else:
+        grid_cols = 2 if num_parties <= 4 else 3
+        grid_rows = (num_parties + grid_cols - 1) // grid_cols
+        box_h = 165
+        gap_y = 20
+        sig_block_height = grid_rows * box_h + (grid_rows - 1) * gap_y
+
     required_height = sig_y + sig_block_height + 65
     canvas_height = max(860, required_height)
     canvas_width = 1000
@@ -533,12 +577,17 @@ def render_contract_image(
     # ۳. جدول مشخصات دیپلماتیک معاهده
     draw.rectangle([45, box_y, 955, box_y + box_height], fill=COLOR_BOX_BG, outline=COLOR_GOLD, width=2)
 
-    party_a_disp = f"{clean_a} (نماینده: {clean_leader_a})"
-    party_b_disp = f"{clean_b} (نماینده: {clean_leader_b})"
+    if num_parties == 2:
+        party_a_disp = f"{clean_emojis(parties[0]['name'])} (نماینده: {clean_emojis(parties[0].get('leader') or 'رهبر رسمی کشور')})"
+        party_b_disp = f"{clean_emojis(parties[1]['name'])} (نماینده: {clean_emojis(parties[1].get('leader') or 'رهبر رسمی کشور')})"
+        party_meta_text = f"طرفین معاهده: {party_a_disp}   ↔   {party_b_disp}"
+    else:
+        party_names_joined = " ، ".join(clean_emojis(p["name"]) for p in parties)
+        party_meta_text = f"طرفین معاهده چندجانبه ({to_fa_digits(num_parties)} کشور): {party_names_joined}"
 
     meta_rows = [
         (f"موضوع معاهده: {clean_title}", font_meta_bold, COLOR_BRONZE),
-        (f"طرفین معاهده: {party_a_disp}   ↔   {party_b_disp}", font_meta_bold, "#1A2332"),
+        (party_meta_text, font_meta_bold, "#1A2332"),
         (f"شماره ثبت بین‌المللی معاهده: #{to_fa_digits(contract_id)}   |   تاریخ و زمان رسمی انعقاد: {date_str}", font_meta_reg, "#475569"),
         ("وضعیت حقوقی: لازم‌الاجرا و نهایی در نظام بین‌الملل (Active & Ratified)", font_meta_bold, "#15803D"),
     ]
@@ -563,68 +612,116 @@ def render_contract_image(
             draw.text((935 - (bb[2] - bb[0]), cur_y), l_rtl, fill=COLOR_TEXT_MAIN, font=font_body)
         cur_y += line_height
 
-    # ۵. بخش امضاها و مهر رسمی (دو ستون مجزا + مهر در وسط)
-    # کادر طرف دوم (سمت چپ بوم)
-    b_x1, b_x2 = 45, 435
-    draw.rectangle([b_x1, sig_y, b_x2, sig_y + sig_block_height], fill="#FFFFFF", outline=COLOR_GOLD, width=1)
-    # کادر طرف اول (سمت راست بوم)
-    a_x1, a_x2 = 565, 955
-    draw.rectangle([a_x1, sig_y, a_x2, sig_y + sig_block_height], fill="#FFFFFF", outline=COLOR_GOLD, width=1)
+    # ۵. بخش امضاها و مهر رسمی (دو طرفه یا شبکه چندطرفه)
+    if num_parties == 2:
+        clean_a = clean_emojis(parties[0]["name"])
+        clean_b = clean_emojis(parties[1]["name"])
+        clean_leader_a = clean_emojis(parties[0].get("leader") or "رهبر رسمی کشور")
+        clean_leader_b = clean_emojis(parties[1].get("leader") or "رهبر رسمی کشور")
 
-    # اطلاعات طرف اول (راست)
-    a_center = (a_x1 + a_x2) // 2
-    t_a1 = prepare_rtl(f"طرف اول: {clean_a}")
-    b_a1 = font_sig_title.getbbox(t_a1)
-    draw.text((a_center - (b_a1[2] - b_a1[0]) // 2, sig_y + 10), t_a1, fill=COLOR_BRONZE, font=font_sig_title)
+        # کادر طرف دوم (سمت چپ بوم)
+        b_x1, b_x2 = 45, 435
+        draw.rectangle([b_x1, sig_y, b_x2, sig_y + sig_block_height], fill="#FFFFFF", outline=COLOR_GOLD, width=1)
+        # کادر طرف اول (سمت راست بوم)
+        a_x1, a_x2 = 565, 955
+        draw.rectangle([a_x1, sig_y, a_x2, sig_y + sig_block_height], fill="#FFFFFF", outline=COLOR_GOLD, width=1)
 
-    t_a2 = prepare_rtl(f"مقام امضاکننده: {clean_leader_a}")
-    b_a2 = font_sig_meta.getbbox(t_a2)
-    draw.text((a_center - (b_a2[2] - b_a2[0]) // 2, sig_y + 32), t_a2, fill="#475569", font=font_sig_meta)
+        # اطلاعات طرف اول (راست)
+        a_center = (a_x1 + a_x2) // 2
+        t_a1 = prepare_rtl(f"طرف اول: {clean_a}")
+        b_a1 = font_sig_title.getbbox(t_a1)
+        draw.text((a_center - (b_a1[2] - b_a1[0]) // 2, sig_y + 10), t_a1, fill=COLOR_BRONZE, font=font_sig_title)
 
-    # امضای جوهری طرف اول
-    _draw_ink_signature(draw, a_center, sig_y + 85, seed_text=f"{clean_a}_{clean_leader_a}_{contract_id}_a")
-    # خط امضا
-    draw.line([a_x1 + 30, sig_y + 130, a_x2 - 30, sig_y + 130], fill="#CBD5E1", width=1)
-    t_a3 = prepare_rtl("امضای رسمی تأییدشده در پروتکل دیپلماتیک")
-    b_a3 = font_sig_small.getbbox(t_a3)
-    draw.text((a_center - (b_a3[2] - b_a3[0]) // 2, sig_y + 140), t_a3, fill=COLOR_TEXT_MUTED, font=font_sig_small)
-    s_a4 = "DIGITALLY SIGNED & RATIFIED"
-    b_a4 = font_sig_small.getbbox(s_a4)
-    draw.text((a_center - (b_a4[2] - b_a4[0]) // 2, sig_y + 155), s_a4, fill="#94A3B8", font=font_sig_small)
+        t_a2 = prepare_rtl(f"مقام امضاکننده: {clean_leader_a}")
+        b_a2 = font_sig_meta.getbbox(t_a2)
+        draw.text((a_center - (b_a2[2] - b_a2[0]) // 2, sig_y + 32), t_a2, fill="#475569", font=font_sig_meta)
 
-    # اطلاعات طرف دوم (چپ)
-    b_center = (b_x1 + b_x2) // 2
-    t_b1 = prepare_rtl(f"طرف دوم: {clean_b}")
-    b_b1 = font_sig_title.getbbox(t_b1)
-    draw.text((b_center - (b_b1[2] - b_b1[0]) // 2, sig_y + 10), t_b1, fill=COLOR_BRONZE, font=font_sig_title)
+        # امضای جوهری طرف اول
+        sig_seed_a = parties[0].get("seed") or f"{clean_a}_{clean_leader_a}_{contract_id}_a"
+        _draw_ink_signature(draw, a_center, sig_y + 85, seed_text=sig_seed_a)
+        draw.line([a_x1 + 30, sig_y + 130, a_x2 - 30, sig_y + 130], fill="#CBD5E1", width=1)
+        t_a3 = prepare_rtl("امضای رسمی تأییدشده در پروتکل دیپلماتیک")
+        b_a3 = font_sig_small.getbbox(t_a3)
+        draw.text((a_center - (b_a3[2] - b_a3[0]) // 2, sig_y + 140), t_a3, fill=COLOR_TEXT_MUTED, font=font_sig_small)
+        s_a4 = "DIGITALLY SIGNED & RATIFIED"
+        b_a4 = font_sig_small.getbbox(s_a4)
+        draw.text((a_center - (b_a4[2] - b_a4[0]) // 2, sig_y + 155), s_a4, fill="#94A3B8", font=font_sig_small)
 
-    t_b2 = prepare_rtl(f"مقام امضاکننده: {clean_leader_b}")
-    b_b2 = font_sig_meta.getbbox(t_b2)
-    draw.text((b_center - (b_b2[2] - b_b2[0]) // 2, sig_y + 32), t_b2, fill="#475569", font=font_sig_meta)
+        # اطلاعات طرف دوم (چپ)
+        b_center = (b_x1 + b_x2) // 2
+        t_b1 = prepare_rtl(f"طرف دوم: {clean_b}")
+        b_b1 = font_sig_title.getbbox(t_b1)
+        draw.text((b_center - (b_b1[2] - b_b1[0]) // 2, sig_y + 10), t_b1, fill=COLOR_BRONZE, font=font_sig_title)
 
-    # امضای جوهری طرف دوم
-    _draw_ink_signature(draw, b_center, sig_y + 85, seed_text=f"{clean_b}_{clean_leader_b}_{contract_id}_b")
-    # خط امضا
-    draw.line([b_x1 + 30, sig_y + 130, b_x2 - 30, sig_y + 130], fill="#CBD5E1", width=1)
-    t_b3 = prepare_rtl("امضای رسمی تأییدشده در پروتکل دیپلماتیک")
-    b_b3 = font_sig_small.getbbox(t_b3)
-    draw.text((b_center - (b_b3[2] - b_b3[0]) // 2, sig_y + 140), t_b3, fill=COLOR_TEXT_MUTED, font=font_sig_small)
-    s_b4 = "DIGITALLY SIGNED & RATIFIED"
-    b_b4 = font_sig_small.getbbox(s_b4)
-    draw.text((b_center - (b_b4[2] - b_b4[0]) // 2, sig_y + 155), s_b4, fill="#94A3B8", font=font_sig_small)
+        t_b2 = prepare_rtl(f"مقام امضاکننده: {clean_leader_b}")
+        b_b2 = font_sig_meta.getbbox(t_b2)
+        draw.text((b_center - (b_b2[2] - b_b2[0]) // 2, sig_y + 32), t_b2, fill="#475569", font=font_sig_meta)
 
-    # مهر مومی برجسته بین دو ستون (در مختصات وسط)
-    seal_cx = 500
-    seal_cy = sig_y + 75
-    _draw_wax_seal(draw, seal_cx, seal_cy, radius=38)
+        # امضای جوهری طرف دوم
+        sig_seed_b = parties[1].get("seed") or f"{clean_b}_{clean_leader_b}_{contract_id}_b"
+        _draw_ink_signature(draw, b_center, sig_y + 85, seed_text=sig_seed_b)
+        draw.line([b_x1 + 30, sig_y + 130, b_x2 - 30, sig_y + 130], fill="#CBD5E1", width=1)
+        t_b3 = prepare_rtl("امضای رسمی تأییدشده در پروتکل دیپلماتیک")
+        b_b3 = font_sig_small.getbbox(t_b3)
+        draw.text((b_center - (b_b3[2] - b_b3[0]) // 2, sig_y + 140), t_b3, fill=COLOR_TEXT_MUTED, font=font_sig_small)
+        s_b4 = "DIGITALLY SIGNED & RATIFIED"
+        b_b4 = font_sig_small.getbbox(s_b4)
+        draw.text((b_center - (b_b4[2] - b_b4[0]) // 2, sig_y + 155), s_b4, fill="#94A3B8", font=font_sig_small)
 
-    t_seal = prepare_rtl("مهر رسمی معاهده")
-    b_s = font_sig_small.getbbox(t_seal)
-    draw.text((seal_cx - (b_s[2] - b_s[0]) // 2, sig_y + 122), t_seal, fill="#8B1E1E", font=font_sig_small)
+        # مهر مومی برجسته بین دو ستون
+        seal_cx = 500
+        seal_cy = sig_y + 75
+        _draw_wax_seal(draw, seal_cx, seal_cy, radius=38)
+        t_seal = prepare_rtl("مهر رسمی معاهده")
+        b_s = font_sig_small.getbbox(t_seal)
+        draw.text((seal_cx - (b_s[2] - b_s[0]) // 2, sig_y + 122), t_seal, fill="#8B1E1E", font=font_sig_small)
+        s_seal2 = "TREATY SEAL"
+        b_s2 = font_sig_small.getbbox(s_seal2)
+        draw.text((seal_cx - (b_s2[2] - b_s2[0]) // 2, sig_y + 138), s_seal2, fill=COLOR_GOLD, font=font_sig_small)
 
-    s_seal2 = "TREATY SEAL"
-    b_s2 = font_sig_small.getbbox(s_seal2)
-    draw.text((seal_cx - (b_s2[2] - b_s2[0]) // 2, sig_y + 138), s_seal2, fill=COLOR_GOLD, font=font_sig_small)
+    else:
+        # شبکه امضای چندطرفه پویا (Dynamic Multi-Signature Grid)
+        grid_cols = 2 if num_parties <= 4 else 3
+        box_h = 165
+        gap_x = 20
+        gap_y = 20
+        total_grid_w = 910
+        box_w = (total_grid_w - (grid_cols - 1) * gap_x) // grid_cols
+
+        for idx, p in enumerate(parties):
+            r = idx // grid_cols
+            c = idx % grid_cols
+            # در چیدمان راست به چپ، ستون اول از سمت راست شروع می‌شود
+            x1 = 955 - (c + 1) * box_w - c * gap_x
+            x2 = x1 + box_w
+            y1 = sig_y + r * (box_h + gap_y)
+            y2 = y1 + box_h
+
+            draw.rectangle([x1, y1, x2, y2], fill="#FFFFFF", outline=COLOR_GOLD, width=1)
+            b_cx = (x1 + x2) // 2
+            clean_pname = clean_emojis(p.get("name") or f"کشور {idx + 1}")
+            clean_pleader = clean_emojis(p.get("leader") or "رهبر رسمی کشور")
+
+            t_p1 = prepare_rtl(f"طرف #{to_fa_digits(idx + 1)}: {clean_pname}")
+            b_p1 = font_sig_title.getbbox(t_p1)
+            draw.text((b_cx - (b_p1[2] - b_p1[0]) // 2, y1 + 10), t_p1, fill=COLOR_BRONZE, font=font_sig_title)
+
+            t_p2 = prepare_rtl(f"مقام: {clean_pleader}")
+            b_p2 = font_sig_meta.getbbox(t_p2)
+            draw.text((b_cx - (b_p2[2] - b_p2[0]) // 2, y1 + 32), t_p2, fill="#475569", font=font_sig_meta)
+
+            # امضای جوهری اختصاصی بر پایه seed کشور
+            p_seed = p.get("seed") or f"{clean_pname}_{clean_pleader}_{contract_id}_{idx}"
+            _draw_ink_signature(draw, b_cx, y1 + 80, seed_text=p_seed)
+
+            draw.line([x1 + 15, y1 + 120, x2 - 15, y1 + 120], fill="#CBD5E1", width=1)
+            t_p3 = prepare_rtl("امضای رسمی تأییدشده")
+            b_p3 = font_sig_small.getbbox(t_p3)
+            draw.text((b_cx - (b_p3[2] - b_p3[0]) // 2, y1 + 128), t_p3, fill=COLOR_TEXT_MUTED, font=font_sig_small)
+
+            s_p4 = "DIGITALLY RATIFIED"
+            b_p4 = font_sig_small.getbbox(s_p4)
+            draw.text((b_cx - (b_p4[2] - b_p4[0]) // 2, y1 + 144), s_p4, fill="#94A3B8", font=font_sig_small)
 
     # ۶. پاورقی دیپلماتیک
     foot_text = prepare_rtl("ثبت‌شده در دیوان بین‌المللی دیپلماسی و معاهدات جهان (The Earth Game)")

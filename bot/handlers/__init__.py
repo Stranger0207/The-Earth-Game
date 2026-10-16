@@ -27,6 +27,7 @@ from . import (
     nuclear,
     satellite,
     start,
+    twitter,
 )
 
 
@@ -51,6 +52,7 @@ def register_all_routers(dp: Dispatcher) -> None:
     dp.include_router(diplomacy.router)
     dp.include_router(mail.router)
     dp.include_router(alliance.router)
+    dp.include_router(twitter.router)
     dp.include_router(command_center.router)
     dp.include_router(interception.router)
     dp.include_router(military.router)
@@ -59,3 +61,4 @@ def register_all_routers(dp: Dispatcher) -> None:
     dp.include_router(nuclear.router)
     dp.include_router(deployment.router)
     dp.include_router(advisor.router)
+

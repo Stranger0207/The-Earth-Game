@@ -57,6 +57,7 @@ class Settings(BaseSettings):
     wto_channel_id: int | None = None
     phone_group_id: int | None = None
     log_group_id: int | None = None
+    tweet_channel_id: int = -1004317808331
 
     model_config = SettingsConfigDict(
         env_file=".env",

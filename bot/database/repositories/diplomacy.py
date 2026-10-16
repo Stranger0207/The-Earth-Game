@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ...enums import DiplomacyStatus
 from ..models import (
     Contract,
+    ContractSignatory,
     GroupMeeting,
     GroupMeetingParticipant,
     Meeting,
@@ -15,6 +18,10 @@ from ..models import (
     PhoneCallMessage,
     Sanction,
 )
+
+
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc)
 
 # ------------------------- قراردادها -------------------------
 
@@ -29,12 +36,111 @@ async def get_contract(session: AsyncSession, contract_id: int) -> Contract | No
     return await session.get(Contract, contract_id)
 
 
+async def add_contract_signatories(
+    session: AsyncSession,
+    contract_id: int,
+    country_ids: list[int],
+    proposer_id: int,
+) -> list[ContractSignatory]:
+    """ثبت فهرست کشورهای امضاکننده برای یک معاهده چندجانبه."""
+    now = _utcnow()
+    signatories = []
+    for cid in country_ids:
+        is_proposer = (cid == proposer_id)
+        sig = ContractSignatory(
+            contract_id=contract_id,
+            country_id=cid,
+            signed=is_proposer,
+            signed_at=now if is_proposer else None,
+        )
+        session.add(sig)
+        signatories.append(sig)
+    await session.flush()
+    return signatories
+
+
+async def get_contract_signatories(
+    session: AsyncSession, contract_id: int
+) -> list[ContractSignatory]:
+    """فهرست تمام اعضای یک معاهده چندجانبه."""
+    result = await session.execute(
+        select(ContractSignatory)
+        .where(ContractSignatory.contract_id == contract_id)
+        .order_by(ContractSignatory.id.asc())
+    )
+    return list(result.scalars().all())
+
+
+async def get_contract_signatory(
+    session: AsyncSession, contract_id: int, country_id: int
+) -> ContractSignatory | None:
+    """دریافت رکورد امضای یک کشور مشخص در معاهده چندجانبه."""
+    result = await session.execute(
+        select(ContractSignatory).where(
+            ContractSignatory.contract_id == contract_id,
+            ContractSignatory.country_id == country_id,
+        )
+    )
+    return result.scalar_one_or_none()
+
+
+async def sign_contract_signatory(
+    session: AsyncSession, contract_id: int, country_id: int
+) -> tuple[bool, bool]:
+    """
+    ثبت امضای یک کشور در معاهده چندجانبه.
+    خروجی: (موفق_بود: bool, آیا_همه_امضا_کردند: bool)
+    """
+    sig = await get_contract_signatory(session, contract_id, country_id)
+    if sig is None:
+        return False, False
+    sig.signed = True
+    sig.signed_at = _utcnow()
+    await session.flush()
+
+    # بررسی اینکه آیا همه امضا کرده‌اند
+    all_sigs = await get_contract_signatories(session, contract_id)
+    all_signed = len(all_sigs) > 0 and all(s.signed for s in all_sigs)
+    return True, all_signed
+
+
+async def is_contract_party(
+    session: AsyncSession, contract: Contract, country_id: int
+) -> bool:
+    """بررسی اینکه آیا کشور جزو طرفین این قرارداد (دوجانبه یا چندجانبه) است یا خیر."""
+    if country_id in (contract.country_a, contract.country_b):
+        return True
+    if contract.is_multilateral:
+        sig = await get_contract_signatory(session, contract.id, country_id)
+        return sig is not None
+    return False
+
+
+async def remove_contract_signatory(
+    session: AsyncSession, contract_id: int, country_id: int
+) -> bool:
+    """حذف یک کشور از امضاکنندگان معاهده چندجانبه (خروج از معاهده)."""
+    sig = await get_contract_signatory(session, contract_id, country_id)
+    if sig is not None:
+        await session.delete(sig)
+        await session.flush()
+        return True
+    return False
+
+
 async def list_contracts_for_country(
     session: AsyncSession, country_id: int, only_active: bool = True
 ) -> list[Contract]:
-    """فهرست قراردادهای یک کشور (به‌عنوان طرف اول یا دوم)."""
+    """فهرست قراردادهای یک کشور (به‌عنوان طرف دوجانبه یا عضو معاهده چندجانبه)."""
+    multi_stmt = select(ContractSignatory.contract_id).where(
+        ContractSignatory.country_id == country_id
+    )
     stmt = select(Contract).where(
-        or_(Contract.country_a == country_id, Contract.country_b == country_id)
+        or_(
+            Contract.country_a == country_id,
+            Contract.country_b == country_id,
+            Contract.id.in_(multi_stmt),
+        )
     )
     if only_active:
         stmt = stmt.where(Contract.status == DiplomacyStatus.ACTIVE)

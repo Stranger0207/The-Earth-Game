@@ -12,6 +12,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    UniqueConstraint,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -25,8 +26,9 @@ def _utcnow() -> datetime:
 
 class Contract(Base):
     """
-    قرارداد/معاهده میان دو کشور (طبق «فرم قرارداد» پلی‌بوک).
-    body متن کامل قرارداد را نگه می‌دارد و پس از امضای هر دو طرف، فعال می‌شود.
+    قرارداد/معاهده میان دو یا چند کشور (طبق «فرم قرارداد» پلی‌بوک).
+    body متن کامل قرارداد را نگه می‌دارد و پس از امضای طرفین، فعال می‌شود.
+    در قراردادهای چندجانبه، اعضا و وضعیت امضای آن‌ها در ContractSignatory نگهداری می‌شوند.
     """
 
     __tablename__ = "contracts"
@@ -43,9 +45,14 @@ class Contract(Base):
     # متن کامل قرارداد (فرم پرشده)
     body: Mapped[str] = mapped_column(Text, default="", nullable=False)
 
-    # امضای هر طرف
+    # امضای هر طرف (برای قراردادهای دوجانبه)
     signed_a: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     signed_b: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+
+    # آیا این یک معاهده چندجانبه بین چند کشور است؟
+    is_multilateral: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False
+    )
 
     status: Mapped[str] = mapped_column(
         String(16), default=DiplomacyStatus.PENDING, nullable=False
@@ -55,7 +62,7 @@ class Contract(Base):
     )
 
     def __repr__(self) -> str:
-        return f"<Contract {self.country_a}<->{self.country_b} {self.status}>"
+        return f"<Contract {self.country_a}<->{self.country_b} {self.status} multi={self.is_multilateral}>"
 
 
 class PhoneCall(Base):
@@ -250,3 +257,30 @@ class GroupMeetingParticipant(Base):
 
     def __repr__(self) -> str:
         return f"<GroupParticipant meeting={self.meeting_id} country={self.country_id} {self.response}>"
+
+
+class ContractSignatory(Base):
+    """کشورهای امضاکننده معاهده چندجانبه و وضعیت امضای آن‌ها."""
+
+    __tablename__ = "contract_signatories"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    contract_id: Mapped[int] = mapped_column(
+        ForeignKey("contracts.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    country_id: Mapped[int] = mapped_column(
+        ForeignKey("countries.id"), nullable=False, index=True
+    )
+    # آیا این کشور معاهده را تأیید و امضا کرده است؟
+    signed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    signed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    __table_args__ = (
+        UniqueConstraint("contract_id", "country_id", name="uq_contract_signatory"),
+    )
+
+    def __repr__(self) -> str:
+        return f"<ContractSignatory contract={self.contract_id} country={self.country_id} signed={self.signed}>"
+

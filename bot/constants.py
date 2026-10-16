@@ -625,12 +625,17 @@ LOCKABLE_FEATURES: dict[str, tuple[str, str]] = {
     "dip.sanction": ("🚫 تحریم", FEATURE_CAT_DIPLOMACY),
     "dip.alliance": ("🤝 اتحاد", FEATURE_CAT_DIPLOMACY),
     "dip.speech": ("🎤 سخنرانی", FEATURE_CAT_DIPLOMACY),
+    "twitter": ("🐦 توییتر (X)", FEATURE_CAT_DIPLOMACY),
+    "dip.twitter": ("🐦 توییتر (X)", FEATURE_CAT_DIPLOMACY),
     # 🏛 حاکمیت
     "gov.system": ("🏛 تغییر نظام حاکمیتی", FEATURE_CAT_GOVERNANCE),
     "gov.tax": ("💵 مالیات", FEATURE_CAT_GOVERNANCE),
     "gov.legislation": ("📋 قانونگذاری", FEATURE_CAT_GOVERNANCE),
     # 🏛 کابینه دولت آمریکا (v2.6)
 }
+
+# آیدی کانال رسمی توییتر جهانی (X)
+TWEET_CHANNEL_ID: int = -1004317808331
 
 # پیام پیش‌فرض هنگام تلاش برای استفاده از آپشن قفل‌شده
 FEATURE_LOCKED_TEXT = "🔒 «{name}» توسط مدیریت بازی موقتاً غیرفعال شده است."

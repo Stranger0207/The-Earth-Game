@@ -80,6 +80,8 @@ _COLUMN_MIGRATIONS = [
     ("satellites", "level", "INTEGER NOT NULL DEFAULT 1"),
     ("satellites", "last_yield_at", "TIMESTAMP WITH TIME ZONE"),
     ("countries", "econ_sat_unlocked", "BOOLEAN NOT NULL DEFAULT FALSE"),
+    # v3.0 — معاهدات چندجانبه
+    ("contracts", "is_multilateral", "BOOLEAN NOT NULL DEFAULT FALSE"),
 ]
 
 

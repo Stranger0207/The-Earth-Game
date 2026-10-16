@@ -18,6 +18,7 @@ from aiogram.types import (
     Message,
 )
 from aiogram.utils.keyboard import InlineKeyboardBuilder
+from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..config import get_settings
@@ -30,7 +31,16 @@ from ..constants import (
     PHONE_CALL_DURATION_MINUTES,
     SPEECH_COOLDOWN_MINUTES,
 )
-from ..database.models import Contract, GroupMeeting, Meeting, PhoneCall, Sanction, Speech, User
+from ..database.models import (
+    Contract,
+    ContractSignatory,
+    GroupMeeting,
+    Meeting,
+    PhoneCall,
+    Sanction,
+    Speech,
+    User,
+)
 from ..database.repositories import cooldowns as cd_repo
 from ..database.repositories import countries as countries_repo
 from ..database.repositories import diplomacy as dip_repo
@@ -1065,23 +1075,19 @@ async def cmd_contract(message: Message, state: FSMContext, session: AsyncSessio
         await message.answer("📜 عنوان قرارداد را وارد کنید:")
         return
 
-    # ۲) نشست چندجانبه‌ی فعال → انتخاب طرف قرارداد از میان حاضران
+    # ۲) نشست چندجانبه‌ی فعال → انعقاد معاهده میان تمام کشورهای حاضر در نشست
     group = await dip_repo.get_active_group_meeting_for_country(session, country.id)
     if group is not None:
         member_ids = await dip_repo.group_member_country_ids(session, group)
-        others = []
-        for cid in member_ids:
-            if cid == country.id:
-                continue
-            c = await countries_repo.get_country(session, cid)
-            if c:
-                others.append(c)
-        if not others:
-            await message.answer("کشور دیگری در نشست حاضر نیست.")
+        if len(member_ids) < 2:
+            await message.answer("برای بستن معاهده چندجانبه، باید حداقل دو کشور در نشست حاضر باشند.")
             return
+        await state.update_data(is_multilateral=True, group_id=group.id, member_ids=member_ids)
+        await state.set_state(ContractForm.entering_title)
         await message.answer(
-            "📜 با کدام کشورِ حاضر در نشست قرارداد می‌بندید؟",
-            reply_markup=countries_kb(others, prefix="contract_with", columns=2),
+            f"🌐 <b>تنظیم معاهده چندجانبه بین‌المللی</b>\n\n"
+            f"این معاهده میان تمام {fa_number(len(member_ids))} کشور حاضر در نشست تنظیم خواهد شد.\n"
+            f"📜 لطفاً عنوان معاهده را وارد کنید:"
         )
         return
 
@@ -1090,12 +1096,12 @@ async def cmd_contract(message: Message, state: FSMContext, session: AsyncSessio
 
 @router.callback_query(F.data.startswith("contract_with:"))
 async def cb_contract_with(call: CallbackQuery, state: FSMContext) -> None:
-    """انتخاب طرف قرارداد در نشست چندجانبه."""
+    """انتخاب طرف قرارداد در نشست چندجانبه (در صورت نیاز)."""
     await call.answer()
     other_id = int(call.data.split(":")[1])
-    await state.update_data(other_id=other_id)
+    await state.update_data(other_id=other_id, is_multilateral=False)
     await state.set_state(ContractForm.entering_title)
-    await safe_edit(call,"📜 عنوان قرارداد را وارد کنید:")
+    await safe_edit(call, "📜 عنوان قرارداد را وارد کنید:")
 
 
 @router.message(ContractForm.entering_title, F.text)
@@ -1113,16 +1119,109 @@ async def cb_contract_back_title(call: CallbackQuery, state: FSMContext) -> None
     """بازگشت به وارد کردن عنوان قرارداد."""
     await call.answer()
     await state.set_state(ContractForm.entering_title)
-    await safe_edit(call,"📜 عنوان قرارداد را وارد کنید:")
+    await safe_edit(call, "📜 عنوان قرارداد را وارد کنید:")
+
+
+async def _build_multilateral_panel_text(session: AsyncSession, contract: Contract) -> str:
+    """ساخت متن پنل وضعیت امضای معاهده چندجانبه."""
+    signatories = await dip_repo.get_contract_signatories(session, contract.id)
+    proposer = await countries_repo.get_country(session, contract.country_a)
+    proposer_name = f"{proposer.flag} {proposer.name_fa}" if proposer else "نامشخص"
+
+    lines = [
+        "🌐 <b>پیش‌نویس معاهده چندجانبه بین‌المللی</b>",
+        f"🏛 <b>عنوان:</b> {contract.title}",
+        f"✍️ <b>تنظیم‌کننده:</b> {proposer_name}",
+        "",
+        "📝 <b>مفاد و تعهدات معاهده:</b>",
+        f"<blockquote>{contract.body}</blockquote>",
+        "",
+        "📊 <b>وضعیت امضای طرفین معاهده:</b>",
+    ]
+    for s in signatories:
+        c = await countries_repo.get_country(session, s.country_id)
+        c_name = f"{c.flag} {c.name_fa}" if c else f"کشور #{s.country_id}"
+        status_ico = "🟢 امضا شده" if s.signed else "⚪️ در انتظار امضا"
+        lines.append(f"• {c_name}: {status_ico}")
+
+    signed_count = sum(1 for s in signatories if s.signed)
+    total_count = len(signatories)
+    lines.append(f"\n📈 <b>پیشرفت امضا:</b> {fa_number(signed_count)} از {fa_number(total_count)}")
+    return "\n".join(lines)
+
+
+def _build_multilateral_sign_kb(contract_id: int) -> InlineKeyboardMarkup:
+    """کیبورد تعاملی امضا یا رد معاهده چندجانبه."""
+    return InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="✍️ امضا", callback_data=f"sign_contract:{contract_id}", style=STYLE_OK),
+        InlineKeyboardButton(text="❌ رد معاهده", callback_data=f"reject_contract:{contract_id}", style=STYLE_NO),
+    ]])
 
 
 @router.message(ContractForm.entering_body, F.text)
 async def msg_contract_body(message: Message, state: FSMContext, session: AsyncSession, db_user: User) -> None:
     data = await state.get_data()
     country = await get_player_country(session, db_user)
-    other_id = data.get("other_id")
+    is_multilateral = data.get("is_multilateral", False)
     await state.clear()
-    if country is None or other_id is None:
+
+    if country is None:
+        await message.answer("خطا در شناسایی کشور.")
+        return
+
+    # ۱) ثبت معاهده چندجانبه
+    if is_multilateral:
+        member_ids: list[int] = data.get("member_ids", [])
+        if not member_ids or country.id not in member_ids or len(member_ids) < 2:
+            await message.answer("خطا در تعیین کشورهای عضو نشست.")
+            return
+
+        other_cid = next((cid for cid in member_ids if cid != country.id), country.id)
+        contract = Contract(
+            country_a=country.id,
+            country_b=other_cid,
+            title=data["title"],
+            body=message.text,
+            signed_a=True,
+            signed_b=False,
+            status=DiplomacyStatus.PENDING,
+            is_multilateral=True,
+        )
+        await dip_repo.add_contract(session, contract)
+        await session.flush()
+
+        await dip_repo.add_contract_signatories(
+            session=session,
+            contract_id=contract.id,
+            country_ids=member_ids,
+            proposer_id=country.id,
+        )
+        await session.flush()
+
+        panel_text = await _build_multilateral_panel_text(session, contract)
+        await message.answer(
+            "🌐 <b>معاهده چندجانبه ثبت شد و برای امضای تمام اعضای نشست ارسال گردید.</b>\n\n" + panel_text
+        )
+
+        sign_kb = _build_multilateral_sign_kb(contract.id)
+        for cid in member_ids:
+            if cid == country.id:
+                continue
+            c = await countries_repo.get_country(session, cid)
+            if c and c.owner_user_id:
+                try:
+                    await bot.send_message(
+                        c.owner_user_id,
+                        panel_text,
+                        reply_markup=sign_kb,
+                    )
+                except Exception:  # noqa: BLE001
+                    pass
+        return
+
+    # ۲) ثبت قرارداد دوجانبه
+    other_id = data.get("other_id")
+    if other_id is None:
         await message.answer("خطا در ثبت قرارداد.")
         return
 
@@ -1134,6 +1233,7 @@ async def msg_contract_body(message: Message, state: FSMContext, session: AsyncS
         signed_a=True,   # تنظیم‌کننده، طرف اول است و امضا کرده
         signed_b=False,
         status=DiplomacyStatus.PENDING,
+        is_multilateral=False,
     )
     await dip_repo.add_contract(session, contract)
     await session.flush()
@@ -1164,6 +1264,119 @@ async def cb_sign_contract(call: CallbackQuery, session: AsyncSession, db_user: 
     if contract is None or contract.status != DiplomacyStatus.PENDING:
         await call.answer("این قرارداد دیگر معتبر نیست.", show_alert=True)
         return
+
+    country = await get_player_country(session, db_user)
+    if country is None:
+        await call.answer("کشوری برای شما ثبت نشده است.", show_alert=True)
+        return
+
+    # جریان معاهده چندجانبه
+    if contract.is_multilateral:
+        sig = await dip_repo.get_contract_signatory(session, contract.id, country.id)
+        if sig is None:
+            await call.answer("شما طرف این معاهده نیستید.", show_alert=True)
+            return
+        if sig.signed:
+            await call.answer("شما قبلاً این معاهده را امضا کرده‌اید.", show_alert=True)
+            return
+
+        ok, all_signed = await dip_repo.sign_contract_signatory(session, contract.id, country.id)
+        await session.flush()
+        await call.answer("امضا شد ✅")
+
+        if not all_signed:
+            updated_panel = await _build_multilateral_panel_text(session, contract)
+            await safe_edit(call, updated_panel + "\n\n✅ <i>امضای شما ثبت شد. در انتظار سایر اعضا...</i>")
+            return
+
+        # تمام اعضا امضا کردند؛ معاهده لازم‌الاجرا می‌شود
+        contract.signed_b = True
+        contract.status = DiplomacyStatus.ACTIVE
+        await session.flush()
+        await safe_edit(call, call.message.html_text + "\n\n✅ <b>تمام اعضا امضا کردند؛ معاهده رسمی و لازم‌الاجرا شد.</b>")
+
+        signatories = await dip_repo.get_contract_signatories(session, contract.id)
+        parties = []
+        party_countries = []
+        for s in signatories:
+            c = await countries_repo.get_country(session, s.country_id)
+            if c:
+                party_countries.append(c)
+                c_user = await users_repo.get_user(session, c.owner_user_id) if c.owner_user_id else None
+                leader = c_user.president_name if (c_user and c_user.president_name) else (c_user.first_name if c_user else None)
+                parties.append({
+                    "country_name": c.name_fa,
+                    "country_flag": c.flag,
+                    "leader_name": leader,
+                })
+
+        treaty_bytes: bytes | None = None
+        try:
+            treaty_bytes = render_contract_image(
+                contract_id=contract.id,
+                title=contract.title,
+                country_a_name="",
+                country_a_flag="",
+                country_b_name="",
+                country_b_flag="",
+                body=contract.body,
+                created_at=contract.created_at,
+                parties=parties,
+            )
+        except Exception as exc:
+            logger.exception("Failed to render multilateral treaty image for contract %s: %s", contract.id, exc)
+
+        parties_str = "، ".join([f"{p['country_flag']} {p['country_name']}" for p in parties])
+        doc_caption = (
+            f"🌐 <b>معاهده چندجانبه بین‌المللی منعقد شد</b>\n\n"
+            f"🏛 <b>عنوان:</b> {contract.title}\n"
+            f"🤝 <b>طرفین:</b> {parties_str}\n\n"
+            f"🖼 <i>سند رسمی معاهده با امضای تمام طرفین پیوست شد.</i>"
+        )
+        doc_kb = InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="📜 قراردادهای من", callback_data="dip:contracts", style=STYLE_MAIN),
+            InlineKeyboardButton(text="🔙 منوی دیپلماسی", callback_data="menu:diplomacy", style=STYLE_MAIN),
+        ]])
+
+        for c in party_countries:
+            if c.owner_user_id:
+                try:
+                    if treaty_bytes:
+                        photo_doc = BufferedInputFile(treaty_bytes, filename=f"treaty_{contract.id}.png")
+                        await bot.send_photo(c.owner_user_id, photo=photo_doc, caption=doc_caption, reply_markup=doc_kb)
+                    else:
+                        await bot.send_message(c.owner_user_id, f"✅ معاهده چندجانبه «{contract.title}» به تایید تمام اعضا رسید و فعال شد.", reply_markup=doc_kb)
+                except Exception:  # noqa: BLE001
+                    pass
+
+        await publish_news(
+            bot,
+            NewsCategory.DIPLOMACY,
+            f"🕊 معاهده‌ی چندجانبه‌ی «{contract.title}» میان کشورهای {parties_str} به امضای تمام طرفین رسید و لازم‌الاجرا شد.",
+        )
+
+        if treaty_bytes:
+            photo_log = BufferedInputFile(treaty_bytes, filename=f"treaty_{contract.id}.png")
+            await send_log_photo(
+                bot,
+                photo=photo_log,
+                caption=(
+                    f"🌐 <b>معاهده چندجانبه منعقد شد</b>\n"
+                    f"شماره معاهده: #{contract.id}\n"
+                    f"عنوان: {contract.title}\n"
+                    f"طرفین: {parties_str}"
+                ),
+            )
+        else:
+            await send_log(
+                bot,
+                f"🌐 <b>معاهده چندجانبه منعقد شد</b>\n"
+                f"عنوان: {contract.title}\n"
+                f"طرفین: {parties_str}",
+            )
+        return
+
+    # جریان قرارداد دوجانبه
     contract.signed_b = True
     contract.status = DiplomacyStatus.ACTIVE
     await call.answer("امضا شد ✅")
@@ -1256,15 +1469,35 @@ async def cb_sign_contract(call: CallbackQuery, session: AsyncSession, db_user: 
 
 
 @router.callback_query(F.data.startswith("reject_contract:"))
-async def cb_reject_contract(call: CallbackQuery, session: AsyncSession) -> None:
+async def cb_reject_contract(call: CallbackQuery, session: AsyncSession, db_user: User) -> None:
     contract_id = int(call.data.split(":")[1])
     contract = await dip_repo.get_contract(session, contract_id)
     if contract is None or contract.status != DiplomacyStatus.PENDING:
         await call.answer()
         return
+
+    country = await get_player_country(session, db_user)
     contract.status = DiplomacyStatus.REJECTED
+    await session.flush()
     await call.answer("رد شد")
-    await safe_edit(call,call.message.html_text + "\n\n❌ <b>رد شد</b>")
+
+    c_name = f"{country.flag} {country.name_fa}" if country else "یک کشور"
+    await safe_edit(call, call.message.html_text + f"\n\n❌ <b>این معاهده توسط {c_name} رد شد و به تصویب نرسید.</b>")
+
+    if contract.is_multilateral:
+        signatories = await dip_repo.get_contract_signatories(session, contract.id)
+        for s in signatories:
+            if country and s.country_id == country.id:
+                continue
+            c = await countries_repo.get_country(session, s.country_id)
+            if c and c.owner_user_id:
+                try:
+                    await bot.send_message(
+                        c.owner_user_id,
+                        f"❌ <b>رد پیش‌نویس معاهده چندجانبه</b>\n\nمعاهده «{contract.title}» توسط {c_name} رد شد و پرونده آن بسته شد.",
+                    )
+                except Exception:  # noqa: BLE001
+                    pass
 
 
 @router.callback_query(F.data == "dip:contracts")
@@ -1289,16 +1522,31 @@ async def cb_contracts(call: CallbackQuery, session: AsyncSession, db_user: User
     ]
     builder = InlineKeyboardBuilder()
     for idx, c in enumerate(contracts, start=1):
-        a = await countries_repo.get_country(session, c.country_a)
-        b = await countries_repo.get_country(session, c.country_b)
-        a_name = a.name_fa if a else "?"
-        b_name = b.name_fa if b else "?"
-        lines.append(f"{fa_number(idx)}. «{c.title}»\n   🏛 طرفین: {a_name} ↔ {b_name}")
-        builder.button(
-            text=f"📜 #{fa_number(idx)}. «{c.title[:18]}»",
-            callback_data=f"contract_view:{c.id}",
-            style=STYLE_MAIN,
-        )
+        if c.is_multilateral:
+            signatories = await dip_repo.get_contract_signatories(session, c.id)
+            c_names = []
+            for s in signatories:
+                sc = await countries_repo.get_country(session, s.country_id)
+                if sc:
+                    c_names.append(f"{sc.flag} {sc.name_fa}")
+            parties_str = " | ".join(c_names)
+            lines.append(f"{fa_number(idx)}. «{c.title}» 🌐 <i>(معاهده چندجانبه)</i>\n   🏛 اعضا: {parties_str}")
+            builder.button(
+                text=f"🌐 #{fa_number(idx)}. «{c.title[:18]}»",
+                callback_data=f"contract_view:{c.id}",
+                style=STYLE_MAIN,
+            )
+        else:
+            a = await countries_repo.get_country(session, c.country_a)
+            b = await countries_repo.get_country(session, c.country_b)
+            a_name = a.name_fa if a else "?"
+            b_name = b.name_fa if b else "?"
+            lines.append(f"{fa_number(idx)}. «{c.title}»\n   🏛 طرفین: {a_name} ↔ {b_name}")
+            builder.button(
+                text=f"📜 #{fa_number(idx)}. «{c.title[:18]}»",
+                callback_data=f"contract_view:{c.id}",
+                style=STYLE_MAIN,
+            )
     builder.adjust(1)
     builder.row(InlineKeyboardButton(text="🔙 بازگشت به دیپلماسی", callback_data="menu:diplomacy", style=STYLE_MAIN))
     await safe_edit(call, "\n".join(lines), reply_markup=builder.as_markup())
@@ -1322,20 +1570,37 @@ async def cb_contract_view(call: CallbackQuery, session: AsyncSession, db_user: 
     if contract is None or contract.status != DiplomacyStatus.ACTIVE:
         await safe_edit(call, "قرارداد یافت نشد یا دیگر فعال نیست.", reply_markup=diplomacy_menu_kb())
         return
-    if country.id not in (contract.country_a, contract.country_b):
+    if not await dip_repo.is_contract_party(session, contract, country.id):
         await call.answer("شما طرف این قرارداد نیستید.", show_alert=True)
         return
 
-    a = await countries_repo.get_country(session, contract.country_a)
-    b = await countries_repo.get_country(session, contract.country_b)
+    if contract.is_multilateral:
+        signatories = await dip_repo.get_contract_signatories(session, contract.id)
+        party_lines = []
+        for s in signatories:
+            sc = await countries_repo.get_country(session, s.country_id)
+            if sc:
+                party_lines.append(f"• {sc.flag} {sc.name_fa}")
+        parties_text = "\n".join(party_lines)
+        text = (
+            f"🌐 <b>معاهده چندجانبه: {contract.title}</b>\n\n"
+            f"🏛 <b>کشورهای عضو معاهده ({fa_number(len(party_lines))} کشور):</b>\n{parties_text}\n\n"
+            f"📝 <b>متن و مفاد معاهده:</b>\n"
+            f"<blockquote>{contract.body}</blockquote>"
+        )
+        cancel_btn_text = "❌ خروج از معاهده (لغو یک‌طرفه)"
+    else:
+        a = await countries_repo.get_country(session, contract.country_a)
+        b = await countries_repo.get_country(session, contract.country_b)
+        text = (
+            f"📜 <b>قرارداد: {contract.title}</b>\n\n"
+            f"🏛 <b>طرف اول:</b> {a.flag if a else ''} {a.name_fa if a else '?'}\n"
+            f"🏛 <b>طرف دوم:</b> {b.flag if b else ''} {b.name_fa if b else '?'}\n\n"
+            f"📝 <b>متن و مفاد قرارداد:</b>\n"
+            f"<blockquote>{contract.body}</blockquote>"
+        )
+        cancel_btn_text = "❌ لغو یک‌طرفه قرارداد"
 
-    text = (
-        f"📜 <b>قرارداد: {contract.title}</b>\n\n"
-        f"🏛 <b>طرف اول:</b> {a.flag if a else ''} {a.name_fa if a else '?'}\n"
-        f"🏛 <b>طرف دوم:</b> {b.flag if b else ''} {b.name_fa if b else '?'}\n\n"
-        f"📝 <b>متن و مفاد قرارداد:</b>\n"
-        f"<blockquote>{contract.body}</blockquote>"
-    )
     builder = InlineKeyboardBuilder()
     builder.button(
         text="🖼 دریافت تصویر رسمی معاهده",
@@ -1343,7 +1608,7 @@ async def cb_contract_view(call: CallbackQuery, session: AsyncSession, db_user: 
         style=STYLE_MAIN,
     )
     builder.button(
-        text="❌ لغو یک‌طرفه قرارداد",
+        text=cancel_btn_text,
         callback_data=f"contract_cancel:{contract.id}",
         style=STYLE_NO,
     )
@@ -1373,45 +1638,84 @@ async def cb_contract_image(call: CallbackQuery, session: AsyncSession, db_user:
     if contract is None:
         await call.answer("قرارداد یافت نشد.", show_alert=True)
         return
-    if country.id not in (contract.country_a, contract.country_b):
+    if not await dip_repo.is_contract_party(session, contract, country.id):
         await call.answer("شما طرف این معاهده نیستید.", show_alert=True)
         return
 
     await call.answer("در حال آماده‌سازی تصویر سند رسمی معاهده... ⏳")
 
-    a = await countries_repo.get_country(session, contract.country_a)
-    b = await countries_repo.get_country(session, contract.country_b)
+    if contract.is_multilateral:
+        signatories = await dip_repo.get_contract_signatories(session, contract.id)
+        parties = []
+        for s in signatories:
+            sc = await countries_repo.get_country(session, s.country_id)
+            if sc:
+                sc_user = await users_repo.get_user(session, sc.owner_user_id) if sc.owner_user_id else None
+                leader = sc_user.president_name if (sc_user and sc_user.president_name) else (sc_user.first_name if sc_user else None)
+                parties.append({
+                    "country_name": sc.name_fa,
+                    "country_flag": sc.flag,
+                    "leader_name": leader,
+                })
+        try:
+            treaty_bytes = render_contract_image(
+                contract_id=contract.id,
+                title=contract.title,
+                country_a_name="",
+                country_a_flag="",
+                country_b_name="",
+                country_b_flag="",
+                body=contract.body,
+                created_at=contract.created_at,
+                parties=parties,
+            )
+        except Exception as exc:
+            logger.exception("Failed to render multilateral treaty image for contract %s: %s", contract.id, exc)
+            await call.answer("خطا در تولید تصویر سند معاهده.", show_alert=True)
+            return
 
-    user_a = await users_repo.get_user(session, a.owner_user_id) if (a and a.owner_user_id) else None
-    user_b = await users_repo.get_user(session, b.owner_user_id) if (b and b.owner_user_id) else None
-    leader_a = user_a.president_name if (user_a and user_a.president_name) else (user_a.first_name if user_a else None)
-    leader_b = user_b.president_name if (user_b and user_b.president_name) else (user_b.first_name if user_b else None)
-
-    try:
-        treaty_bytes = render_contract_image(
-            contract_id=contract.id,
-            title=contract.title,
-            country_a_name=a.name_fa if a else "کشور اول",
-            country_a_flag=a.flag if a else "",
-            country_a_leader=leader_a,
-            country_b_name=b.name_fa if b else "کشور دوم",
-            country_b_flag=b.flag if b else "",
-            country_b_leader=leader_b,
-            body=contract.body,
-            created_at=contract.created_at,
+        names_str = "، ".join([f"{p['country_flag']} {p['country_name']}" for p in parties])
+        caption = (
+            f"🌐 <b>سند رسمی معاهده چندجانبه بین‌المللی</b>\n\n"
+            f"🏛 <b>عنوان:</b> {contract.title}\n"
+            f"🤝 <b>طرفین:</b> {names_str}\n"
+            f"🔢 <b>شماره ثبت:</b> #{fa_number(contract.id)}\n\n"
+            f"✍️ <i>امضاهای رسمی و مهرهای دیپلماتیک تمام کشورهای عضو در تصویر فوق درج شده است.</i>"
         )
-    except Exception as exc:
-        logger.exception("Failed to render treaty image for contract %s: %s", contract.id, exc)
-        await call.answer("خطا در تولید تصویر سند معاهده.", show_alert=True)
-        return
+    else:
+        a = await countries_repo.get_country(session, contract.country_a)
+        b = await countries_repo.get_country(session, contract.country_b)
+        user_a = await users_repo.get_user(session, a.owner_user_id) if (a and a.owner_user_id) else None
+        user_b = await users_repo.get_user(session, b.owner_user_id) if (b and b.owner_user_id) else None
+        leader_a = user_a.president_name if (user_a and user_a.president_name) else (user_a.first_name if user_a else None)
+        leader_b = user_b.president_name if (user_b and user_b.president_name) else (user_b.first_name if user_b else None)
 
-    caption = (
-        f"📜 <b>سند رسمی معاهده بین‌المللی</b>\n\n"
-        f"🏛 <b>عنوان:</b> {contract.title}\n"
-        f"🤝 <b>طرفین:</b> {a.flag if a else ''} {a.name_fa if a else '?'} ↔ {b.flag if b else ''} {b.name_fa if b else '?'}\n"
-        f"🔢 <b>شماره ثبت:</b> #{fa_number(contract.id)}\n\n"
-        f"✍️ <i>امضاهای رسمی و مهر دیپلماتیک در تصویر فوق درج شده است.</i>"
-    )
+        try:
+            treaty_bytes = render_contract_image(
+                contract_id=contract.id,
+                title=contract.title,
+                country_a_name=a.name_fa if a else "کشور اول",
+                country_a_flag=a.flag if a else "",
+                country_a_leader=leader_a,
+                country_b_name=b.name_fa if b else "کشور دوم",
+                country_b_flag=b.flag if b else "",
+                country_b_leader=leader_b,
+                body=contract.body,
+                created_at=contract.created_at,
+            )
+        except Exception as exc:
+            logger.exception("Failed to render treaty image for contract %s: %s", contract.id, exc)
+            await call.answer("خطا در تولید تصویر سند معاهده.", show_alert=True)
+            return
+
+        caption = (
+            f"📜 <b>سند رسمی معاهده بین‌المللی</b>\n\n"
+            f"🏛 <b>عنوان:</b> {contract.title}\n"
+            f"🤝 <b>طرفین:</b> {a.flag if a else ''} {a.name_fa if a else '?'} ↔ {b.flag if b else ''} {b.name_fa if b else '?'}\n"
+            f"🔢 <b>شماره ثبت:</b> #{fa_number(contract.id)}\n\n"
+            f"✍️ <i>امضاهای رسمی و مهر دیپلماتیک در تصویر فوق درج شده است.</i>"
+        )
+
     kb = InlineKeyboardMarkup(inline_keyboard=[[
         InlineKeyboardButton(text="🔙 بازگشت به قرارداد", callback_data=f"contract_view:{contract.id}", style=STYLE_MAIN),
         InlineKeyboardButton(text="📜 فهرست قراردادها", callback_data="dip:contracts", style=STYLE_MAIN),
@@ -1427,7 +1731,7 @@ async def cb_contract_image(call: CallbackQuery, session: AsyncSession, db_user:
 
 @router.callback_query(F.data.startswith("contract_cancel:"))
 async def cb_contract_cancel(call: CallbackQuery, session: AsyncSession, db_user: User) -> None:
-    """تأییدیه لغو قرارداد."""
+    """تأییدیه لغو قرارداد / خروج از معاهده."""
     await call.answer()
     country = await get_player_country(session, db_user)
     if country is None:
@@ -1443,21 +1747,30 @@ async def cb_contract_cancel(call: CallbackQuery, session: AsyncSession, db_user
     if contract is None or contract.status != DiplomacyStatus.ACTIVE:
         await safe_edit(call, "قرارداد یافت نشد یا دیگر فعال نیست.", reply_markup=diplomacy_menu_kb())
         return
-    if country.id not in (contract.country_a, contract.country_b):
+    if not await dip_repo.is_contract_party(session, contract, country.id):
         await call.answer("شما طرف این قرارداد نیستید.", show_alert=True)
         return
 
-    other_id = contract.country_b if contract.country_a == country.id else contract.country_a
-    other = await countries_repo.get_country(session, other_id)
-    other_name = f"{other.flag} {other.name_fa}" if other else "طرف مقابل"
+    if contract.is_multilateral:
+        prompt = (
+            f"❓ <b>خروج از معاهده چندجانبه</b>\n\n"
+            f"آیا مطمئن هستید که می‌خواهید از معاهده «{contract.title}» خارج شوید؟\n\n"
+            "⚠️ با خروج شما، نام کشورتان از فهرست اعضای معاهده حذف شده و به سایر کشورهای عضو اطلاع داده خواهد شد."
+        )
+        ok_btn_text = "❌ تأیید و خروج از معاهده"
+    else:
+        other_id = contract.country_b if contract.country_a == country.id else contract.country_a
+        other = await countries_repo.get_country(session, other_id)
+        other_name = f"{other.flag} {other.name_fa}" if other else "طرف مقابل"
+        prompt = (
+            f"❓ <b>لغو قرارداد</b>\n\n"
+            f"آیا مطمئن هستید که می‌خواهید قرارداد «{contract.title}» با {other_name} را لغو کنید؟\n\n"
+            "⚠️ با لغو این معاهده، وضعیت قرارداد به «لغوشده» تغییر می‌یابد و به مقامات کشور مقابل اطلاع داده می‌شود."
+        )
+        ok_btn_text = "❌ تأیید و لغو معاهده"
 
-    prompt = (
-        f"❓ <b>لغو قرارداد</b>\n\n"
-        f"آیا مطمئن هستید که می‌خواهید قرارداد «{contract.title}» با {other_name} را لغو کنید؟\n\n"
-        "⚠️ با لغو این معاهده، وضعیت قرارداد به «لغوشده» تغییر می‌یابد و به مقامات کشور مقابل اطلاع داده می‌شود."
-    )
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="❌ تأیید و لغو معاهده", callback_data=f"contract_cancel_ok:{contract.id}", style=STYLE_NO)],
+        [InlineKeyboardButton(text=ok_btn_text, callback_data=f"contract_cancel_ok:{contract.id}", style=STYLE_NO)],
         [InlineKeyboardButton(text="🔙 انصراف", callback_data=f"contract_view:{contract.id}", style=STYLE_MAIN)],
     ])
     await safe_edit(call, prompt, reply_markup=kb)
@@ -1465,7 +1778,7 @@ async def cb_contract_cancel(call: CallbackQuery, session: AsyncSession, db_user
 
 @router.callback_query(F.data.startswith("contract_cancel_ok:"))
 async def cb_contract_cancel_confirm(call: CallbackQuery, session: AsyncSession, db_user: User) -> None:
-    """اجرای نهایی لغو معاهده."""
+    """اجرای نهایی لغو معاهده یا خروج یک‌طرفه از معاهده چندجانبه."""
     await call.answer()
     country = await get_player_country(session, db_user)
     if country is None:
@@ -1481,10 +1794,68 @@ async def cb_contract_cancel_confirm(call: CallbackQuery, session: AsyncSession,
     if contract is None or contract.status != DiplomacyStatus.ACTIVE:
         await safe_edit(call, "این قرارداد قبلاً لغو شده یا دیگر فعال نیست.", reply_markup=diplomacy_menu_kb())
         return
-    if country.id not in (contract.country_a, contract.country_b):
+    if not await dip_repo.is_contract_party(session, contract, country.id):
         await call.answer("شما طرف این قرارداد نیستید.", show_alert=True)
         return
 
+    if contract.is_multilateral:
+        # خروج یک‌طرفه از معاهده چندجانبه
+        await dip_repo.remove_contract_signatory(session, contract.id, country.id)
+        await session.flush()
+
+        remaining_signatories = await dip_repo.get_contract_signatories(session, contract.id)
+        is_dissolved = len(remaining_signatories) < 2
+        if is_dissolved:
+            contract.status = DiplomacyStatus.CANCELLED
+            await session.flush()
+
+        # اطلاع به سایر اعضا
+        for s in remaining_signatories:
+            c = await countries_repo.get_country(session, s.country_id)
+            if c and c.owner_user_id:
+                try:
+                    notice = (
+                        f"⚠️ <b>خروج از معاهده چندجانبه</b>\n\n"
+                        f"کشور {country.flag} {country.name_fa} از معاهده «{contract.title}» خارج شد."
+                    )
+                    if is_dissolved:
+                        notice += "\n\n⚠️ با کاهش تعداد اعضا به کمتر از دو کشور، این معاهده به طور کامل لغو گردید."
+                    await bot.send_message(c.owner_user_id, notice)
+                except Exception:  # noqa: BLE001
+                    pass
+
+        # خبر در کانال دیپلماسی
+        if is_dissolved:
+            news_msg = f"📜 با خروج {country.name_fa}، معاهده چندجانبه‌ی «{contract.title}» به حد نصاب نرسید و به طور کامل لغو شد."
+        else:
+            news_msg = f"📜 کشور {country.name_fa} به صورت یک‌طرفه از معاهده چندجانبه‌ی «{contract.title}» خارج شد."
+        await publish_news(bot, NewsCategory.DIPLOMACY, news_msg)
+
+        # لاگ به گروه مدیران
+        await send_log(
+            bot,
+            f"🌐 <b>خروج از معاهده چندجانبه</b>\n"
+            f"عنوان: {contract.title}\n"
+            f"کشور خارج‌شده: {country.flag} {country.name_fa}\n"
+            f"وضعیت معاهده: {'کامل لغو شد' if is_dissolved else f'فعال با {len(remaining_signatories)} عضو'}",
+        )
+
+        res_text = (
+            f"✅ خروج شما از معاهده «{contract.title}» ثبت شد."
+            if not is_dissolved
+            else f"✅ خروج شما ثبت شد و به دلیل به حد نصاب نرسیدن اعضا، معاهده «{contract.title}» لغو گردید."
+        )
+        await safe_edit(
+            call,
+            res_text,
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                InlineKeyboardButton(text="📜 فهرست قراردادها", callback_data="dip:contracts", style=STYLE_MAIN),
+                InlineKeyboardButton(text="🔙 منوی دیپلماسی", callback_data="menu:diplomacy", style=STYLE_MAIN),
+            ]]),
+        )
+        return
+
+    # لغو قرارداد دوجانبه
     contract.status = DiplomacyStatus.CANCELLED
     await session.flush()
 

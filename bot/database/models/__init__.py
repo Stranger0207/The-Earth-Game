@@ -14,6 +14,7 @@ from .country import Country
 from .deployment import Deployment
 from .diplomacy import (
     Contract,
+    ContractSignatory,
     GroupMeeting,
     GroupMeetingParticipant,
     Meeting,
@@ -45,6 +46,7 @@ from .reserves import Reserve
 from .satellite import Satellite
 from .tariff import TariffRate
 from .trade import ResourceSale
+from .twitter import Tweet, TweetLike, TwitterProfile
 from .user import User
 
 __all__ = [
@@ -58,6 +60,7 @@ __all__ = [
     "ClaimRequest",
     "Commander",
     "Contract",
+    "ContractSignatory",
     "Cooldown",
     "Country",
     "Deployment",
@@ -90,6 +93,9 @@ __all__ = [
     "Satellite",
     "Speech",
     "TariffRate",
+    "Tweet",
+    "TweetLike",
+    "TwitterProfile",
     "User",
     "VisaRequirement",
 ]

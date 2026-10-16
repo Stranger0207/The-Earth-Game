@@ -28,6 +28,7 @@ from ..database.models import (
     BankLoan,
     ClaimRequest,
     Contract,
+    ContractSignatory,
     Cooldown,
     Country,
     Deployment,
@@ -65,6 +66,9 @@ from ..database.models import (
     NuclearWarhead,
     Satellite,
     TariffRate,
+    Tweet,
+    TweetLike,
+    TwitterProfile,
     User,
 )
 from ..database.repositories import countries as countries_repo
@@ -105,12 +109,16 @@ async def reset_season(session: AsyncSession) -> dict[str, int]:
 
     # --- ۱) پاک کردن همه‌ی جدول‌های وضعیت/تراکنش فصل ---
     # (ترتیب مهم است: جدول‌های وابسته اول)
+    await session.execute(delete(TweetLike))
+    await session.execute(delete(Tweet))
+    await session.execute(delete(TwitterProfile))
+    await session.execute(delete(ContractSignatory))
+    await session.execute(delete(Contract))
     await session.execute(delete(PhoneCallMessage))
     await session.execute(delete(PhoneCall))
     await session.execute(delete(GroupMeetingParticipant))
     await session.execute(delete(GroupMeeting))
     await session.execute(delete(Meeting))
-    await session.execute(delete(Contract))
     await session.execute(delete(Sanction))
     await session.execute(delete(ResourceSale))
     await session.execute(delete(MilitarySale))      # v1.7

@@ -22,6 +22,7 @@ from .diplomacy import (
     Sanction,
     Speech,
 )
+from .econ_sat_receipt import EconSatReceipt
 from .facility import Facility
 from .feature_lock import FeatureLock
 from .governance import Law, Protest, VisaRequirement
@@ -60,6 +61,7 @@ __all__ = [
     "Cooldown",
     "Country",
     "Deployment",
+    "EconSatReceipt",
     "Facility",
     "FeatureLock",
     "Investment",

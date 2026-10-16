@@ -30,6 +30,8 @@ from ..database.models import (
     Contract,
     Cooldown,
     Country,
+    Deployment,
+    EconSatReceipt,
     Facility,
     FeatureLock,
     GroupMeeting,
@@ -46,7 +48,6 @@ from ..database.models import (
     Alliance,
     AllianceMember,
     Commander,
-    Deployment,
     Speech,
     Law,
     Protest,
@@ -133,6 +134,7 @@ async def reset_season(session: AsyncSession) -> dict[str, int]:
     await session.execute(delete(BaseEquipment))
     await session.execute(delete(MilitaryBase))
     await session.execute(delete(Satellite))
+    await session.execute(delete(EconSatReceipt))
     # --- برنامه‌ی هسته‌ای (v1.10.4) ---
     await session.execute(delete(NuclearWarhead))
     await session.execute(delete(NuclearTest))
@@ -150,7 +152,7 @@ async def reset_season(session: AsyncSession) -> dict[str, int]:
 
     # --- ۲) آزادسازی مالکیت همه‌ی کشورها و رفع تعلیق کاربران ---
     await session.execute(
-        update(Country).values(owner_user_id=None, is_claimed=False)
+        update(Country).values(owner_user_id=None, is_claimed=False, econ_sat_unlocked=False)
     )
     await session.execute(
         update(User).values(is_suspended=False, president_name=None)
@@ -177,6 +179,7 @@ async def reset_season(session: AsyncSession) -> dict[str, int]:
         country.public_satisfaction = econ.get("public_satisfaction", 60.0)
         country.stability = econ.get("stability", 60.0)
         country.credit_rating = "normal"  # v2.2
+        country.econ_sat_unlocked = False  # v2.8
 
         # ریست فیلدهای حاکمیت (v1.10.2)
         country.government_type = ""

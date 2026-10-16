@@ -639,10 +639,11 @@ async def process_military_shipments(bot: Bot) -> None:
         await send_log(bot, text)
 
 
-async def process_satellites() -> None:
+async def process_satellites(bot: Bot | None = None) -> None:
     from ..services import satellite_service
     async with async_session_factory() as session:
         await satellite_service.process_satellite_launches(session)
+        await satellite_service.process_economic_satellites_yield(session, bot)
 
 
 async def process_taxes(bot: Bot) -> None:
@@ -1157,7 +1158,7 @@ async def _tick(bot: Bot) -> None:
         ("process_investments", lambda: process_investments(bot)),
         ("process_bank_loans", lambda: process_bank_loans(bot)),
         ("process_auctions", lambda: process_auctions(bot)),
-        ("process_satellites", lambda: process_satellites()),
+        ("process_satellites", lambda: process_satellites(bot)),
         ("process_nuclear", lambda: process_nuclear(bot)),
         ("process_taxes", lambda: process_taxes(bot)),
         ("process_protests", lambda: process_protests(bot)),

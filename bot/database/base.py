@@ -76,6 +76,10 @@ _COLUMN_MIGRATIONS = [
     # v2.2 — رتبه‌بندی اعتباری وام بانکی و مزایده
     ("countries", "credit_rating", "VARCHAR(16) NOT NULL DEFAULT 'normal'"),
     ("auctions", "channel_message_id", "BIGINT"),
+    # v2.8 — ماهواره اقتصادی و لول‌بندی
+    ("satellites", "level", "INTEGER NOT NULL DEFAULT 1"),
+    ("satellites", "last_yield_at", "TIMESTAMP WITH TIME ZONE"),
+    ("countries", "econ_sat_unlocked", "BOOLEAN NOT NULL DEFAULT FALSE"),
 ]
 
 

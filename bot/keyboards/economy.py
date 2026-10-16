@@ -29,13 +29,14 @@ def economy_menu_kb(is_usa: bool = False) -> InlineKeyboardMarkup:
     builder.button(text="🏦 بانک", callback_data="econ:bank", style=STYLE_MAIN)
     builder.button(text="📈 سرمایه‌گذاری", callback_data="econ:invest", style=STYLE_MAIN)
     builder.button(text="🏷 مزایده", callback_data="econ:auction", style=STYLE_MAIN)
+    builder.button(text="🛰 ماهواره اقتصادی", callback_data="sat:econ_menu", style=STYLE_MAIN)
     if is_usa:
         builder.button(text="🇺🇸 تعرفه بین‌المللی", callback_data="econ:tariffs", style=STYLE_NO)
     builder.button(text="🔙 بازگشت", callback_data="menu:main", style=STYLE_MAIN)
     if is_usa:
-        builder.adjust(2, 2, 2, 1, 1, 1)
+        builder.adjust(2, 2, 2, 2, 1, 1)
     else:
-        builder.adjust(2, 2, 2, 1, 1)
+        builder.adjust(2, 2, 2, 2, 1)
     return builder.as_markup()
 
 

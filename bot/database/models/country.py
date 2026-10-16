@@ -75,6 +75,9 @@ class Country(Base):
     # --- عوارض بین‌المللی (v1.5) — فقط برای آمریکا معنا دارد: مجموع تعرفه‌های جمع‌آوری‌شده ---
     international_duties: Mapped[float] = mapped_column(Float, default=0.0)
 
+    # --- ماهواره اقتصادی (v2.8) ---
+    econ_sat_unlocked: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+
 
     # --- روابط ---
     owner: Mapped["User | None"] = relationship(back_populates="country")

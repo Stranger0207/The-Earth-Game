@@ -220,6 +220,16 @@ async def _country_panel_kb(country: Country) -> InlineKeyboardMarkup:
     builder.button(text="📦 ویرایش ذخایر", callback_data=f"godres:{country.id}", style=STYLE_MAIN)
     builder.button(text="⚔️ ویرایش تجهیزات", callback_data=f"godmil:{country.id}", style=STYLE_MAIN)
     builder.button(text="🏭 تأسیسات و کارخانه‌ها", callback_data=f"godfac:{country.id}", style=STYLE_MAIN)
+    econ_sat_btn = (
+        "🛰 ماهواره اقتصادی: فعال ✅"
+        if getattr(country, "econ_sat_unlocked", False)
+        else "🛰 ماهواره اقتصادی: غیرفعال ❌"
+    )
+    builder.button(
+        text=econ_sat_btn,
+        callback_data=f"godeconsat:{country.id}",
+        style=STYLE_OK if getattr(country, "econ_sat_unlocked", False) else STYLE_NO,
+    )
     if country.is_claimed:
         builder.button(text="🚪 آزادسازی (اخراج)", callback_data=f"godrelease:{country.id}", style=STYLE_NO)
         builder.button(text="⛔️ بن مالک", callback_data=f"godban:{country.id}", style=STYLE_NO)
@@ -227,7 +237,10 @@ async def _country_panel_kb(country: Country) -> InlineKeyboardMarkup:
         builder.button(text="⏸ تعلیق", callback_data=f"godsuspend:{country.id}", style=STYLE_NO)
         builder.button(text="▶️ رفع تعلیق", callback_data=f"godunsuspend:{country.id}", style=STYLE_OK)
     builder.button(text="🔙 بازگشت", callback_data="god:countries", style=STYLE_MAIN)
-    builder.adjust(2, 2, 3, 2, 1)
+    if country.is_claimed:
+        builder.adjust(2, 2, 1, 3, 2, 1)
+    else:
+        builder.adjust(2, 2, 1, 1)
     return builder.as_markup()
 
 
@@ -258,6 +271,31 @@ async def cb_country_panel(call: CallbackQuery, session: AsyncSession) -> None:
         return
     await call.answer()
     await _show_country_panel(call, session, int(call.data.split(":")[1]))
+
+
+@router.callback_query(F.data.startswith("godeconsat:"))
+async def cb_god_econ_sat_toggle(call: CallbackQuery, session: AsyncSession) -> None:
+    """تغییر وضعیت فعالسازی ماهواره اقتصادی توسط مالک (v2.8)."""
+    if not await _guard(call):
+        return
+    country_id = int(call.data.split(":")[1])
+    country = await countries_repo.get_country(session, country_id)
+    if country is None:
+        await call.answer("کشور یافت نشد.", show_alert=True)
+        return
+
+    country.econ_sat_unlocked = not getattr(country, "econ_sat_unlocked", False)
+    await session.commit()
+
+    st_txt = "فعال شد ✅" if country.econ_sat_unlocked else "غیرفعال شد ❌"
+    await call.answer(f"ماهواره اقتصادی برای {country.name_fa} {st_txt}")
+    await send_log(
+        bot,
+        f"🛠 <b>تغییر وضعیت ماهواره اقتصادی در پنل گاد</b>\n"
+        f"کشور: {country.flag} {country.name_fa}\n"
+        f"وضعیت جدید: {st_txt}",
+    )
+    await _show_country_panel(call, session, country_id)
 
 
 @router.callback_query(F.data.startswith("godfac:"))

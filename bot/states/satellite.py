@@ -8,3 +8,5 @@ class SatelliteForm(StatesGroup):
 
     entering_satellite_name = State()
     choosing_target_country = State()
+    entering_econ_satellite_name = State()
+    waiting_for_econ_sat_receipt = State()

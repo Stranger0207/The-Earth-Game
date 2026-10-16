@@ -321,7 +321,7 @@ MAX_FOREIGN_BASES_PER_OWNER = 5  # حداکثر پایگاه‌های خارجی
 MAX_FOREIGN_BASES_PER_HOST = 3   # حداکثر پایگاه‌های خارجی مستقر در یک کشور میزبان
 
 # ============================================================
-#  🛰 ماهواره‌های جاسوسی فضایی (v2.0 / v3.0) — فقط برای کشورهای VIP
+#  🛰 ماهواره‌های فضایی و نرف/محدودیت‌ها (v2.0 / v2.8)
 # ============================================================
 SPY_SATELLITE_COST_USD = 15_000_000.0       # 15 Million USD (v3.0)
 SPY_SATELLITE_OIL_COST = 2.0               # 2 Million Barrels
@@ -330,6 +330,34 @@ SPY_SATELLITE_ALUMINUM_COST = 800_000.0     # 800k Tons
 
 SPY_SATELLITE_LIFESPAN_DAYS = 7            # ۷ روز عمر مفید در مدار
 SATELLITE_ORBIT_TIME_MINUTES = 30          # ۳۰ دقیقه زمان رسیدن به مدار
+
+# کول‌داون پرتاب مشترک و محدودیت رصد نظامی (v2.8)
+SATELLITE_LAUNCH_COOLDOWN_HOURS = 24       # ۲۴ ساعت کول‌داون پرتاب برای همه ماهواره‌ها
+MIL_SAT_SCAN_COOLDOWN_HOURS = 6            # ۶ ساعت کول‌داون رصد جاسوسی ماهواره نظامی
+MIL_SAT_RECON_COST = 50_000_000.0          # ۵۰ میلیون دلار هزینه رصد جاسوسی
+
+# ============================================================
+#  💰 ماهواره اقتصادی تجاری (v2.8)
+# ============================================================
+ECON_SAT_ACTIVATION_PRICE_TOMAN = 50_000
+ECON_SAT_CARD_NUMBER = "6219861843148577"
+ECON_SAT_CARD_HOLDER = "رضائی"
+
+ECON_SAT_BUILD_COST_USD = 100_000_000.0    # ۱۰۰ میلیون دلار هزینه ساخت اولیه
+ECON_SAT_STEEL_COST = 300_000.0            # ۳۰۰ هزار تن فولاد
+ECON_SAT_ALUMINUM_COST = 500_000.0         # ۵۰۰ هزار تن آلومینیوم
+ECON_SAT_OIL_COST = 1.0                    # ۱ میلیون بشکه نفت سوخت موشک
+
+ECON_SAT_FAILURE_RATE = 18.0               # ۱۸ درصد نرخ خطا و شکست پرتاب
+ECON_SAT_YIELD_INTERVAL_HOURS = 72         # بازدهی هر ۷۲ ساعت یک‌بار
+
+ECON_SAT_LEVEL_CONFIG: dict[int, dict[str, float]] = {
+    1: {"upgrade_cost": 0.0, "yield_usd": 100_000_000.0},
+    2: {"upgrade_cost": 250_000_000.0, "yield_usd": 250_000_000.0},
+    3: {"upgrade_cost": 400_000_000.0, "yield_usd": 400_000_000.0},
+    4: {"upgrade_cost": 550_000_000.0, "yield_usd": 550_000_000.0},
+    5: {"upgrade_cost": 700_000_000.0, "yield_usd": 700_000_000.0},
+}
 
 # ============================================================
 #  🏛 سیستم حاکمیت (v1.10.2)
@@ -573,7 +601,7 @@ LOCKABLE_FEATURES: dict[str, tuple[str, str]] = {
     # ⚔️ نظامی
     "military.interception": ("⚓ رهگیری محموله", FEATURE_CAT_MILITARY),
     "military.base": ("🏗 پایگاه نظامی", FEATURE_CAT_MILITARY),
-    "military.satellite": ("📡 ماهواره فضایی", FEATURE_CAT_MILITARY),
+    "military.satellite": ("🛰 ماهواره نظامی", FEATURE_CAT_MILITARY),
     "military.deploy": ("🪖 استقرار نیرو", FEATURE_CAT_MILITARY),
     "military.nuclear": ("☢️ تأسیسات هسته‌ای", FEATURE_CAT_MILITARY),
     "military.factory": ("🏭 کارخانه نظامی", FEATURE_CAT_MILITARY),
@@ -587,6 +615,8 @@ LOCKABLE_FEATURES: dict[str, tuple[str, str]] = {
     "econ.auction": ("🏷 مزایده منابع", FEATURE_CAT_ECONOMY),
     "econ.transfer": ("💸 انتقال وجه", FEATURE_CAT_ECONOMY),
     "econ.investment": ("📈 سرمایه‌گذاری", FEATURE_CAT_ECONOMY),
+    "econ.satellite": ("💰 ماهواره اقتصادی", FEATURE_CAT_ECONOMY),
+    "econ_satellite": ("💰 ماهواره اقتصادی", FEATURE_CAT_ECONOMY),
     # 🤝 دیپلماسی
     "dip.letter": ("✉️ نامه", FEATURE_CAT_DIPLOMACY),
     "dip.call": ("📞 تماس تلفنی", FEATURE_CAT_DIPLOMACY),

@@ -183,6 +183,17 @@ ECON_PROJECT_HEADER_MAX_LEN = 96       # سقف رزروشده سربرگ ربا
 ECON_PROJECT_YIELD_INTERVAL_HOURS = 72 # چرخه بازدهی ۷۲ ساعته سود پروژه
 
 # ============================================================
+#  سیستم رول‌های امنیتی و نظامی (آپدیت شماره ۲)
+# ============================================================
+SECURITY_ROLE_COST = 20_000_000.0         # هزینه ثابت ثبت و ارسال رول امنیتی (دلار)
+SECURITY_ROLE_MAX_PAGES = 5               # حداکثر صفحات رول امنیتی
+MILITARY_ROLE_SABOTAGE_MAX_PAGES = 2      # سقف صفحات رول خرابکاری
+MILITARY_ROLE_ASSASSINATION_MAX_PAGES = 3 # سقف صفحات رول ترور
+MILITARY_ROLE_ATTACK_MAX_PAGES = 5        # سقف صفحات رول حمله
+ROLE_HEADER_MAX_LEN = 96                  # سقف کاراکتر سربرگ پیام رول‌ها
+
+
+# ============================================================
 #  کول‌داون کنش‌های دیپلماتیک (v1.9)
 # ============================================================
 MEETING_COOLDOWN_HOURS = 3            # دیدار حضوری: هر ۳ ساعت ۱ نشست
@@ -622,6 +633,10 @@ LOCKABLE_FEATURES: dict[str, tuple[str, str]] = {
     "military.nuclear": ("☢️ تأسیسات هسته‌ای", FEATURE_CAT_MILITARY),
     "military.factory": ("🏭 کارخانه نظامی", FEATURE_CAT_MILITARY),
     "military.sale": ("💰 فروش تسلیحات", FEATURE_CAT_MILITARY),
+    "security_roles": ("🛡 پروژه‌های امنیتی", FEATURE_CAT_MILITARY),
+    "military_roles": ("⚔️ رول‌های نظامی", FEATURE_CAT_MILITARY),
+    "military.security_role": ("🛡 پروژه‌های امنیتی", FEATURE_CAT_MILITARY),
+    "military.ops_role": ("⚔️ رول‌های نظامی", FEATURE_CAT_MILITARY),
     # 💰 اقتصاد
     "econ.facility": ("🏗 احداث تأسیسات", FEATURE_CAT_ECONOMY),
     "econ.joint": ("🤝 تأسیسات مشترک", FEATURE_CAT_ECONOMY),

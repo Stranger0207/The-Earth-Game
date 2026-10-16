@@ -274,3 +274,35 @@ class AdminProjectReviewForm(StatesGroup):
     entering_custom_yield = State()     # ورود دستی سود ۷۲ ساعته
     entering_resource_amount = State()  # ورود مقدار منبع انتخابی برای هزینه افتتاح
 
+
+class SecurityRoleDraftForm(StatesGroup):
+    """فرم ایجاد و نگارش پیش‌نویس پروژه امنیتی (آپدیت شماره ۲)."""
+
+    entering_title = State()    # عنوان پروژه
+    entering_page = State()     # ورود متن صفحه جاری (۱ تا ۵)
+
+
+class SecurityRoleRejectForm(StatesGroup):
+    """فرم درج دلیل رد رول امنیتی توسط مدیریت."""
+
+    entering_reason = State()
+
+
+class MilitaryRoleDraftForm(StatesGroup):
+    """فرم ایجاد و نگارش رول عملیات نظامی (خرابکاری/ترور/حمله)."""
+
+    selecting_type = State()    # انتخاب نوع رول
+    entering_title = State()    # عنوان عملیات
+    selecting_target = State()  # انتخاب کشور هدف
+    entering_page = State()     # ورود متن صفحه جاری (تا سقف مجاز نوع)
+
+
+class MilitaryCasualtyForm(StatesGroup):
+    """فرم ثبت تلفات عملیاتی توسط ادمین."""
+
+    selecting_side = State()    # انتخاب سمت: مهاجم یا هدف
+    selecting_branch = State()  # انتخاب نیرو: زمینی، هوایی، دریایی
+    selecting_asset = State()   # انتخاب قلم تجهیزات
+    entering_count = State()    # ورود عدد تلفات
+
+

@@ -34,7 +34,9 @@ from .letter import Letter
 from .military import MilitaryAsset
 from .military_base import BaseEquipment, MilitaryBase
 from .military_factory import MilitaryFactory
+from .military_role import MilitaryRole
 from .military_sale import MilitarySale
+from .security_role import SecurityRole
 from .nuclear import (
     NuclearFacility,
     NuclearInspection,
@@ -79,6 +81,7 @@ __all__ = [
     "MilitaryAsset",
     "MilitaryBase",
     "MilitaryFactory",
+    "MilitaryRole",
     "MilitarySale",
     "NuclearFacility",
     "NuclearInspection",
@@ -93,6 +96,7 @@ __all__ = [
     "ResourceSale",
     "Sanction",
     "Satellite",
+    "SecurityRole",
     "Speech",
     "TariffRate",
     "Tweet",

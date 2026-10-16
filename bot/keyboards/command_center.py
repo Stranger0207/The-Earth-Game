@@ -22,8 +22,10 @@ def command_center_kb(is_vip: bool = False) -> InlineKeyboardMarkup:
     builder.button(text="🏭 صنایع نظامی", callback_data="cc:industry", style=STYLE_MAIN)
     builder.button(text="⚓ رهگیری محموله", callback_data="op:intercept", style=STYLE_MAIN)
     builder.button(text="🎖 فرماندهان", callback_data="cc:commanders", style=STYLE_MAIN)
+    builder.button(text="🛡 پروژه‌های امنیتی (رول)", callback_data="mil:security_roles", style=STYLE_MAIN)
+    builder.button(text="⚔️ عملیات و رول نظامی", callback_data="mil:ops_roles", style=STYLE_MAIN)
     builder.button(text="🔙 بازگشت", callback_data="menu:main", style=STYLE_MAIN)
-    builder.adjust(2, 2, 2, 1)
+    builder.adjust(2, 2, 2, 2, 1)
     return builder.as_markup()
 
 

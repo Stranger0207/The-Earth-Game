@@ -59,6 +59,8 @@ from ..database.models import (
     Letter,
     BaseEquipment,
     MilitaryBase,
+    MilitaryRole,
+    SecurityRole,
     NuclearFacility,
     NuclearInspection,
     NuclearProgram,
@@ -159,6 +161,8 @@ async def reset_season(session: AsyncSession) -> dict[str, int]:
     await session.execute(delete(Auction))
     await session.execute(delete(BankLoan))
     await session.execute(delete(EconomicProject))
+    await session.execute(delete(MilitaryRole))
+    await session.execute(delete(SecurityRole))
 
     # --- ۲) آزادسازی مالکیت همه‌ی کشورها و رفع تعلیق کاربران ---
     await session.execute(

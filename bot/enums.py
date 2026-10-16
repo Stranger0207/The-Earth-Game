@@ -540,3 +540,71 @@ ECONOMIC_PROJECT_STATUS_FA: dict[EconomicProjectStatus, str] = {
 }
 
 
+# ============================================================
+#  🛡 رول‌های امنیتی (آپدیت شماره ۲)
+# ============================================================
+
+
+class SecurityRoleStatus(str, enum.Enum):
+    """وضعیت پروژه‌ها / رول‌های امنیتی."""
+
+    DRAFT = "draft"                    # پیش‌نویس (قابل ویرایش و افزایش صفحه)
+    PENDING_REVIEW = "pending_review"  # ارسال‌شده به گروه رول امنیتی
+    APPROVED = "approved"              # تاییدشده و ثبت در آرشیو امنیتی کشور
+    REJECTED = "rejected"              # ردشده توسط مدیریت (با بازگشت ۲۰M)
+    CANCELLED = "cancelled"            # حذف پیش‌نویس
+
+
+SECURITY_ROLE_STATUS_FA: dict[SecurityRoleStatus, str] = {
+    SecurityRoleStatus.DRAFT: "📝 پیش‌نویس",
+    SecurityRoleStatus.PENDING_REVIEW: "⏳ در حال بررسی مدیریت",
+    SecurityRoleStatus.APPROVED: "🛡 تاییدشده (در آرشیو امنیتی)",
+    SecurityRoleStatus.REJECTED: "❌ ردشده",
+    SecurityRoleStatus.CANCELLED: "🗑 لغوشده",
+}
+
+
+# ============================================================
+#  ⚔️ رول‌های نظامی: خرابکاری، ترور، حمله (آپدیت شماره ۲)
+# ============================================================
+
+
+class MilitaryRoleType(str, enum.Enum):
+    """انواع رول‌ها و عملیات‌های نظامی."""
+
+    SABOTAGE = "sabotage"          # رول خرابکاری (حداکثر ۲ صفحه)
+    ASSASSINATION = "assassination"  # رول ترور (حداکثر ۳ صفحه)
+    ATTACK = "attack"              # رول حمله (حداکثر ۵ صفحه)
+
+
+MILITARY_ROLE_TYPE_FA: dict[MilitaryRoleType, str] = {
+    MilitaryRoleType.SABOTAGE: "💣 رول خرابکاری",
+    MilitaryRoleType.ASSASSINATION: "🎯 رول ترور",
+    MilitaryRoleType.ATTACK: "🚀 رول حمله",
+}
+
+MILITARY_ROLE_TYPE_EMOJI: dict[MilitaryRoleType, str] = {
+    MilitaryRoleType.SABOTAGE: "💣",
+    MilitaryRoleType.ASSASSINATION: "🎯",
+    MilitaryRoleType.ATTACK: "🚀",
+}
+
+
+class MilitaryRoleStatus(str, enum.Enum):
+    """وضعیت رول‌ها و عملیات‌های نظامی."""
+
+    DRAFT = "draft"                    # پیش‌نویس
+    PENDING_REVIEW = "pending_review"  # ارسال‌شده به گروه عملیات (در حال اجرا)
+    COMPLETED = "completed"            # پایان‌یافته توسط ادمین
+    CANCELLED = "cancelled"            # لغوشده / حذف پیش‌نویس
+
+
+MILITARY_ROLE_STATUS_FA: dict[MilitaryRoleStatus, str] = {
+    MilitaryRoleStatus.DRAFT: "📝 پیش‌نویس",
+    MilitaryRoleStatus.PENDING_REVIEW: "⏳ در حال اجرا / بررسی ستاد",
+    MilitaryRoleStatus.COMPLETED: "🏁 پایان‌یافته",
+    MilitaryRoleStatus.CANCELLED: "🗑 لغوشده",
+}
+
+
+

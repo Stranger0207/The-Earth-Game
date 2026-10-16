@@ -92,6 +92,16 @@ async def list_all_active(session: AsyncSession) -> list[EconomicProject]:
     return list(result.scalars().all())
 
 
+async def list_all_pending(session: AsyncSession) -> list[EconomicProject]:
+    """دریافت تمام پروژه‌های اقتصادی در انتظار بررسی مدیریت."""
+    result = await session.execute(
+        select(EconomicProject)
+        .where(EconomicProject.status == EconomicProjectStatus.PENDING_REVIEW.value)
+        .order_by(EconomicProject.id.asc())
+    )
+    return list(result.scalars().all())
+
+
 async def list_all_by_country(
     session: AsyncSession, country_id: int
 ) -> list[EconomicProject]:

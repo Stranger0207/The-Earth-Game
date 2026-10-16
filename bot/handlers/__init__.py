@@ -4,6 +4,7 @@ from aiogram import Dispatcher
 
 from . import (
     admin,
+    admin_roles,
     advisor,
     alliance,
     auction,
@@ -25,8 +26,10 @@ from . import (
     menu,
     military,
     military_base,
+    military_roles,
     nuclear,
     satellite,
+    security_roles,
     start,
     twitter,
 )
@@ -40,6 +43,7 @@ def register_all_routers(dp: Dispatcher) -> None:
     dp.include_router(start.router)
     dp.include_router(claim.router)
     dp.include_router(admin.router)
+    dp.include_router(admin_roles.router)
     dp.include_router(maintenance.router)
     dp.include_router(godmode.router)
     dp.include_router(god_locks.router)
@@ -58,6 +62,8 @@ def register_all_routers(dp: Dispatcher) -> None:
     dp.include_router(command_center.router)
     dp.include_router(interception.router)
     dp.include_router(military.router)
+    dp.include_router(military_roles.router)
+    dp.include_router(security_roles.router)
     dp.include_router(military_base.router)
     dp.include_router(satellite.router)
     dp.include_router(nuclear.router)

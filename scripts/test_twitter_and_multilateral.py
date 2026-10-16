@@ -120,7 +120,26 @@ async def run_tests():
         assert refreshed_tweet.likes_count == 2
         print("✅ ۳. ارسال توییت و سیستم لایک شیشه‌ای Toggle با موفقیت آزمایش شد.")
 
-        # ۴. آزمون رندر گرافیکی توییت با Pillow
+        # ۳.۱ آزمون محدودیت زمانی ۱ ساعته (کول‌داون) و کیبورد خانه توییتر
+        from bot.constants import TWEET_COOLDOWN_HOURS
+        from bot.database.repositories import cooldowns as cd_repo
+        from bot.handlers.twitter import _twitter_home_kb
+
+        # تست عملکرد بدون باگ _twitter_home_kb
+        home_kb = _twitter_home_kb()
+        assert len(home_kb.inline_keyboard) == 3
+
+        # قبل از ثبت کول‌داون
+        rem_before = await cd_repo.remaining_seconds(session, c1.id, "tweet", TWEET_COOLDOWN_HOURS)
+        assert rem_before == 0.0
+
+        # پس از انتشار توییت و لمس کول‌داون
+        await cd_repo.touch(session, c1.id, "tweet")
+        rem_after = await cd_repo.remaining_seconds(session, c1.id, "tweet", TWEET_COOLDOWN_HOURS)
+        assert rem_after > 3500.0  # حدود ۱ ساعت (۳۶۰۰ ثانیه) باقی مانده است
+        print("✅ ۳.۱ محدودیت زمانی ۱ ساعته (Cooldown) و منوی اصلی توییتر با موفقیت تایید شد.")
+
+        # ۴. آزمون رندر گرافیکی توییت با Pillow و فونت‌های ۲ درجه بزرگتر
         avatar_bytes = create_dummy_avatar_bytes()
         tweet_img_bytes = render_tweet_image(
             country_name="ایران",
@@ -135,7 +154,7 @@ async def run_tests():
         with Image.open(io.BytesIO(tweet_img_bytes)) as rendered_im:
             assert rendered_im.size[0] == 1000
             assert rendered_im.size[1] > 300
-        print("✅ ۴. رندر گرافیکی Dark Mode اسکرین‌شات توییتر در Pillow با موفقیت بررسی شد.")
+        print("✅ ۴. رندر گرافیکی Dark Mode اسکرین‌شات توییتر در Pillow با فونت درشت‌تر با موفقیت بررسی شد.")
 
         # ۵. آزمون معاهده چندجانبه بین‌المللی
         # ایجاد پیش‌نویس معاهده توسط کشور ۱ میان کشورهای ۱، ۲، ۳

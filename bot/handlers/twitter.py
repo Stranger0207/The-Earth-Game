@@ -28,8 +28,9 @@ from aiogram.types import (
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..constants import TWEET_CHANNEL_ID
+from ..constants import TWEET_CHANNEL_ID, TWEET_COOLDOWN_HOURS
 from ..database.models import User
+from ..database.repositories import cooldowns as cd_repo
 from ..database.repositories import countries as countries_repo
 from ..database.repositories import twitter as twitter_repo
 from ..loader import bot
@@ -109,7 +110,7 @@ async def cb_twitter_main(
         f"📊 <b>تعداد توییت‌های فصل:</b> {fa_number(t_count)}\n\n"
         "<i>از این بخش می‌توانید پیام‌ها، بیانیه‌ها و مواضع دیپلماتیک خود را در قالب اسکرین‌شات گرافیکی رسمی در کانال توییتر جهانی منتشر کنید.</i>"
     )
-    await safe_edit(call, text, reply_markup=twitter_home_kb())
+    await safe_edit(call, text, reply_markup=_twitter_home_kb())
 
 
 # ============================================================
@@ -231,6 +232,19 @@ async def cb_tweet_new(
         await call.answer("ابتدا باید حساب توییتر خود را بسازید.", show_alert=True)
         return
 
+    # بررسی محدودیت زمانی (هر ۱ ساعت ۱ توییت)
+    secs = await cd_repo.remaining_seconds(session, country.id, "tweet", TWEET_COOLDOWN_HOURS)
+    mins = int((secs + 59) // 60)
+    if mins > 0:
+        await safe_edit(
+            call,
+            f"⏳ <b>محدودیت زمانی ارسال توییت</b>\n\n"
+            f"ارسال توییت رسمی هر ۱ ساعت یک‌بار امکان‌پذیر است.\n"
+            f"لطفاً حدود <b>{fa_number(mins)} دقیقه</b> دیگر دوباره تلاش کنید.",
+            reply_markup=_twitter_home_kb(),
+        )
+        return
+
     await state.set_state(TweetForm.entering_content)
     text = (
         "✍️ <b>نگارش توییت رسمی جدید</b>\n\n"
@@ -300,6 +314,20 @@ async def cb_tweet_confirm(
         await call.answer("پروفایل توییتر یافت نشد.", show_alert=True)
         return
 
+    # بررسی مجدد کول‌داون قبل از انتشار رسمی
+    secs = await cd_repo.remaining_seconds(session, country.id, "tweet", TWEET_COOLDOWN_HOURS)
+    mins = int((secs + 59) // 60)
+    if mins > 0:
+        await state.clear()
+        await safe_edit(
+            call,
+            f"⏳ <b>محدودیت زمانی ارسال توییت</b>\n\n"
+            f"ارسال توییت رسمی هر ۱ ساعت یک‌بار امکان‌پذیر است.\n"
+            f"لطفاً حدود <b>{fa_number(mins)} دقیقه</b> دیگر دوباره تلاش کنید.",
+            reply_markup=_twitter_home_kb(),
+        )
+        return
+
     await call.answer("در حال طراحی و مخابره تصویر توییت... ⏳")
     await safe_edit(call, "⏳ در حال رندر و ارسال توییت به کانال جهانی توییتر...")
 
@@ -337,17 +365,23 @@ async def cb_tweet_confirm(
         )
         return
 
-    # ۴. ارسال به کانال رسمی توییتر با دکمه تعاملی لایک
+    # ۴. ارسال به کانال رسمی توییتر با دکمه تعاملی لایک و کپشن رسمی
     channel_kb = InlineKeyboardMarkup(inline_keyboard=[[
         InlineKeyboardButton(text="❤️ 0", callback_data=f"tweet:like:{tweet.id}")
     ]])
     photo_file = BufferedInputFile(tweet_bytes, filename=f"tweet_{tweet.id}.png")
+    tweet_caption = (
+        "🌍 توییت حساب رسمی\n"
+        f"📤 فرستنده: مسئول کشور {country.name_fa}\n\n"
+        "🖼 متن کامل توییت در تصویر سند رسمی بالا درج شده است."
+    )
 
     channel_msg_id: int | None = None
     try:
         sent_channel_msg = await bot.send_photo(
             chat_id=TWEET_CHANNEL_ID,
             photo=photo_file,
+            caption=tweet_caption,
             reply_markup=channel_kb,
         )
         channel_msg_id = sent_channel_msg.message_id
@@ -355,6 +389,10 @@ async def cb_tweet_confirm(
         await session.flush()
     except Exception as exc:
         logger.error("Failed to post tweet to channel %s: %s", TWEET_CHANNEL_ID, exc)
+
+    # ثبت زمان ارسال برای اعمال محدودیت زمانی ۱ ساعته
+    await cd_repo.touch(session, country.id, "tweet")
+    await session.flush()
 
     # ۵. ارسال نسخه به گروه لاگ مدیران
     log_photo = BufferedInputFile(tweet_bytes, filename=f"tweet_{tweet.id}.png")

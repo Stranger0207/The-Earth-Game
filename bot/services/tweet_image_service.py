@@ -138,10 +138,10 @@ def render_tweet_image(
     font_reg_path, font_bold_path = _ensure_fonts()
 
     if font_reg_path and font_bold_path:
-        font_name = ImageFont.truetype(font_bold_path, 22)
-        font_handle = ImageFont.truetype(font_reg_path, 16)
-        font_body = ImageFont.truetype(font_reg_path, 20)
-        font_meta = ImageFont.truetype(font_reg_path, 14)
+        font_name = ImageFont.truetype(font_bold_path, 24)
+        font_handle = ImageFont.truetype(font_reg_path, 18)
+        font_body = ImageFont.truetype(font_reg_path, 22)
+        font_meta = ImageFont.truetype(font_reg_path, 16)
     else:
         font_name = font_handle = font_body = font_meta = ImageFont.load_default()
 
@@ -156,7 +156,7 @@ def render_tweet_image(
 
     # خط‌بندی متن توییت (حداکثر عرض ۸۶۰ پیکسل)
     lines = _wrap_text(clean_body, font_body, max_width=860)
-    line_height = 36
+    line_height = 40
     body_height = max(len(lines) * line_height, 60)
 
     # محاسبه داینامیک ارتفاع بوم
@@ -191,11 +191,11 @@ def render_tweet_image(
     name_text = prepare_rtl(clean_country)
     bb_name = font_name.getbbox(name_text)
     name_w = bb_name[2] - bb_name[0]
-    draw.text((145, 42), name_text, fill=COLOR_WHITE, font=font_name)
+    draw.text((145, 40), name_text, fill=COLOR_WHITE, font=font_name)
 
     badge_cx = 145 + name_w + 16
-    badge_cy = 42 + 13
-    _draw_verified_badge(draw, badge_cx, badge_cy, radius=11)
+    badge_cy = 40 + 14
+    _draw_verified_badge(draw, badge_cx, badge_cy, radius=12)
 
     handle_disp = f"@{clean_handle}"
     draw.text((145, 82), handle_disp, fill=COLOR_TEXT_MUTED, font=font_handle)

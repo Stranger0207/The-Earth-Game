@@ -31,6 +31,8 @@ from . import (
     satellite,
     security_roles,
     start,
+    suspension,
+    team,
     twitter,
 )
 
@@ -44,6 +46,8 @@ def register_all_routers(dp: Dispatcher) -> None:
     dp.include_router(claim.router)
     dp.include_router(admin.router)
     dp.include_router(admin_roles.router)
+    dp.include_router(team.router)
+    dp.include_router(suspension.router)
     dp.include_router(maintenance.router)
     dp.include_router(godmode.router)
     dp.include_router(god_locks.router)

@@ -81,15 +81,69 @@ class Settings(BaseSettings):
         return _parse_id_list(value)
 
     def is_owner(self, user_id: int) -> bool:
-        """آیا این کاربر مالک بازی است؟"""
-        return user_id in self.owner_ids
+        """آیا این کاربر مالک بازی است؟ (مالک‌های استاتیک در env یا مالکان ثبت‌شده پویا)"""
+        return user_id in self.owner_ids or user_id in _dynamic_owner_ids
 
     def is_admin(self, user_id: int) -> bool:
         """آیا این کاربر مدیر است؟ (مالک‌ها هم مدیر محسوب می‌شوند)"""
-        return user_id in self.admin_ids or user_id in self.owner_ids
+        return (
+            user_id in self.admin_ids
+            or user_id in self.owner_ids
+            or user_id in _dynamic_admin_ids
+            or user_id in _dynamic_owner_ids
+        )
+
+    def is_static_owner(self, user_id: int) -> bool:
+        """آیا این کاربر مالک اولیه/ثابت در env است؟ (غیرقابل خلع)"""
+        return user_id in self.owner_ids
+
+
+# --- مدیریت پویای اعضای تیم در حافظه (همگام با جدول users) ---
+_dynamic_admin_ids: set[int] = set()
+_dynamic_owner_ids: set[int] = set()
+
+
+def add_dynamic_admin(uid: int) -> None:
+    """افزودن آیدی مدیر پویا به حافظه."""
+    _dynamic_admin_ids.add(uid)
+
+
+def remove_dynamic_admin(uid: int) -> None:
+    """حذف آیدی مدیر پویا از حافظه."""
+    _dynamic_admin_ids.discard(uid)
+
+
+def add_dynamic_owner(uid: int) -> None:
+    """افزودن آیدی مالک پویا به حافظه."""
+    _dynamic_owner_ids.add(uid)
+
+
+def remove_dynamic_owner(uid: int) -> None:
+    """حذف آیدی مالک پویا از حافظه."""
+    _dynamic_owner_ids.discard(uid)
+
+
+def set_dynamic_team(
+    admin_ids: set[int] | list[int], owner_ids: set[int] | list[int]
+) -> None:
+    """بازنشانی کامل کش اعضای پویا (هنگام بالا آمدن ربات از دیتابیس)."""
+    global _dynamic_admin_ids, _dynamic_owner_ids
+    _dynamic_admin_ids = set(admin_ids)
+    _dynamic_owner_ids = set(owner_ids)
+
+
+def get_dynamic_admins() -> set[int]:
+    """دریافت مجموعه‌ی مدیران پویا."""
+    return set(_dynamic_admin_ids)
+
+
+def get_dynamic_owners() -> set[int]:
+    """دریافت مجموعه‌ی مالکان پویا."""
+    return set(_dynamic_owner_ids)
 
 
 @lru_cache
 def get_settings() -> Settings:
     """نمونه‌ی کش‌شده‌ی تنظیمات؛ فقط یک‌بار از env خوانده می‌شود."""
     return Settings()  # type: ignore[call-arg]
+

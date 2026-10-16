@@ -41,6 +41,16 @@ class User(Base):
     is_banned: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     # تعلیق (v1.10.5): متمایز از بن کامل — پلیر معلق نمی‌تواند در کشورش اقدامی کند
     is_suspended: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # تعلیق زمان‌دار (آپدیت مدیریت): زمان پایان و دلیل تعلیق
+    suspended_until: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    suspension_reason: Mapped[str | None] = mapped_column(String(256), nullable=True)
+
+    # دسترسی‌های مدیریتی پویا (قابلیت تغییر با دستور /team)
+    is_admin: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    is_owner: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False
     )

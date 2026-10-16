@@ -29,12 +29,14 @@ from .forms import (
     MilitaryFactoryForm,
     MilitaryRoleDraftForm,
     MilitarySaleForm,
-    SecurityRoleDraftForm,
-    SecurityRoleRejectForm,
     SaleForm,
     SanctionForm,
+    SecurityRoleDraftForm,
+    SecurityRoleRejectForm,
     SpeechForm,
+    SuspensionForm,
     TariffForm,
+    TeamManageForm,
 )
 from .military_base import MilitaryBaseForm
 from .operations import (
@@ -78,4 +80,8 @@ __all__ = [
     "SaleForm",
     "SanctionForm",
     "SatelliteForm",
+    "SecurityRoleDraftForm",
+    "SecurityRoleRejectForm",
+    "SuspensionForm",
+    "TeamManageForm",
 ]

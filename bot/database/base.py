@@ -84,6 +84,11 @@ _COLUMN_MIGRATIONS = [
     ("contracts", "is_multilateral", "BOOLEAN NOT NULL DEFAULT FALSE"),
     # Update 10 — رسید پرداخت کشورگیری VIP
     ("claim_requests", "photo_file_id", "VARCHAR(256)"),
+    # مدیریت تیم و تعلیق زمان‌دار (/team & /suspension)
+    ("users", "is_admin", "BOOLEAN NOT NULL DEFAULT FALSE"),
+    ("users", "is_owner", "BOOLEAN NOT NULL DEFAULT FALSE"),
+    ("users", "suspended_until", "TIMESTAMP WITH TIME ZONE"),
+    ("users", "suspension_reason", "VARCHAR(256)"),
 ]
 
 

@@ -306,3 +306,22 @@ class MilitaryCasualtyForm(StatesGroup):
     entering_count = State()    # ورود عدد تلفات
 
 
+class TeamManageForm(StatesGroup):
+    """فرم مدیریت تیم (افزودن/حذف ادمین و مالک با دستور /team)."""
+
+    waiting_for_admin_id = State()       # دریافت آیدی/یوزرنیم برای افزودن ادمین
+    waiting_for_remove_admin = State()   # دریافت آیدی/یوزرنیم برای حذف ادمین
+    waiting_for_owner_id = State()       # دریافت آیدی/یوزرنیم برای افزودن مالک
+    waiting_for_remove_owner = State()   # دریافت آیدی/یوزرنیم برای حذف مالک
+
+
+class SuspensionForm(StatesGroup):
+    """فرم تعلیق زمان‌دار کاربر (/suspension و /unsuspend)."""
+
+    waiting_for_target = State()     # دریافت آیدی عددی یا یوزرنیم
+    choosing_duration = State()      # انتخاب مدت زمان (۶، ۱۲، ۲۴، ۴۸ ساعت)
+    entering_reason = State()        # درج علت تعلیق
+    waiting_for_unsuspend = State()  # دریافت آیدی عددی یا یوزرنیم برای رفع تعلیق
+
+
+

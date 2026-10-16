@@ -1207,6 +1207,31 @@ async def process_auctions(bot: Bot) -> None:
         await session.commit()
 
 
+async def process_timed_suspensions(bot: Bot) -> None:
+    """بررسی پایان دوره تعلیق‌های زمان‌دار و اطلاع‌رسانی به بازیکن."""
+    from ..database.repositories import users as users_repo
+
+    now = _utcnow()
+    async with async_session_factory() as session:
+        expired_users = await users_repo.get_expired_suspended_users(session, now)
+        for user in expired_users:
+            user.is_suspended = False
+            user.suspended_until = None
+            user.suspension_reason = None
+            try:
+                await bot.send_message(
+                    user.telegram_id,
+                    "🟢 <b>پایان دوره تعلیق</b>\n\n"
+                    "دوره تعلیق موقت حساب کاربری شما به پایان رسید و دسترسی شما به مدیریت کشور مجدداً فعال شد.\n"
+                    "می‌توانید با دستور /start یا منوی بازی فعالیت خود را ادامه دهید.",
+                )
+            except Exception as exc:
+                logger.debug("Failed to send suspension expiry notification to %s: %s", user.telegram_id, exc)
+
+        if expired_users:
+            await session.commit()
+
+
 async def _tick(bot: Bot) -> None:
     """جاب اصلی که هر دقیقه همه‌ی پردازش‌های زمان‌دار را اجرا می‌کند.
 
@@ -1229,6 +1254,7 @@ async def _tick(bot: Bot) -> None:
         ("process_nuclear", lambda: process_nuclear(bot)),
         ("process_taxes", lambda: process_taxes(bot)),
         ("process_protests", lambda: process_protests(bot)),
+        ("process_timed_suspensions", lambda: process_timed_suspensions(bot)),
     )
     for name, run in jobs:
         try:

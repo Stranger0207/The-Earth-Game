@@ -611,31 +611,9 @@ async def cb_season_confirm(
 async def _resolve_ban_target(
     session: AsyncSession, identifier: str
 ) -> tuple[User | None, int | None, str | None]:
-    """
-    یافتن کاربر هدف بر اساس آیدی عددی یا @username.
-    خروجی: (db_user, telegram_id, error_message)
-    """
-    clean = identifier.strip()
-    if not clean:
-        return None, None, "شناسه‌ای وارد نشده است."
+    """یافتن کاربر هدف بر اساس آیدی عددی یا @username."""
+    return await users_repo.get_user_by_username_or_id(session, identifier)
 
-    # اگر آیدی عددی است
-    if clean.isdigit() or (clean.startswith("-") and clean[1:].isdigit()):
-        uid = int(clean)
-        user = await users_repo.get_user(session, uid)
-        return user, uid, None
-
-    # اگر نام کاربری است (@username یا username)
-    uname = clean.lstrip("@")
-    user = await users_repo.get_user_by_username(session, uname)
-    if user is not None:
-        return user, user.telegram_id, None
-
-    return None, None, (
-        f"❌ کاربری با نام کاربری @{uname} در دیتابیس ربات یافت نشد.\n"
-        "💡 کاربر باید حداقل یک‌بار ربات را استارت کرده باشد تا نام کاربری‌اش ثبت شود. "
-        "می‌توانید از آیدی عددی تلگرام کاربر استفاده کنید."
-    )
 
 
 @router.message(Command("ban"))

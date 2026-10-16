@@ -33,6 +33,23 @@ async def main() -> None:
     logger.info("Initializing database...")
     await init_db()
 
+    # بارگذاری مدیران و مالکان پویا از دیتابیس در کش حافظه
+    from .config import set_dynamic_team
+    from .database.base import async_session_factory
+    from .database.repositories import users as users_repo
+
+    async with async_session_factory() as session:
+        db_admins, db_owners = await users_repo.list_team_members(session)
+        set_dynamic_team(
+            admin_ids=[u.telegram_id for u in db_admins],
+            owner_ids=[u.telegram_id for u in db_owners],
+        )
+        logger.info(
+            "Loaded %d dynamic admin(s) and %d dynamic owner(s).",
+            len(db_admins),
+            len(db_owners),
+        )
+
     logger.info("Registering middlewares and routers...")
     setup_middlewares(dp)
     register_all_routers(dp)

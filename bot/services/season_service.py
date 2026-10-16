@@ -21,7 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
 
-from ..constants import DEFAULT_RESERVE_YIELD_HOURS
+from ..constants import DEFAULT_BASE_YIELD, DEFAULT_RESERVE_YIELD_HOURS
 from ..database.models import (
     Auction,
     AuctionBid,
@@ -71,16 +71,8 @@ from ..database.repositories import countries as countries_repo
 # مسیر فایل داده‌ی اولیه‌ی کشورها
 DATA_FILE = Path(__file__).resolve().parent.parent.parent / "data" / "countries.json"
 
-# بازدهی طبیعی پیش‌فرض هر منبع (هماهنگ با scripts/seed.py)
-_DEFAULT_BASE_YIELD: dict[str, float] = {
-    "coal": 10_000,
-    "aluminum": 5_000,
-    "iron": 8_000,
-    "steel": 0,
-    "oil": 0.3,
-    "gas": 6,
-    "gold": 50,
-}
+# بازدهی طبیعی پیش‌فرض هر منبع (هماهنگ با bot/constants.py — v3.0)
+_DEFAULT_BASE_YIELD: dict[str, float] = DEFAULT_BASE_YIELD
 
 
 def _load_seed() -> dict[str, dict]:

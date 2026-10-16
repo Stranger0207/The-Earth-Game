@@ -6,8 +6,20 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ...enums import LoanStatus
+from ...constants import LOAN_LIMIT_BAD_CREDIT, LOAN_LIMIT_GOOD, LOAN_LIMIT_NORMAL
+from ...enums import CreditRating, LoanStatus
 from ..models import BankLoan
+
+
+def get_max_loan_for_rating(rating: CreditRating | str) -> float:
+    """محاسبه سقف مجاز وام بر اساس رتبه اعتباری کشور."""
+    if rating == CreditRating.DEFAULTER:
+        return 0.0
+    if rating == CreditRating.GOOD:
+        return LOAN_LIMIT_GOOD
+    if rating == CreditRating.BAD_CREDIT:
+        return LOAN_LIMIT_BAD_CREDIT
+    return LOAN_LIMIT_NORMAL
 
 
 def _utcnow() -> datetime:
@@ -36,12 +48,14 @@ async def create_loan(
     amount: float,
     deadline: datetime,
     reward_deadline: datetime,
+    remaining_amount: float | None = None,
 ) -> BankLoan:
-    """ثبت وام جدید."""
+    """ثبت وام جدید با احتساب مانده بدهی/بهره."""
+    rem = remaining_amount if remaining_amount is not None else amount
     loan = BankLoan(
         country_id=country_id,
         amount=amount,
-        remaining_amount=amount,
+        remaining_amount=rem,
         status=LoanStatus.ACTIVE,
         taken_at=_utcnow(),
         deadline=deadline,

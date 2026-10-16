@@ -13,7 +13,12 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..config import get_settings
-from ..constants import AUCTION_ENTRY_FEE, AUCTION_MAX_HOURS, AUCTION_MIN_HOURS
+from ..constants import (
+    AUCTION_ENTRY_FEE,
+    AUCTION_MAX_HOURS,
+    AUCTION_MIN_BID_STEP,
+    AUCTION_MIN_HOURS,
+)
 from ..database.models import Auction, ResourceSale, User
 from ..database.repositories import (
     auctions as auctions_repo,
@@ -826,7 +831,7 @@ async def cb_auction_bid_start(
         await call.answer("شما نمی‌توانید در مزایده‌ی خودتان شرکت کنید!", show_alert=True)
         return
 
-    # بررسی موجودی برای کارمزد ورودی ۲۰۰ میلیون دلاری
+    # بررسی موجودی برای کارمزد ورودی ۲۰۰ هزار دلاری
     if (country.budget or 0.0) < AUCTION_ENTRY_FEE:
         await call.answer(
             f"⛔️ بودجه‌ی شما برای پرداخت کارمزد ورودی ({fa_money(AUCTION_ENTRY_FEE)}) کافی نیست.",
@@ -834,16 +839,18 @@ async def cb_auction_bid_start(
         )
         return
 
-    min_required = auction.highest_bid if auction.highest_bid > 0 else auction.base_price
+    highest = auction.highest_bid if auction.highest_bid > 0 else auction.base_price
+    min_required = highest + (AUCTION_MIN_BID_STEP if auction.highest_bid > 0 else 0.0)
 
     await state.set_state(AuctionBidForm.entering_bid)
     await state.update_data(auction_id=auction.id, min_req=min_required)
     await call.message.edit_text(
         f"💰 <b>شرکت در مزایده #{auction.id}</b>\n\n"
         f"⚠️ <b>هزینه ورودی شرکت در مزایده:</b> {fa_money(AUCTION_ENTRY_FEE)} (غیرقابل استرداد)\n"
-        f"💵 <b>حداقل مبلغ مجاز برای پیشنهاد:</b> بیشتر از {fa_money(min_required)}\n"
+        f"💵 <b>حداقل مبلغ مجاز برای پیشنهاد:</b> {fa_money(min_required)} "
+        f"(حداقل گام افزایش: {fa_money(AUCTION_MIN_BID_STEP)})\n"
         f"خزانه فعلی شما: {fa_money(country.budget)}\n\n"
-        "لطفاً مبلغ پیشنهادی خود را وارد کنید (مثلاً 1.5b یا 2t):",
+        "لطفاً مبلغ پیشنهادی خود را وارد کنید (مثلاً 5m یا 10m):",
         reply_markup=_back_auc_kb(),
     )
 
@@ -866,9 +873,9 @@ async def msg_auction_bid_amount(
     data = await state.get_data()
     min_req = data.get("min_req", 0.0)
 
-    if bid_amount <= min_req:
+    if bid_amount < min_req:
         await message.answer(
-            f"⛔️ مبلغ پیشنهادی باید اکیداً بیشتر از بالاترین پیشنهاد قبلی ({fa_money(min_req)}) باشد.\n"
+            f"⛔️ مبلغ پیشنهادی باید حداقل {fa_money(min_req)} باشد (با احتساب حداقل گام افزایش {fa_money(AUCTION_MIN_BID_STEP)}).\n"
             "لطفاً مبلغ بالاتری وارد کنید:",
             reply_markup=_back_auc_kb(),
         )
@@ -920,10 +927,11 @@ async def cb_auction_bid_confirm(
         return
 
     # اعتبارسنجی بالاتر بودن نسبت به آخرین وضعیت
-    min_req = auction.highest_bid if auction.highest_bid > 0 else auction.base_price
-    if bid_amount <= min_req:
+    highest = auction.highest_bid if auction.highest_bid > 0 else auction.base_price
+    min_req = highest + (AUCTION_MIN_BID_STEP if auction.highest_bid > 0 else 0.0)
+    if bid_amount < min_req:
         await call.message.edit_text(
-            f"⛔️ در این فاصله پیشنهاد بالاتری ({fa_money(min_req)}) ثبت شده است. پیشنهاد شما پذیرفته نشد.",
+            f"⛔️ در این فاصله پیشنهاد بالاتری ثبت شده است. حداقل پیشنهاد مجاز فعلی {fa_money(min_req)} است.",
             reply_markup=_back_auc_kb(),
         )
         return

@@ -26,25 +26,13 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from bot.constants import DEFAULT_RESERVE_YIELD_HOURS  # noqa: E402
+from bot.constants import DEFAULT_BASE_YIELD, DEFAULT_RESERVE_YIELD_HOURS  # noqa: E402
 from bot.database.base import async_session_factory, init_db  # noqa: E402
 from bot.database.models import Country, MilitaryAsset, Reserve  # noqa: E402
 from bot.database.repositories import countries as countries_repo  # noqa: E402
 from bot.enums import ResourceType  # noqa: E402
 
 DATA_DIR = ROOT / "data"
-
-# بازدهی طبیعی پیش‌فرض هر منبع در هر ۲۴ ساعت (پیش از ساخت معدن/سکو)
-DEFAULT_BASE_YIELD: dict[str, float] = {
-    ResourceType.COAL.value: 10_000,
-    ResourceType.ALUMINUM.value: 5_000,
-    ResourceType.IRON.value: 8_000,
-    ResourceType.STEEL.value: 0,       # فولاد بازدهی طبیعی ندارد (نیازمند کارخانه)
-    ResourceType.OIL.value: 0.3,       # میلیون بشکه
-    ResourceType.GAS.value: 6,         # میلیون متر مکعب
-    ResourceType.GOLD.value: 50,       # کیلوگرم
-    ResourceType.URANIUM.value: 2,     # تن سنگ اورانیوم (v1.10.4)
-}
 
 
 def _load_json(name: str) -> dict:

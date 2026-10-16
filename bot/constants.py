@@ -22,14 +22,26 @@ from .enums import (
 # ============================================================
 DEFAULT_RESERVE_YIELD_HOURS = 72  # ساعت
 
+# بازدهی اولیه‌ی ۲۴ ساعته‌ی ذخایر طبیعی (استخراج دستی اولیه قبل از احداث معدن)
+DEFAULT_BASE_YIELD: dict[str, float] = {
+    "coal": 1000.0,
+    "aluminum": 25_000.0,  # v3.0: افزایش ۵ برابری
+    "iron": 40_000.0,      # v3.0: افزایش ۵ برابری
+    "steel": 0.0,          # فولاد بازدهی طبیعی ندارد (نیازمند کارخانه)
+    "oil": 0.3,            # میلیون بشکه
+    "gas": 6.0,            # میلیون متر مکعب
+    "gold": 50.0,          # کیلوگرم
+    "uranium": 2.0,        # تن سنگ اورانیوم (v1.10.4)
+}
+
 # ============================================================
 #  هزینه و بازدهی معدن (در هر ۲۴ ساعت) — بخش «فرم احداث معدن»
 # ============================================================
-MINE_COST_USD = 20_000_000  # 20M$
+MINE_COST_USD = 3_000_000  # 3M$ (v3.0)
 MINE_YIELD_PER_24H: dict[ResourceType, float] = {
     ResourceType.COAL: 33_000,      # تن
-    ResourceType.ALUMINUM: 17_000,  # تن
-    ResourceType.IRON: 27_000,      # تن
+    ResourceType.ALUMINUM: 85_000,  # تن (v3.0: افزایش ۵ برابری)
+    ResourceType.IRON: 120_000,     # تن (v3.0: افزایش ۴.۵ برابری)
     ResourceType.GOLD: 0.7,         # تن ≈ ۷۰۰ کیلوگرم → در واحد کیلوگرم: 700
     ResourceType.URANIUM: 12,       # تن سنگ اورانیوم در ۲۴ ساعت (v1.10.4)
 }
@@ -39,20 +51,20 @@ GOLD_MINE_YIELD_KG_PER_24H = 700
 # ============================================================
 #  کارخانه فولاد — بخش «فرم احداث کارخانه فولاد»
 # ============================================================
-STEEL_FACTORY_COST_USD = 50_000_000     # 50M$
-STEEL_FACTORY_IRON_INTAKE_PER_24H = 20_000  # تن آهن مصرفی در ۲۴ ساعت
-STEEL_FACTORY_OUTPUT_PER_24H = 10_000       # تن فولاد تولیدی در ۲۴ ساعت
+STEEL_FACTORY_COST_USD = 5_000_000     # 5M$ (v3.0)
+STEEL_FACTORY_IRON_INTAKE_PER_24H = 40_000  # تن آهن مصرفی در ۲۴ ساعت (v3.0: نسبت ۰.۵ به ۱ با خروجی)
+STEEL_FACTORY_OUTPUT_PER_24H = 80_000       # تن فولاد تولیدی در ۲۴ ساعت (v3.0: افزایش ۸ برابری)
 
 # ============================================================
 #  سکوی نفتی — بخش «فرم احداث سکوی نفتی»
 # ============================================================
-OIL_PLATFORM_COST_USD = 150_000_000         # 150M$
+OIL_PLATFORM_COST_USD = 15_000_000         # 15M$ (v3.0)
 OIL_PLATFORM_OUTPUT_PER_24H = 1             # میلیون بشکه در ۲۴ ساعت
 
 # ============================================================
 #  سکوی گازی — بخش «فرم احداث سکوی گازی»
 # ============================================================
-GAS_PLATFORM_COST_USD = 130_000_000         # 130M$
+GAS_PLATFORM_COST_USD = 12_000_000         # 12M$ (v3.0)
 GAS_PLATFORM_OUTPUT_PER_24H = 20            # میلیون متر مکعب در ۲۴ ساعت
 
 # جدول هزینه‌ی هر نوع تأسیسات برای دسترسی سریع
@@ -76,8 +88,8 @@ BUILD_LIMIT_WINDOW_HOURS = 12
 # هر «گروه» = (کلید، مجموعه‌ی FacilityType، سقف تعداد، نام فارسی).
 # دکل نفتی و گازی یک سهمیه‌ی مشترک دارند (طبق متن آپدیت: «دکل نفتی و گازی: ۳ تا»).
 BUILD_LIMIT_GROUPS: list[tuple[str, frozenset[FacilityType], int, str]] = [
-    ("mining", frozenset({FacilityType.MINE}), 5, "تأسیسات معدنی"),
-    ("steel", frozenset({FacilityType.STEEL_FACTORY}), 2, "کارخانه فولاد"),
+    ("mining", frozenset({FacilityType.MINE}), 8, "تأسیسات معدنی"),
+    ("steel", frozenset({FacilityType.STEEL_FACTORY}), 4, "کارخانه فولاد"),
     ("oilgas", frozenset({FacilityType.OIL_PLATFORM, FacilityType.GAS_PLATFORM}), 3, "دکل نفت و گاز"),
 ]
 
@@ -100,7 +112,7 @@ MIL_FACTORY_BUILD_LIMIT = 2
 #  «تعداد کل» تأسیسات فعال کشور اعمال می‌شود.
 #  کشورهای VIP نامحدود می‌سازند؛ بقیه از هر نوع حداکثر این تعداد.
 # ============================================================
-FACILITY_TOTAL_LIMIT_NON_VIP = 10
+FACILITY_TOTAL_LIMIT_NON_VIP = 15
 
 # تأسیسات مشترک: هر ۱۲ ساعت ۳ تا (v1.11) — از همان پنجره‌ی BUILD_LIMIT_WINDOW_HOURS استفاده می‌کند
 JOINT_BUILD_LIMIT = 3
@@ -140,23 +152,26 @@ FOREIGN_INVEST_UNEMPLOYMENT_DROP = 0.3
 FOREIGN_INVEST_INFLATION_DROP = 0.15
 # حداقل مبلغ سرمایه‌گذاری خارجی برای انتشار خبر در کانال اقتصاد (v1.10.5):
 # سرمایه‌گذاری‌های کوچک‌تر از ۱۰۰ میلیارد دلار در کانال منتشر نمی‌شوند.
-FOREIGN_INVEST_NEWS_MIN_USD = 100_000_000_000
+FOREIGN_INVEST_NEWS_MIN_USD = 10_000_000  # 10M$ (v3.0)
 
 # ============================================================
-#  سیستم وام بانکی (v2.2)
+#  سیستم وام بانکی (v2.2 / v3.0)
 # ============================================================
-LOAN_LIMIT_NORMAL = 2_000_000_000_000.0       # سقف وام برای کشور عادی: ۲ تریلیون دلار
-LOAN_LIMIT_GOOD = 5_000_000_000_000.0         # سقف وام برای کشور خوش‌حساب: ۵ تریلیون دلار
-LOAN_LIMIT_BAD_CREDIT = 1_000_000_000_000.0   # سقف وام برای بدحساب تسویه‌شده: ۱ تریلیون دلار
-LOAN_DURATION_DAYS = 7                        # مهلت کل بازپرداخت وام (روز)
-LOAN_GOOD_CREDIT_DAYS = 3                     # سقف تسویه برای اخذ پاداش خوش‌حسابی (روز)
-LOAN_COOLDOWN_DAYS = 4                        # کول‌داون اخذ وام: هر ۴ روز ۱ وام
-LOAN_COOLDOWN_HOURS = 96                      # معادل ۴ روز به ساعت (۴ * ۲۴)
+LOAN_LIMIT_NORMAL = 100_000_000.0       # سقف وام برای کشور عادی: ۱۰۰ میلیون دلار (v3.0)
+LOAN_LIMIT_GOOD = 200_000_000.0         # سقف وام برای کشور خوش‌حساب: ۲۰۰ میلیون دلار (v3.0)
+LOAN_LIMIT_BAD_CREDIT = 50_000_000.0    # سقف وام برای بدحساب تسویه‌شده: ۵۰ میلیون دلار (v3.0)
+LOAN_INTEREST_RATE = 0.05               # نرخ بهره وام بانکی: ۵ درصد (v3.0)
+LOAN_DURATION_DAYS = 7                  # مهلت کل بازپرداخت وام (روز)
+LOAN_GOOD_CREDIT_DAYS = 3               # سقف تسویه برای اخذ پاداش خوش‌حسابی (روز)
+LOAN_COOLDOWN_DAYS = 4                  # کول‌داون اخذ وام: هر ۴ روز ۱ وام
+LOAN_COOLDOWN_HOURS = 96                # معادل ۴ روز به ساعت (۴ * ۲۴)
+LOAN_DEFAULT_PENALTY_RATE = 0.10        # جریمه دیرکرد موعد وام: ۱۰ درصد (v3.0)
 
 # ============================================================
-#  سیستم مزایده منابع طبیعی (v2.2)
+#  سیستم مزایده منابع طبیعی (v2.2 / v3.0)
 # ============================================================
-AUCTION_ENTRY_FEE = 200_000_000.0             # هزینه شرکت در مزایده (۲۰۰ میلیون دلار — غیرقابل استرداد)
+AUCTION_ENTRY_FEE = 200_000.0                 # هزینه شرکت در مزایده (۲۰۰ هزار دلار — غیرقابل استرداد، v3.0)
+AUCTION_MIN_BID_STEP = 100_000.0              # حداقل گام افزایش پیشنهاد قیمت (۱۰۰ هزار دلار، v3.0)
 AUCTION_MIN_HOURS = 1                         # حداقل مدت مزایده (ساعت)
 AUCTION_MAX_HOURS = 72                        # حداکثر مدت مزایده (ساعت)
 
@@ -198,29 +213,29 @@ SALE_SELLER_ECON_POWER_GAIN = 0.2   # درآمد ارزی → تقویت اند�
 # آستانه‌ی هشدار کمبود ذخایر — اگر مقدار از این کمتر شد، اعتراضات اعلام می‌شود
 RESOURCE_SHORTAGE_THRESHOLD = 0.0
 
-# جریمه‌ی نقض قرارداد (پلی‌بوک ماده ۶): ۱ میلیارد دلار
-CONTRACT_BREACH_PENALTY_USD = 1_000_000_000
+# جریمه‌ی نقض قرارداد (پلی‌بوک ماده ۶): ۵ میلیون دلار (v3.0)
+CONTRACT_BREACH_PENALTY_USD = 5_000_000
 
 # ============================================================
-#  🏭 کارخانه‌های نظامی (v1.7) — بازتولید تجهیزات
+#  🏭 کارخانه‌های نظامی (v1.7 / v3.0) — بازتولید تجهیزات
 #  واحد منابع در دیتابیس: ذغال/آلومینیوم/آهن/فولاد = تن، نفت = میلیون بشکه،
 #  گاز = میلیون متر مکعب، طلا = کیلوگرم. (طلا در متن آپدیت گاهی «تن» بود که اینجا به کیلوگرم تبدیل شده.)
 # ============================================================
 
-# هزینه‌ی ساخت هر کارخانه (دلار)
+# هزینه‌ی ساخت هر کارخانه (دلار) — مقیاس میلیون دلار (v3.0)
 MIL_FACTORY_COST_USD: dict[MilitaryFactoryType, int] = {
-    MilitaryFactoryType.ANTI_MISSILE: 5_000_000_000,
-    MilitaryFactoryType.ARTILLERY: 1_000_000_000,
-    MilitaryFactoryType.TANK: 2_500_000_000,
-    MilitaryFactoryType.APC: 1_200_000_000,
-    MilitaryFactoryType.FIGHTER: 20_000_000_000,
-    MilitaryFactoryType.TRANSPORT_AIRCRAFT: 10_000_000_000,
-    MilitaryFactoryType.DRONE: 500_000_000,
-    MilitaryFactoryType.HELICOPTER: 4_000_000_000,
-    MilitaryFactoryType.CORVETTE: 2_000_000_000,
-    MilitaryFactoryType.DESTROYER: 5_000_000_000,
-    MilitaryFactoryType.BALLISTIC_MISSILE: 6_000_000_000,
-    MilitaryFactoryType.CRUISE_MISSILE: 3_000_000_000,
+    MilitaryFactoryType.ANTI_MISSILE: 5_000_000,
+    MilitaryFactoryType.ARTILLERY: 1_000_000,
+    MilitaryFactoryType.TANK: 2_500_000,
+    MilitaryFactoryType.APC: 1_500_000,
+    MilitaryFactoryType.FIGHTER: 15_000_000,
+    MilitaryFactoryType.TRANSPORT_AIRCRAFT: 8_000_000,
+    MilitaryFactoryType.DRONE: 500_000,
+    MilitaryFactoryType.HELICOPTER: 4_000_000,
+    MilitaryFactoryType.CORVETTE: 3_000_000,
+    MilitaryFactoryType.DESTROYER: 6_000_000,
+    MilitaryFactoryType.BALLISTIC_MISSILE: 6_000_000,
+    MilitaryFactoryType.CRUISE_MISSILE: 3_000_000,
 }
 
 # منابع لازم برای ساخت کارخانه (یک‌بار، هنگام احداث) — کلیدها مقدار ResourceType
@@ -297,18 +312,18 @@ DEPLOY_BRANCHES: dict[str, tuple[str, str, frozenset[str]]] = {
 #  🏗 پایگاه‌های نظامی (v2.0) — فقط کشورهای VIP
 # ============================================================
 MILITARY_BASE_TYPES: dict[str, tuple[str, float, int]] = {
-    "air_base": ("پایگاه هوایی", 20_000_000_000, 200),     # 20B$, capacity 200
-    "ground_base": ("پایگاه زمینی", 15_000_000_000, 500),  # 15B$, capacity 500
-    "naval_base": ("پایگاه دریایی", 25_000_000_000, 100),   # 25B$, capacity 100
+    "air_base": ("پایگاه هوایی", 20_000_000, 200),     # 20M$, capacity 200 (v3.0)
+    "ground_base": ("پایگاه زمینی", 15_000_000, 500),  # 15M$, capacity 500 (v3.0)
+    "naval_base": ("پایگاه دریایی", 25_000_000, 100),   # 25M$, capacity 100 (v3.0)
 }
 
 MAX_FOREIGN_BASES_PER_OWNER = 5  # حداکثر پایگاه‌های خارجی یک کشور VIP
 MAX_FOREIGN_BASES_PER_HOST = 3   # حداکثر پایگاه‌های خارجی مستقر در یک کشور میزبان
 
 # ============================================================
-#  🛰 ماهواره‌های جاسوسی فضایی (v2.0) — فقط برای کشورهای VIP
+#  🛰 ماهواره‌های جاسوسی فضایی (v2.0 / v3.0) — فقط برای کشورهای VIP
 # ============================================================
-SPY_SATELLITE_COST_USD = 15_000_000_000.0  # 15 Billion USD
+SPY_SATELLITE_COST_USD = 15_000_000.0       # 15 Million USD (v3.0)
 SPY_SATELLITE_OIL_COST = 2.0               # 2 Million Barrels
 SPY_SATELLITE_STEEL_COST = 500_000.0        # 500k Tons
 SPY_SATELLITE_ALUMINUM_COST = 800_000.0     # 800k Tons
@@ -338,7 +353,7 @@ GOVERNMENT_BONUSES: dict[GovernmentType, dict[str, float]] = {
 
 # ---------- مالیات ----------
 # درآمد مالیاتی هر ۲۴ ساعت = tax_rate/100 × جمعیت × TAX_REVENUE_PER_CAPITA
-TAX_REVENUE_PER_CAPITA = 50.0          # دلار به ازای هر نفر در نرخ ۱۰۰٪
+TAX_REVENUE_PER_CAPITA = 0.05           # دلار به ازای هر نفر در نرخ ۱۰۰٪ (v3.0: معادل ۵ سنت در مقیاس میلیون دلار)
 TAX_YIELD_INTERVAL_H = 24             # بازه‌ی جمع‌آوری مالیات (ساعت)
 TAX_DEFAULT_RATE = 10.0                # نرخ پیش‌فرض مالیات (درصد)
 TAX_MIN_RATE = 0.0
@@ -379,28 +394,28 @@ NUCLEAR_DAY_HOURS = 12.0
 # ---------- تحقیقات و فناوری ----------
 # هر فناوری: (نام فارسی، هزینه‌ی دلاری، زمان تحقیق بر حسب «روزِ اسپک»، پیش‌نیاز)
 NUCLEAR_TECHS: dict[NuclearTechType, tuple[str, float, float, NuclearTechType | None]] = {
-    NuclearTechType.GEOLOGY_2: ("زمین‌شناسی سطح ۲ و نقشه‌ی منابع", 3_000_000_000.0, 0.5, None),
-    NuclearTechType.IND_CHEMISTRY: ("شیمی صنعتی", 5_000_000_000.0, 1.0, NuclearTechType.GEOLOGY_2),
-    NuclearTechType.CENTRIFUGE: ("متالورژی و فناوری سانتریفیوژ", 12_000_000_000.0, 1.5, NuclearTechType.IND_CHEMISTRY),
-    NuclearTechType.COMP_PHYSICS: ("فیزیک محاسباتی و طراحی کلاهک", 20_000_000_000.0, 2.0, NuclearTechType.CENTRIFUGE),
-    NuclearTechType.DELIVERY_SYS: ("سامانه‌ی حمل کلاهک", 15_000_000_000.0, 1.0, NuclearTechType.COMP_PHYSICS),
+    NuclearTechType.GEOLOGY_2: ("زمین‌شناسی سطح ۲ و نقشه‌ی منابع", 3_000_000.0, 0.5, None),
+    NuclearTechType.IND_CHEMISTRY: ("شیمی صنعتی", 5_000_000.0, 1.0, NuclearTechType.GEOLOGY_2),
+    NuclearTechType.CENTRIFUGE: ("متالورژی و فناوری سانتریفیوژ", 12_000_000.0, 1.5, NuclearTechType.IND_CHEMISTRY),
+    NuclearTechType.COMP_PHYSICS: ("فیزیک محاسباتی و طراحی کلاهک", 20_000_000.0, 2.0, NuclearTechType.CENTRIFUGE),
+    NuclearTechType.DELIVERY_SYS: ("سامانه‌ی حمل کلاهک", 15_000_000.0, 1.0, NuclearTechType.COMP_PHYSICS),
 }
 
 # ---------- تأسیسات هسته‌ای ----------
 # هر تأسیسات: (نام فارسی، هزینه‌ی دلاری، زمان ساخت بر حسب «روزِ اسپک»، فناوری پیش‌نیاز، سقف تعداد)
 NUCLEAR_FACILITIES: dict[NuclearFacilityType, tuple[str, float, float, NuclearTechType, int]] = {
     NuclearFacilityType.MILL: (
-        "آسیاب کیک زرد", 8_000_000_000.0, 2.0, NuclearTechType.GEOLOGY_2, 3),
+        "آسیاب کیک زرد", 8_000_000.0, 2.0, NuclearTechType.GEOLOGY_2, 3),
     NuclearFacilityType.CONVERSION: (
-        "کارخانه‌ی تبدیل UF6", 14_000_000_000.0, 3.0, NuclearTechType.IND_CHEMISTRY, 2),
+        "کارخانه‌ی تبدیل UF6", 12_000_000.0, 3.0, NuclearTechType.IND_CHEMISTRY, 2),
     NuclearFacilityType.CENTRIFUGE_PLANT: (
-        "کارخانه‌ی سانتریفیوژ", 18_000_000_000.0, 2.0, NuclearTechType.CENTRIFUGE, 2),
+        "کارخانه‌ی سانتریفیوژ", 15_000_000.0, 2.0, NuclearTechType.CENTRIFUGE, 2),
     NuclearFacilityType.ENRICHMENT_HALL: (
-        "سالن غنی‌سازی", 25_000_000_000.0, 3.0, NuclearTechType.CENTRIFUGE, 3),
+        "سالن غنی‌سازی", 20_000_000.0, 3.0, NuclearTechType.CENTRIFUGE, 3),
     NuclearFacilityType.WEAPONS_LAB: (
-        "آزمایشگاه تسلیحاتی", 30_000_000_000.0, 2.0, NuclearTechType.COMP_PHYSICS, 1),
+        "آزمایشگاه تسلیحاتی", 25_000_000.0, 2.0, NuclearTechType.COMP_PHYSICS, 1),
     NuclearFacilityType.TEST_SITE: (
-        "سایت آزمایش هسته‌ای", 10_000_000_000.0, 1.0, NuclearTechType.COMP_PHYSICS, 1),
+        "سایت آزمایش هسته‌ای", 10_000_000.0, 1.0, NuclearTechType.COMP_PHYSICS, 1),
 }
 
 # منابع لازم برای ساخت هر تأسیسات (به‌جز بودجه): {منبع: مقدار}
@@ -432,7 +447,7 @@ CONVERSION_UF6_PER_24H = 4.0                 # تن UF6 تولیدی
 
 # ---------- فاز ۳: سانتریفیوژ و غنی‌سازی ----------
 CENTRIFUGE_BATCH_SIZE = 500                  # هر چرخه‌ی تولید، این تعداد سانتریفیوژ می‌سازد
-CENTRIFUGE_BATCH_COST_USD = 2_000_000_000.0  # هزینه‌ی دلاری هر چرخه
+CENTRIFUGE_BATCH_COST_USD = 2_000_000.0      # هزینه‌ی دلاری هر چرخه (v3.0: 2M$)
 CENTRIFUGE_BATCH_STEEL = 80_000.0            # تن فولاد هر چرخه
 CENTRIFUGE_BATCH_ALUMINUM = 60_000.0         # تن آلومینیوم هر چرخه
 CENTRIFUGE_BATCH_HOURS = 6.0                 # زمان ساخت هر چرخه (ساعت)
@@ -453,12 +468,12 @@ UF6_KG_PER_KG_LEU = 9.0
 # ---------- فاز ۴: مونتاژ کلاهک ----------
 WARHEAD_HEU_REQUIRED_KG = 25.0            # کیلوگرم اورانیوم ۹۰٪ برای هر کلاهک
 WARHEAD_ASSEMBLY_DAYS = 2.0               # زمان مونتاژ («روزِ اسپک»)
-WARHEAD_ASSEMBLY_COST_USD = 8_000_000_000.0
+WARHEAD_ASSEMBLY_COST_USD = 8_000_000.0   # هزینه‌ی مونتاژ کلاهک (v3.0: 8M$)
 WARHEAD_YIELD_KT_RANGE = (15.0, 150.0)    # بازه‌ی قدرت تصادفی کلاهک (کیلوتن)
 
 # ---------- فاز ۵: آزمایش هسته‌ای ----------
 NUCLEAR_TEST_DAYS = 1.0                   # زمان آماده‌سازی آزمایش («روزِ اسپک»)
-NUCLEAR_TEST_COST_USD = 5_000_000_000.0
+NUCLEAR_TEST_COST_USD = 5_000_000.0       # هزینه‌ی آزمایش هسته‌ای (v3.0: 5M$)
 NUCLEAR_TEST_SATISFACTION_GAIN = 6.0      # افتخار ملی
 NUCLEAR_TEST_STABILITY_DROP = 3.0         # فشار بین‌المللی
 NUCLEAR_TEST_EXPOSURE = 100.0             # آزمایش = افشای کامل برنامه
@@ -478,7 +493,7 @@ NUCLEAR_DETECTION_CHANCE_FACTOR = 0.004
 NUCLEAR_CIVILIAN_COVER_TIER = "u235_20"
 NUCLEAR_CIVILIAN_COVER_EXPOSURE_CUT = 0.6
 # هزینه‌ی ۲۴ساعته‌ی برنامه‌ی ضدجاسوسی و میزان کاهش شاخص افشا
-NUCLEAR_COUNTERINTEL_COST_USD = 4_000_000_000.0
+NUCLEAR_COUNTERINTEL_COST_USD = 4_000_000.0   # ضدجاسوسی هسته‌ای (v3.0: 4M$)
 NUCLEAR_COUNTERINTEL_EXPOSURE_DROP = 12.0
 
 # ---------- بازدارندگی ----------

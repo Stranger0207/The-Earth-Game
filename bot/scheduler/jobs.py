@@ -1027,8 +1027,9 @@ async def process_nuclear(bot: Bot) -> None:
             pass
 
 
-async def process_bank_loans(bot: Bot) -> None:
-    """بررسی وضعیت بازپرداخت وام‌های بانکی و اخطارها/تنزیل رتبه به بدحساب (v2.2)."""
+async def process_bank_loans(bot: Bot | None = None, session_override: AsyncSession | None = None) -> None:
+    """بررسی وضعیت بازپرداخت وام‌های بانکی و اخطارها/تنزیل رتبه به بدحساب (v2.2 / v3.0)."""
+    from ..constants import LOAN_DEFAULT_PENALTY_RATE
     from ..database.repositories import bank_loans as loans_repo
     from ..database.repositories import countries as countries_repo
     from ..enums import CreditRating, LoanStatus
@@ -1038,7 +1039,7 @@ async def process_bank_loans(bot: Bot) -> None:
     notifications: list[tuple[int, str]] = []  # (owner_user_id, text)
     log_msgs: list[str] = []
 
-    async with async_session_factory() as session:
+    async def _process(session: AsyncSession) -> None:
         loans = await loans_repo.list_active_loans(session)
         for loan in loans:
             deadline = _aware(loan.deadline)
@@ -1053,10 +1054,18 @@ async def process_bank_loans(bot: Bot) -> None:
             if now >= deadline:
                 loan.status = LoanStatus.DEFAULTED
                 country.credit_rating = CreditRating.DEFAULTER
+                penalty = round(loan.remaining_amount * LOAN_DEFAULT_PENALTY_RATE, 2)
+                loan.remaining_amount += penalty
+                country.public_satisfaction = max(0.0, country.public_satisfaction - 3.0)
+                country.stability = max(0.0, country.stability - 3.0)
+                country.inflation = min(100.0, country.inflation + 1.5)
+
                 log_msgs.append(
-                    f"🚨 <b>معوق‌شدن وام بانکی</b>\n"
+                    f"🚨 <b>معوق‌شدن وام بانکی و اعمال جریمه</b>\n"
                     f"کشور: {country.flag} {country.name_fa}\n"
-                    f"مبلغ مانده: {fa_money(loan.remaining_amount)}\n"
+                    f"مبلغ مانده اولیه: {fa_money(loan.remaining_amount - penalty)}\n"
+                    f"جریمه دیرکرد ({int(LOAN_DEFAULT_PENALTY_RATE * 100)}٪): {fa_money(penalty)}\n"
+                    f"مجموع بدهی معوقه: {fa_money(loan.remaining_amount)}\n"
                     f"شناسه وام: #{loan.id}\n"
                     f"رتبه اعتباری کشور به <b>بدحساب (مسدود)</b> تنزیل یافت."
                 )
@@ -1064,10 +1073,11 @@ async def process_bank_loans(bot: Bot) -> None:
                     notifications.append((
                         country.owner_user_id,
                         f"🚨 <b>اخطار بانکی: مهلت ۷ روزه بازپرداخت وام به پایان رسید!</b>\n\n"
-                        f"وام شماره #{loan.id} به مبلغ {fa_money(loan.remaining_amount)} تسویه نشد.\n"
-                        f"رتبه اعتباری شما به <b>بدحساب (مسدود)</b> تنزیل یافت و تا زمان تسویه بدهی، "
-                        f"هرگونه دریافت وام جدید برای شما مسدود خواهد بود.\n"
-                        f"💡 پس از تسویه این وام معوقه، سقف وام شما ۱ تریلیون دلار خواهد شد.",
+                        f"وام شماره #{loan.id} به موقع تسویه نشد.\n"
+                        f"⚠️ جریمه دیرکرد ۱۰٪ به مبلغ {fa_money(penalty)} به بدهی شما افزوده شد (مانده جدید: {fa_money(loan.remaining_amount)}).\n"
+                        f"رتبه اعتباری شما به <b>بدحساب (مسدود)</b> تنزیل یافت و تا زمان تسویه کامل بدهی، "
+                        f"امکان دریافت وام جدید مسدود می‌باشد.\n"
+                        f"💡 پس از تسویه این وام معوقه، سقف وام شما ۵۰ میلیون دلار خواهد شد.",
                     ))
                 continue
 
@@ -1095,17 +1105,24 @@ async def process_bank_loans(bot: Bot) -> None:
 
         await session.commit()
 
-    for owner_id, text in notifications:
-        try:
-            await bot.send_message(owner_id, text)
-        except Exception:
-            pass
+    if session_override is not None:
+        await _process(session_override)
+    else:
+        async with async_session_factory() as session:
+            await _process(session)
 
-    for log_text in log_msgs:
-        try:
-            await send_log(bot, log_text)
-        except Exception:
-            pass
+    if bot is not None:
+        for owner_id, text in notifications:
+            try:
+                await bot.send_message(owner_id, text)
+            except Exception:
+                pass
+
+        for log_text in log_msgs:
+            try:
+                await send_log(bot, log_text)
+            except Exception:
+                pass
 
 
 async def process_auctions(bot: Bot) -> None:

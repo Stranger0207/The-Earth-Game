@@ -18,6 +18,7 @@ from ..constants import (
     LOAN_COOLDOWN_HOURS,
     LOAN_DURATION_DAYS,
     LOAN_GOOD_CREDIT_DAYS,
+    LOAN_INTEREST_RATE,
     LOAN_LIMIT_BAD_CREDIT,
     LOAN_LIMIT_GOOD,
     LOAN_LIMIT_NORMAL,
@@ -346,11 +347,7 @@ def _format_seconds(seconds: float) -> str:
 def _loan_limit_for_country(country) -> float:
     """محاسبه سقف وام بر اساس رتبه اعتباری کشور."""
     rating = getattr(country, "credit_rating", CreditRating.NORMAL)
-    if rating == CreditRating.GOOD:
-        return LOAN_LIMIT_GOOD
-    if rating == CreditRating.BAD_CREDIT:
-        return LOAN_LIMIT_BAD_CREDIT
-    return LOAN_LIMIT_NORMAL
+    return loans_repo.get_max_loan_for_rating(rating)
 
 
 @router.callback_query(F.data == "bank:loan")
@@ -374,7 +371,7 @@ async def cb_bank_loan(
         rem_time = _format_time_left(active_loan.deadline)
         reward_time = _format_time_left(active_loan.reward_deadline)
         reward_text = (
-            f"🎁 <b>فرصت خوش‌حسابی (سقف ۵ تریلیون):</b> {reward_time}"
+            f"🎁 <b>فرصت خوش‌حسابی (سقف ۲۰۰ میلیون دلار):</b> {reward_time}"
             if reward_time != "منقضی شده"
             else "⏳ مهلت خوش‌حسابی به پایان رسیده است."
         )
@@ -415,7 +412,7 @@ async def cb_bank_loan(
         await safe_edit(call, text, reply_markup=_back_bank_kb())
         return
 
-    # بررسی کول‌داون ۵ روزه دریافت وام
+    # بررسی کول‌داون ۴ روزه دریافت وام
     cd_rem = await cd_repo.remaining_seconds(session, country.id, "bank_loan", LOAN_COOLDOWN_HOURS)
     cd_note = ""
     if cd_rem > 0:
@@ -432,7 +429,8 @@ async def cb_bank_loan(
         f"⏳ <b>مهلت بازپرداخت قانونی:</b> {fa_number(LOAN_DURATION_DAYS)} روز\n"
         f"🔄 <b>کول‌داون دریافت وام:</b> هر {fa_number(LOAN_COOLDOWN_DAYS)} روز ۱ بار\n\n"
         f"💡 <b>قوانین اعتبارسنجی:</b>\n"
-        f"• در صورت تسویه زیر {fa_number(LOAN_GOOD_CREDIT_DAYS)} روز، رتبه شما به <b>خوش‌حساب</b> ارتقا یافته و سقف وامتان به <b>۵ تریلیون دلار</b> می‌رسد.\n"
+        f"• سود و کارمزد بانکی ۵٪ به مبلغ بازپرداخت افزوده می‌شود.\n"
+        f"• در صورت تسویه زیر {fa_number(LOAN_GOOD_CREDIT_DAYS)} روز، رتبه شما به <b>خوش‌حساب</b> ارتقا یافته و سقف وامتان به <b>۲۰۰ میلیون دلار</b> می‌رسد.\n"
         f"• در صورت عدم تسویه ظرف ۷ روز، حسابتان بدحساب شده و دسترسی به وام مسدود می‌گردد."
         f"{cd_note}"
     )
@@ -465,7 +463,7 @@ async def cb_bank_loan_take(
         await call.answer("حساب شما مسدود است.", show_alert=True)
         return
 
-    # بررسی کول‌داون ۵ روزه دریافت وام
+    # بررسی کول‌داون دریافت وام
     cd_rem = await cd_repo.remaining_seconds(session, country.id, "bank_loan", LOAN_COOLDOWN_HOURS)
     if cd_rem > 0:
         await call.answer(
@@ -480,7 +478,7 @@ async def cb_bank_loan_take(
     await call.message.edit_text(
         f"💵 <b>درخواست اخذ وام بانکی</b>\n\n"
         f"سقف مجاز شما: {fa_money(max_limit)}\n\n"
-        "چه مبلغی را به عنوان وام می‌خواهید دریافت کنید؟ (مثلاً 500b یا 2t یا 5t):",
+        "چه مبلغی را به عنوان وام می‌خواهید دریافت کنید؟ (مثلاً 20m یا 50m یا 100m):",
         reply_markup=_back_bank_kb(),
     )
 
@@ -491,7 +489,7 @@ async def msg_loan_take_amount(
 ) -> None:
     amount = parse_amount(message.text)
     if amount is None or amount <= 0:
-        await message.answer("لطفاً یک مبلغ معتبر وارد کنید (مثلاً 1t یا 500b).")
+        await message.answer("لطفاً یک مبلغ معتبر وارد کنید (مثلاً 50m یا 100m).")
         return
 
     country = await get_player_country(session, db_user)
@@ -509,14 +507,18 @@ async def msg_loan_take_amount(
         )
         return
 
-    await state.update_data(loan_amount=amount)
+    interest = round(amount * LOAN_INTEREST_RATE, 2)
+    total_repay = round(amount + interest, 2)
+    await state.update_data(loan_amount=amount, total_repay=total_repay)
     await state.set_state(LoanTakeForm.confirming)
     await message.answer(
         f"❓ <b>تأییدیه نهایی اخذ وام</b>\n\n"
-        f"مبلغ وام درخواستی: {fa_money(amount)}\n"
-        f"مهلت بازپرداخت: {fa_number(LOAN_DURATION_DAYS)} روز\n"
-        f"فرصت خوش‌حسابی: {fa_number(LOAN_GOOD_CREDIT_DAYS)} روز\n\n"
-        "آیا با شرایط فوق و واریز این مبلغ به خزانه‌تان موافقید؟",
+        f"💰 <b>مبلغ وام دریافتی:</b> {fa_money(amount)}\n"
+        f"📈 <b>سود و کارمزد بانکی (۵٪):</b> {fa_money(interest)}\n"
+        f"💳 <b>مجموع بازپرداخت:</b> {fa_money(total_repay)}\n"
+        f"⏳ <b>مهلت بازپرداخت:</b> {fa_number(LOAN_DURATION_DAYS)} روز\n"
+        f"🎁 <b>فرصت خوش‌حسابی:</b> {fa_number(LOAN_GOOD_CREDIT_DAYS)} روز\n\n"
+        "آیا با شرایط فوق و واریز اصل مبلغ به خزانه‌تان موافقید؟",
         reply_markup=confirm_cancel_kb("bank:loan_take_confirm"),
     )
 
@@ -553,6 +555,7 @@ async def cb_loan_take_confirm(
         return
 
     amount = float(data.get("loan_amount", 0))
+    total_repay = float(data.get("total_repay", round(amount * (1.0 + LOAN_INTEREST_RATE), 2)))
     max_limit = _loan_limit_for_country(country)
     if amount <= 0 or amount > max_limit:
         await call.message.edit_text("⛔️ مبلغ نامعتبر است.", reply_markup=_back_bank_kb())
@@ -568,6 +571,7 @@ async def cb_loan_take_confirm(
         amount=amount,
         deadline=deadline,
         reward_deadline=reward_deadline,
+        remaining_amount=total_repay,
     )
     country.budget = (country.budget or 0.0) + amount
 
@@ -576,10 +580,11 @@ async def cb_loan_take_confirm(
 
     await call.message.edit_text(
         f"✅ <b>وام بانکی با موفقیت دریافت و واریز شد!</b>\n\n"
-        f"💰 مبلغ واریزشده: {fa_money(amount)}\n"
-        f"🏦 موجودی جدید خزانه: {fa_money(country.budget)}\n"
-        f"⏳ مهلت بازپرداخت: تا ۷ روز آینده ({fa_number(LOAN_DURATION_DAYS)} روز)\n\n"
-        f"💡 در صورت تسویه زیر {fa_number(LOAN_GOOD_CREDIT_DAYS)} روز، سقف وام بعدی شما <b>۵ تریلیون دلار</b> خواهد شد.",
+        f"💰 <b>مبلغ واریزشده به خزانه:</b> {fa_money(amount)}\n"
+        f"💳 <b>مجموع مانده بازپرداخت (با ۵٪ سود):</b> {fa_money(total_repay)}\n"
+        f"🏦 <b>موجودی جدید خزانه:</b> {fa_money(country.budget)}\n"
+        f"⏳ <b>مهلت بازپرداخت:</b> تا ۷ روز آینده ({fa_number(LOAN_DURATION_DAYS)} روز)\n\n"
+        f"💡 در صورت تسویه زیر {fa_number(LOAN_GOOD_CREDIT_DAYS)} روز، سقف وام بعدی شما <b>۲۰۰ میلیون دلار</b> خواهد شد.",
         reply_markup=_back_bank_kb(),
     )
 
@@ -587,7 +592,8 @@ async def cb_loan_take_confirm(
         bot,
         f"🏛 <b>اخذ وام بانکی</b>\n"
         f"کشور: {country.flag} {country.name_fa}\n"
-        f"مبلغ وام: {fa_money(amount)}\n"
+        f"مبلغ اصل وام: {fa_money(amount)}\n"
+        f"مجموع بازپرداخت با بهره: {fa_money(total_repay)}\n"
         f"شناسه وام: #{loan.id}",
     )
 
@@ -613,7 +619,7 @@ async def cb_bank_loan_repay(
         f"💳 <b>بازپرداخت وام بانکی</b>\n\n"
         f"مبلغ مانده وام: {fa_money(active_loan.remaining_amount)}\n"
         f"موجودی خزانه‌ی شما: {fa_money(country.budget)}\n\n"
-        "چه مبلغی از وام را می‌خواهید بازپرداخت کنید؟ (مثلاً 500b یا 1t یا کل مانده):",
+        "چه مبلغی از وام را می‌خواهید بازپرداخت کنید؟ (مثلاً 10m یا 50m یا کل مانده):",
         reply_markup=_back_bank_kb(),
     )
 
@@ -701,15 +707,15 @@ async def cb_loan_repay_confirm(
             status_note = (
                 "\n\n🎉 <b>تبریک ویژه!</b>\n"
                 f"شما وام خود را در کمتر از {fa_number(LOAN_GOOD_CREDIT_DAYS)} روز تسویه کردید!\n"
-                "رتبه اعتباری شما به <b>خوش‌حساب</b> ارتقا یافت و سقف وام بعدی شما <b>۵ تریلیون دلار</b> شد."
+                "رتبه اعتباری شما به <b>خوش‌حساب</b> ارتقا یافت و سقف وام بعدی شما <b>۲۰۰ میلیون دلار</b> شد."
             )
         else:
-            # اگر قبلاً معوقه شده بود، اکنون با تسویه سقف به ۱ تریلیون بازمی‌گردد
+            # اگر قبلاً معوقه شده بود، اکنون با تسویه سقف به ۵۰ میلیون بازمی‌گردد
             if getattr(country, "credit_rating", None) == CreditRating.DEFAULTER:
                 country.credit_rating = CreditRating.BAD_CREDIT
                 status_note = (
                     "\n\n⚠️ <b>رفع مسدودی حساب:</b>\n"
-                    "وام معوقه شما تسویه شد. حساب شما از حالت بدحساب خارج شد و سقف وام شما از این پس <b>۱ تریلیون دلار</b> خواهد بود."
+                    "وام معوقه شما تسویه شد. حساب شما از حالت بدحساب خارج شد و سقف وام شما از این پس <b>۵۰ میلیون دلار</b> خواهد بود."
                 )
             else:
                 if getattr(country, "credit_rating", None) != CreditRating.BAD_CREDIT:

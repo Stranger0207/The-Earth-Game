@@ -10,13 +10,13 @@
       "population": 1410000000,
       "economy": {
         "economic_power": 92,
-        "budget": 3500000000000,
+        "budget": 143000000,
         "growth": "up",
         "inflation": 2.1,
         "unemployment": 5.2,
         "energy_status": "good",
         "foreign_trade": "positive",
-        "govt_debt": 14000000000000,
+        "govt_debt": 572000000,
         "public_satisfaction": 68,
         "stability": 74
       },
@@ -26,15 +26,15 @@
           "can_extract": true
         },
         "aluminum": {
-          "amount": 8000000,
+          "amount": 80000000,
           "can_extract": true
         },
         "iron": {
-          "amount": 90000000,
+          "amount": 270000000,
           "can_extract": true
         },
         "steel": {
-          "amount": 5000000,
+          "amount": 40000000,
           "can_extract": false
         },
         "oil": {
@@ -514,13 +514,13 @@
       "population": 124000000,
       "economy": {
         "economic_power": 85,
-        "budget": 900000000000,
+        "budget": 134000000,
         "growth": "flat",
         "inflation": 2.8,
         "unemployment": 2.6,
         "energy_status": "medium",
         "foreign_trade": "positive",
-        "govt_debt": 9500000000000,
+        "govt_debt": 1414000000,
         "public_satisfaction": 64,
         "stability": 78
       },
@@ -530,15 +530,15 @@
           "can_extract": false
         },
         "aluminum": {
-          "amount": 500000,
-          "can_extract": false
+          "amount": 25000000,
+          "can_extract": true
         },
         "iron": {
-          "amount": 2000000,
-          "can_extract": false
+          "amount": 60000000,
+          "can_extract": true
         },
         "steel": {
-          "amount": 8000000,
+          "amount": 64000000,
           "can_extract": false
         },
         "oil": {
@@ -913,13 +913,13 @@
       "population": 51700000,
       "economy": {
         "economic_power": 80,
-        "budget": 600000000000,
+        "budget": 128000000,
         "growth": "up",
         "inflation": 2.5,
         "unemployment": 3.1,
         "energy_status": "medium",
         "foreign_trade": "positive",
-        "govt_debt": 1100000000000,
+        "govt_debt": 235000000,
         "public_satisfaction": 62,
         "stability": 72
       },
@@ -929,15 +929,15 @@
           "can_extract": false
         },
         "aluminum": {
-          "amount": 300000,
-          "can_extract": false
+          "amount": 25000000,
+          "can_extract": true
         },
         "iron": {
-          "amount": 1500000,
-          "can_extract": false
+          "amount": 60000000,
+          "can_extract": true
         },
         "steel": {
-          "amount": 7000000,
+          "amount": 56000000,
           "can_extract": false
         },
         "oil": {
@@ -1298,13 +1298,13 @@
       "population": 26000000,
       "economy": {
         "economic_power": 25,
-        "budget": 16000000000,
+        "budget": 62000000,
         "growth": "flat",
         "inflation": 12.0,
         "unemployment": 18.0,
         "energy_status": "weak",
         "foreign_trade": "negative",
-        "govt_debt": 5000000000,
+        "govt_debt": 19000000,
         "public_satisfaction": 45,
         "stability": 60
       },
@@ -1314,15 +1314,15 @@
           "can_extract": true
         },
         "aluminum": {
-          "amount": 200000,
-          "can_extract": false
+          "amount": 25000000,
+          "can_extract": true
         },
         "iron": {
-          "amount": 5000000,
+          "amount": 60000000,
           "can_extract": true
         },
         "steel": {
-          "amount": 1000000,
+          "amount": 30000000,
           "can_extract": false
         },
         "oil": {
@@ -1564,13 +1564,13 @@
       "population": 26600000,
       "economy": {
         "economic_power": 72,
-        "budget": 500000000000,
+        "budget": 119000000,
         "growth": "up",
         "inflation": 3.2,
         "unemployment": 4.0,
         "energy_status": "good",
         "foreign_trade": "positive",
-        "govt_debt": 600000000000,
+        "govt_debt": 143000000,
         "public_satisfaction": 66,
         "stability": 80
       },
@@ -1580,15 +1580,15 @@
           "can_extract": true
         },
         "aluminum": {
-          "amount": 6000000,
+          "amount": 60000000,
           "can_extract": true
         },
         "iron": {
-          "amount": 80000000,
+          "amount": 240000000,
           "can_extract": true
         },
         "steel": {
-          "amount": 2000000,
+          "amount": 30000000,
           "can_extract": false
         },
         "oil": {
@@ -1865,13 +1865,13 @@
       "population": 1430000000,
       "economy": {
         "economic_power": 78,
-        "budget": 550000000000,
+        "budget": 126000000,
         "growth": "up",
         "inflation": 5.0,
         "unemployment": 7.8,
         "energy_status": "medium",
         "foreign_trade": "balanced",
-        "govt_debt": 3000000000000,
+        "govt_debt": 687000000,
         "public_satisfaction": 60,
         "stability": 68
       },
@@ -1881,15 +1881,15 @@
           "can_extract": true
         },
         "aluminum": {
-          "amount": 4000000,
+          "amount": 40000000,
           "can_extract": true
         },
         "iron": {
-          "amount": 60000000,
+          "amount": 180000000,
           "can_extract": true
         },
         "steel": {
-          "amount": 6000000,
+          "amount": 48000000,
           "can_extract": false
         },
         "oil": {
@@ -2243,13 +2243,13 @@
       "population": 89000000,
       "economy": {
         "economic_power": 55,
-        "budget": 120000000000,
+        "budget": 98000000,
         "growth": "flat",
         "inflation": 35.0,
         "unemployment": 9.5,
         "energy_status": "excellent",
         "foreign_trade": "balanced",
-        "govt_debt": 80000000000,
+        "govt_debt": 65000000,
         "public_satisfaction": 52,
         "stability": 62
       },
@@ -2259,15 +2259,15 @@
           "can_extract": true
         },
         "aluminum": {
-          "amount": 800000,
+          "amount": 25000000,
           "can_extract": true
         },
         "iron": {
-          "amount": 40000000,
+          "amount": 250000000,
           "can_extract": true
         },
         "steel": {
-          "amount": 4000000,
+          "amount": 32000000,
           "can_extract": false
         },
         "oil": {
@@ -2635,13 +2635,13 @@
       "population": 240000000,
       "economy": {
         "economic_power": 40,
-        "budget": 60000000000,
+        "budget": 80000000,
         "growth": "flat",
         "inflation": 20.0,
         "unemployment": 8.5,
         "energy_status": "weak",
         "foreign_trade": "negative",
-        "govt_debt": 250000000000,
+        "govt_debt": 333000000,
         "public_satisfaction": 48,
         "stability": 55
       },
@@ -2651,15 +2651,15 @@
           "can_extract": true
         },
         "aluminum": {
-          "amount": 200000,
-          "can_extract": false
+          "amount": 25000000,
+          "can_extract": true
         },
         "iron": {
-          "amount": 8000000,
+          "amount": 64000000,
           "can_extract": true
         },
         "steel": {
-          "amount": 1000000,
+          "amount": 30000000,
           "can_extract": false
         },
         "oil": {
@@ -2964,13 +2964,13 @@
       "population": 4600000,
       "economy": {
         "economic_power": 48,
-        "budget": 35000000000,
+        "budget": 90000000,
         "growth": "up",
         "inflation": 1.5,
         "unemployment": 3.0,
         "energy_status": "good",
         "foreign_trade": "positive",
-        "govt_debt": 40000000000,
+        "govt_debt": 103000000,
         "public_satisfaction": 64,
         "stability": 75
       },
@@ -2980,15 +2980,15 @@
           "can_extract": false
         },
         "aluminum": {
-          "amount": 100000,
-          "can_extract": false
+          "amount": 25000000,
+          "can_extract": true
         },
         "iron": {
-          "amount": 1000000,
-          "can_extract": false
+          "amount": 60000000,
+          "can_extract": true
         },
         "steel": {
-          "amount": 200000,
+          "amount": 30000000,
           "can_extract": false
         },
         "oil": {
@@ -3202,13 +3202,13 @@
       "population": 36900000,
       "economy": {
         "economic_power": 70,
-        "budget": 350000000000,
+        "budget": 116000000,
         "growth": "up",
         "inflation": 2.3,
         "unemployment": 5.5,
         "energy_status": "excellent",
         "foreign_trade": "positive",
-        "govt_debt": 250000000000,
+        "govt_debt": 83000000,
         "public_satisfaction": 60,
         "stability": 70
       },
@@ -3218,15 +3218,15 @@
           "can_extract": false
         },
         "aluminum": {
-          "amount": 1500000,
+          "amount": 25000000,
           "can_extract": true
         },
         "iron": {
-          "amount": 5000000,
+          "amount": 60000000,
           "can_extract": true
         },
         "steel": {
-          "amount": 2000000,
+          "amount": 30000000,
           "can_extract": false
         },
         "oil": {
@@ -3503,13 +3503,13 @@
       "population": 10400000,
       "economy": {
         "economic_power": 45,
-        "budget": 30000000000,
+        "budget": 86000000,
         "growth": "up",
         "inflation": 8.0,
         "unemployment": 5.0,
         "energy_status": "good",
         "foreign_trade": "positive",
-        "govt_debt": 12000000000,
+        "govt_debt": 34000000,
         "public_satisfaction": 58,
         "stability": 68
       },
@@ -3519,15 +3519,15 @@
           "can_extract": false
         },
         "aluminum": {
-          "amount": 300000,
+          "amount": 25000000,
           "can_extract": true
         },
         "iron": {
-          "amount": 3000000,
+          "amount": 60000000,
           "can_extract": true
         },
         "steel": {
-          "amount": 500000,
+          "amount": 30000000,
           "can_extract": false
         },
         "oil": {
@@ -3734,13 +3734,13 @@
       "population": 2700000,
       "economy": {
         "economic_power": 62,
-        "budget": 80000000000,
+        "budget": 107000000,
         "growth": "up",
         "inflation": 2.0,
         "unemployment": 0.2,
         "energy_status": "excellent",
         "foreign_trade": "positive",
-        "govt_debt": 70000000000,
+        "govt_debt": 94000000,
         "public_satisfaction": 70,
         "stability": 80
       },
@@ -3750,15 +3750,15 @@
           "can_extract": false
         },
         "aluminum": {
-          "amount": 200000,
-          "can_extract": false
+          "amount": 25000000,
+          "can_extract": true
         },
         "iron": {
-          "amount": 500000,
-          "can_extract": false
+          "amount": 60000000,
+          "can_extract": true
         },
         "steel": {
-          "amount": 300000,
+          "amount": 30000000,
           "can_extract": false
         },
         "oil": {
@@ -3972,13 +3972,13 @@
       "population": 9500000,
       "economy": {
         "economic_power": 68,
-        "budget": 130000000000,
+        "budget": 114000000,
         "growth": "up",
         "inflation": 2.5,
         "unemployment": 2.5,
         "energy_status": "excellent",
         "foreign_trade": "positive",
-        "govt_debt": 140000000000,
+        "govt_debt": 123000000,
         "public_satisfaction": 69,
         "stability": 79
       },
@@ -3988,15 +3988,15 @@
           "can_extract": false
         },
         "aluminum": {
-          "amount": 2500000,
+          "amount": 25000000,
           "can_extract": true
         },
         "iron": {
-          "amount": 1000000,
-          "can_extract": false
+          "amount": 60000000,
+          "can_extract": true
         },
         "steel": {
-          "amount": 3000000,
+          "amount": 30000000,
           "can_extract": false
         },
         "oil": {
@@ -4217,13 +4217,13 @@
       "population": 23000000,
       "economy": {
         "economic_power": 22,
-        "budget": 5000000000,
+        "budget": 58000000,
         "growth": "down",
         "inflation": 60.0,
         "unemployment": 25.0,
         "energy_status": "weak",
         "foreign_trade": "negative",
-        "govt_debt": 50000000000,
+        "govt_debt": 580000000,
         "public_satisfaction": 38,
         "stability": 45
       },
@@ -4233,15 +4233,15 @@
           "can_extract": false
         },
         "aluminum": {
-          "amount": 50000,
-          "can_extract": false
+          "amount": 25000000,
+          "can_extract": true
         },
         "iron": {
-          "amount": 2000000,
+          "amount": 60000000,
           "can_extract": true
         },
         "steel": {
-          "amount": 200000,
+          "amount": 30000000,
           "can_extract": false
         },
         "oil": {
@@ -4483,13 +4483,13 @@
       "population": 44000000,
       "economy": {
         "economic_power": 42,
-        "budget": 90000000000,
+        "budget": 83000000,
         "growth": "flat",
         "inflation": 6.0,
         "unemployment": 14.0,
         "energy_status": "good",
         "foreign_trade": "balanced",
-        "govt_debt": 80000000000,
+        "govt_debt": 74000000,
         "public_satisfaction": 47,
         "stability": 55
       },
@@ -4499,15 +4499,15 @@
           "can_extract": false
         },
         "aluminum": {
-          "amount": 100000,
-          "can_extract": false
+          "amount": 25000000,
+          "can_extract": true
         },
         "iron": {
-          "amount": 2000000,
-          "can_extract": false
+          "amount": 60000000,
+          "can_extract": true
         },
         "steel": {
-          "amount": 300000,
+          "amount": 30000000,
           "can_extract": false
         },
         "oil": {
@@ -4749,13 +4749,13 @@
       "population": 112000000,
       "economy": {
         "economic_power": 50,
-        "budget": 100000000000,
+        "budget": 92000000,
         "growth": "up",
         "inflation": 25.0,
         "unemployment": 7.0,
         "energy_status": "medium",
         "foreign_trade": "negative",
-        "govt_debt": 350000000000,
+        "govt_debt": 322000000,
         "public_satisfaction": 50,
         "stability": 60
       },
@@ -4765,15 +4765,15 @@
           "can_extract": false
         },
         "aluminum": {
-          "amount": 1200000,
+          "amount": 25000000,
           "can_extract": true
         },
         "iron": {
-          "amount": 6000000,
+          "amount": 60000000,
           "can_extract": true
         },
         "steel": {
-          "amount": 4000000,
+          "amount": 32000000,
           "can_extract": false
         },
         "oil": {
@@ -5050,13 +5050,13 @@
       "population": 34000000,
       "economy": {
         "economic_power": 15,
-        "budget": 2000000000,
+        "budget": 50000000,
         "growth": "down",
         "inflation": 45.0,
         "unemployment": 30.0,
         "energy_status": "weak",
         "foreign_trade": "negative",
-        "govt_debt": 20000000000,
+        "govt_debt": 500000000,
         "public_satisfaction": 30,
         "stability": 35
       },
@@ -5066,15 +5066,15 @@
           "can_extract": false
         },
         "aluminum": {
-          "amount": 0,
-          "can_extract": false
+          "amount": 25000000,
+          "can_extract": true
         },
         "iron": {
-          "amount": 500000,
-          "can_extract": false
+          "amount": 60000000,
+          "can_extract": true
         },
         "steel": {
-          "amount": 50000,
+          "amount": 30000000,
           "can_extract": false
         },
         "oil": {
@@ -5288,13 +5288,13 @@
       "population": 144000000,
       "economy": {
         "economic_power": 75,
-        "budget": 400000000000,
+        "budget": 122000000,
         "growth": "flat",
         "inflation": 7.5,
         "unemployment": 3.0,
         "energy_status": "excellent",
         "foreign_trade": "positive",
-        "govt_debt": 300000000000,
+        "govt_debt": 92000000,
         "public_satisfaction": 58,
         "stability": 66
       },
@@ -5304,15 +5304,15 @@
           "can_extract": true
         },
         "aluminum": {
-          "amount": 7000000,
-          "can_extract": true
-        },
-        "iron": {
           "amount": 70000000,
           "can_extract": true
         },
+        "iron": {
+          "amount": 210000000,
+          "can_extract": true
+        },
         "steel": {
-          "amount": 6000000,
+          "amount": 48000000,
           "can_extract": false
         },
         "oil": {
@@ -5708,13 +5708,13 @@
       "population": 68000000,
       "economy": {
         "economic_power": 82,
-        "budget": 1100000000000,
+        "budget": 131000000,
         "growth": "flat",
         "inflation": 3.5,
         "unemployment": 4.2,
         "energy_status": "medium",
         "foreign_trade": "balanced",
-        "govt_debt": 3000000000000,
+        "govt_debt": 357000000,
         "public_satisfaction": 60,
         "stability": 76
       },
@@ -5724,15 +5724,15 @@
           "can_extract": false
         },
         "aluminum": {
-          "amount": 500000,
-          "can_extract": false
+          "amount": 25000000,
+          "can_extract": true
         },
         "iron": {
-          "amount": 3000000,
-          "can_extract": false
+          "amount": 60000000,
+          "can_extract": true
         },
         "steel": {
-          "amount": 5000000,
+          "amount": 40000000,
           "can_extract": false
         },
         "oil": {
@@ -6002,13 +6002,13 @@
       "population": 68000000,
       "economy": {
         "economic_power": 80,
-        "budget": 1500000000000,
+        "budget": 128000000,
         "growth": "flat",
         "inflation": 2.9,
         "unemployment": 7.3,
         "energy_status": "good",
         "foreign_trade": "balanced",
-        "govt_debt": 3100000000000,
+        "govt_debt": 265000000,
         "public_satisfaction": 58,
         "stability": 74
       },
@@ -6018,15 +6018,15 @@
           "can_extract": false
         },
         "aluminum": {
-          "amount": 600000,
-          "can_extract": false
+          "amount": 25000000,
+          "can_extract": true
         },
         "iron": {
-          "amount": 4000000,
+          "amount": 60000000,
           "can_extract": true
         },
         "steel": {
-          "amount": 5000000,
+          "amount": 40000000,
           "can_extract": false
         },
         "oil": {
@@ -6261,13 +6261,13 @@
       "population": 84000000,
       "economy": {
         "economic_power": 84,
-        "budget": 2000000000000,
+        "budget": 133000000,
         "growth": "flat",
         "inflation": 2.6,
         "unemployment": 5.7,
         "energy_status": "medium",
         "foreign_trade": "positive",
-        "govt_debt": 2900000000000,
+        "govt_debt": 193000000,
         "public_satisfaction": 60,
         "stability": 78
       },
@@ -6277,15 +6277,15 @@
           "can_extract": true
         },
         "aluminum": {
-          "amount": 800000,
-          "can_extract": false
+          "amount": 25000000,
+          "can_extract": true
         },
         "iron": {
-          "amount": 3000000,
-          "can_extract": false
+          "amount": 60000000,
+          "can_extract": true
         },
         "steel": {
-          "amount": 9000000,
+          "amount": 72000000,
           "can_extract": false
         },
         "oil": {
@@ -6520,13 +6520,13 @@
       "population": 9800000,
       "economy": {
         "economic_power": 72,
-        "budget": 200000000000,
+        "budget": 119000000,
         "growth": "up",
         "inflation": 3.0,
         "unemployment": 3.5,
         "energy_status": "good",
         "foreign_trade": "positive",
-        "govt_debt": 200000000000,
+        "govt_debt": 119000000,
         "public_satisfaction": 58,
         "stability": 65
       },
@@ -6536,15 +6536,15 @@
           "can_extract": false
         },
         "aluminum": {
-          "amount": 100000,
-          "can_extract": false
+          "amount": 25000000,
+          "can_extract": true
         },
         "iron": {
-          "amount": 500000,
-          "can_extract": false
+          "amount": 60000000,
+          "can_extract": true
         },
         "steel": {
-          "amount": 1000000,
+          "amount": 30000000,
           "can_extract": false
         },
         "oil": {
@@ -6786,13 +6786,13 @@
       "population": 86000000,
       "economy": {
         "economic_power": 60,
-        "budget": 250000000000,
+        "budget": 104000000,
         "growth": "up",
         "inflation": 40.0,
         "unemployment": 9.0,
         "energy_status": "medium",
         "foreign_trade": "negative",
-        "govt_debt": 250000000000,
+        "govt_debt": 104000000,
         "public_satisfaction": 54,
         "stability": 63
       },
@@ -6802,15 +6802,15 @@
           "can_extract": true
         },
         "aluminum": {
-          "amount": 400000,
-          "can_extract": false
+          "amount": 25000000,
+          "can_extract": true
         },
         "iron": {
-          "amount": 5000000,
+          "amount": 60000000,
           "can_extract": true
         },
         "steel": {
-          "amount": 4000000,
+          "amount": 32000000,
           "can_extract": false
         },
         "oil": {
@@ -7066,13 +7066,13 @@
       "population": 59000000,
       "economy": {
         "economic_power": 74,
-        "budget": 1100000000000,
+        "budget": 121000000,
         "growth": "flat",
         "inflation": 2.4,
         "unemployment": 7.6,
         "energy_status": "medium",
         "foreign_trade": "balanced",
-        "govt_debt": 2800000000000,
+        "govt_debt": 308000000,
         "public_satisfaction": 56,
         "stability": 70
       },
@@ -7082,15 +7082,15 @@
           "can_extract": false
         },
         "aluminum": {
-          "amount": 400000,
-          "can_extract": false
+          "amount": 25000000,
+          "can_extract": true
         },
         "iron": {
-          "amount": 2000000,
-          "can_extract": false
+          "amount": 60000000,
+          "can_extract": true
         },
         "steel": {
-          "amount": 5000000,
+          "amount": 40000000,
           "can_extract": false
         },
         "oil": {
@@ -7339,13 +7339,13 @@
       "population": 48000000,
       "economy": {
         "economic_power": 70,
-        "budget": 600000000000,
+        "budget": 116000000,
         "growth": "up",
         "inflation": 3.1,
         "unemployment": 11.5,
         "energy_status": "good",
         "foreign_trade": "balanced",
-        "govt_debt": 1600000000000,
+        "govt_debt": 309000000,
         "public_satisfaction": 57,
         "stability": 71
       },
@@ -7355,15 +7355,15 @@
           "can_extract": false
         },
         "aluminum": {
-          "amount": 300000,
-          "can_extract": false
+          "amount": 25000000,
+          "can_extract": true
         },
         "iron": {
-          "amount": 2000000,
-          "can_extract": false
+          "amount": 60000000,
+          "can_extract": true
         },
         "steel": {
-          "amount": 3000000,
+          "amount": 30000000,
           "can_extract": false
         },
         "oil": {
@@ -7605,13 +7605,13 @@
       "population": 38000000,
       "economy": {
         "economic_power": 66,
-        "budget": 400000000000,
+        "budget": 111000000,
         "growth": "up",
         "inflation": 4.0,
         "unemployment": 5.0,
         "energy_status": "medium",
         "foreign_trade": "balanced",
-        "govt_debt": 400000000000,
+        "govt_debt": 111000000,
         "public_satisfaction": 60,
         "stability": 73
       },
@@ -7621,15 +7621,15 @@
           "can_extract": true
         },
         "aluminum": {
-          "amount": 200000,
-          "can_extract": false
+          "amount": 25000000,
+          "can_extract": true
         },
         "iron": {
-          "amount": 1000000,
-          "can_extract": false
+          "amount": 60000000,
+          "can_extract": true
         },
         "steel": {
-          "amount": 4000000,
+          "amount": 32000000,
           "can_extract": false
         },
         "oil": {
@@ -7871,13 +7871,13 @@
       "population": 37000000,
       "economy": {
         "economic_power": 35,
-        "budget": 90000000000,
+        "budget": 74000000,
         "growth": "down",
         "inflation": 15.0,
         "unemployment": 18.0,
         "energy_status": "weak",
         "foreign_trade": "negative",
-        "govt_debt": 150000000000,
+        "govt_debt": 123000000,
         "public_satisfaction": 50,
         "stability": 48
       },
@@ -7887,15 +7887,15 @@
           "can_extract": true
         },
         "aluminum": {
-          "amount": 300000,
-          "can_extract": false
+          "amount": 25000000,
+          "can_extract": true
         },
         "iron": {
-          "amount": 30000000,
+          "amount": 240000000,
           "can_extract": true
         },
         "steel": {
-          "amount": 3000000,
+          "amount": 30000000,
           "can_extract": false
         },
         "oil": {
@@ -8158,13 +8158,13 @@
       "population": 10600000,
       "economy": {
         "economic_power": 73,
-        "budget": 300000000000,
+        "budget": 120000000,
         "growth": "up",
         "inflation": 2.2,
         "unemployment": 7.5,
         "energy_status": "excellent",
         "foreign_trade": "positive",
-        "govt_debt": 250000000000,
+        "govt_debt": 100000000,
         "public_satisfaction": 67,
         "stability": 82
       },
@@ -8174,15 +8174,15 @@
           "can_extract": false
         },
         "aluminum": {
-          "amount": 200000,
-          "can_extract": false
-        },
-        "iron": {
           "amount": 25000000,
           "can_extract": true
         },
+        "iron": {
+          "amount": 200000000,
+          "can_extract": true
+        },
         "steel": {
-          "amount": 4000000,
+          "amount": 32000000,
           "can_extract": false
         },
         "oil": {
@@ -8347,13 +8347,13 @@
       "population": 8800000,
       "economy": {
         "economic_power": 78,
-        "budget": 250000000000,
+        "budget": 126000000,
         "growth": "flat",
         "inflation": 1.5,
         "unemployment": 2.2,
         "energy_status": "good",
         "foreign_trade": "positive",
-        "govt_debt": 150000000000,
+        "govt_debt": 76000000,
         "public_satisfaction": 72,
         "stability": 88
       },
@@ -8363,15 +8363,15 @@
           "can_extract": false
         },
         "aluminum": {
-          "amount": 100000,
-          "can_extract": false
+          "amount": 25000000,
+          "can_extract": true
         },
         "iron": {
-          "amount": 200000,
-          "can_extract": false
+          "amount": 60000000,
+          "can_extract": true
         },
         "steel": {
-          "amount": 1500000,
+          "amount": 30000000,
           "can_extract": false
         },
         "oil": {
@@ -8550,13 +8550,13 @@
       "population": 10300000,
       "economy": {
         "economic_power": 55,
-        "budget": 110000000000,
+        "budget": 98000000,
         "growth": "up",
         "inflation": 2.8,
         "unemployment": 11.0,
         "energy_status": "medium",
         "foreign_trade": "negative",
-        "govt_debt": 400000000000,
+        "govt_debt": 356000000,
         "public_satisfaction": 55,
         "stability": 68
       },
@@ -8566,15 +8566,15 @@
           "can_extract": true
         },
         "aluminum": {
-          "amount": 600000,
+          "amount": 25000000,
           "can_extract": true
         },
         "iron": {
-          "amount": 1000000,
-          "can_extract": false
+          "amount": 60000000,
+          "can_extract": true
         },
         "steel": {
-          "amount": 1500000,
+          "amount": 30000000,
           "can_extract": false
         },
         "oil": {
@@ -8823,13 +8823,13 @@
       "population": 335000000,
       "economy": {
         "economic_power": 98,
-        "budget": 6500000000000,
+        "budget": 150000000,
         "growth": "up",
         "inflation": 3.0,
         "unemployment": 3.9,
         "energy_status": "excellent",
         "foreign_trade": "negative",
-        "govt_debt": 34000000000000,
+        "govt_debt": 785000000,
         "public_satisfaction": 62,
         "stability": 75
       },
@@ -8839,15 +8839,15 @@
           "can_extract": true
         },
         "aluminum": {
-          "amount": 5000000,
-          "can_extract": true
-        },
-        "iron": {
           "amount": 50000000,
           "can_extract": true
         },
+        "iron": {
+          "amount": 150000000,
+          "can_extract": true
+        },
         "steel": {
-          "amount": 8000000,
+          "amount": 64000000,
           "can_extract": false
         },
         "oil": {
@@ -9299,13 +9299,13 @@
       "population": 216000000,
       "economy": {
         "economic_power": 64,
-        "budget": 500000000000,
+        "budget": 109000000,
         "growth": "up",
         "inflation": 4.5,
         "unemployment": 8.0,
         "energy_status": "good",
         "foreign_trade": "positive",
-        "govt_debt": 1500000000000,
+        "govt_debt": 327000000,
         "public_satisfaction": 56,
         "stability": 65
       },
@@ -9315,15 +9315,15 @@
           "can_extract": true
         },
         "aluminum": {
-          "amount": 5000000,
+          "amount": 50000000,
           "can_extract": true
         },
         "iron": {
-          "amount": 90000000,
+          "amount": 270000000,
           "can_extract": true
         },
         "steel": {
-          "amount": 5000000,
+          "amount": 40000000,
           "can_extract": false
         },
         "oil": {
@@ -9565,13 +9565,13 @@
       "population": 129000000,
       "economy": {
         "economic_power": 60,
-        "budget": 350000000000,
+        "budget": 104000000,
         "growth": "up",
         "inflation": 4.6,
         "unemployment": 3.0,
         "energy_status": "medium",
         "foreign_trade": "balanced",
-        "govt_debt": 800000000000,
+        "govt_debt": 238000000,
         "public_satisfaction": 54,
         "stability": 60
       },
@@ -9581,15 +9581,15 @@
           "can_extract": true
         },
         "aluminum": {
-          "amount": 300000,
-          "can_extract": false
+          "amount": 25000000,
+          "can_extract": true
         },
         "iron": {
-          "amount": 8000000,
+          "amount": 64000000,
           "can_extract": true
         },
         "steel": {
-          "amount": 3000000,
+          "amount": 30000000,
           "can_extract": false
         },
         "oil": {
@@ -9817,13 +9817,13 @@
       "population": 40000000,
       "economy": {
         "economic_power": 76,
-        "budget": 450000000000,
+        "budget": 123000000,
         "growth": "up",
         "inflation": 2.8,
         "unemployment": 5.5,
         "energy_status": "excellent",
         "foreign_trade": "positive",
-        "govt_debt": 1200000000000,
+        "govt_debt": 328000000,
         "public_satisfaction": 64,
         "stability": 82
       },
@@ -9833,15 +9833,15 @@
           "can_extract": true
         },
         "aluminum": {
-          "amount": 3000000,
+          "amount": 30000000,
           "can_extract": true
         },
         "iron": {
-          "amount": 40000000,
+          "amount": 250000000,
           "can_extract": true
         },
         "steel": {
-          "amount": 3000000,
+          "amount": 30000000,
           "can_extract": false
         },
         "oil": {
@@ -10062,13 +10062,13 @@
       "population": 46000000,
       "economy": {
         "economic_power": 48,
-        "budget": 120000000000,
+        "budget": 90000000,
         "growth": "flat",
         "inflation": 100.0,
         "unemployment": 10.0,
         "energy_status": "medium",
         "foreign_trade": "balanced",
-        "govt_debt": 400000000000,
+        "govt_debt": 300000000,
         "public_satisfaction": 48,
         "stability": 58
       },
@@ -10078,15 +10078,15 @@
           "can_extract": false
         },
         "aluminum": {
-          "amount": 400000,
+          "amount": 25000000,
           "can_extract": true
         },
         "iron": {
-          "amount": 2000000,
-          "can_extract": false
+          "amount": 60000000,
+          "can_extract": true
         },
         "steel": {
-          "amount": 2000000,
+          "amount": 30000000,
           "can_extract": false
         },
         "oil": {
@@ -10307,13 +10307,13 @@
       "population": 52000000,
       "economy": {
         "economic_power": 50,
-        "budget": 100000000000,
+        "budget": 92000000,
         "growth": "up",
         "inflation": 7.0,
         "unemployment": 10.0,
         "energy_status": "medium",
         "foreign_trade": "balanced",
-        "govt_debt": 200000000000,
+        "govt_debt": 184000000,
         "public_satisfaction": 50,
         "stability": 58
       },
@@ -10323,15 +10323,15 @@
           "can_extract": true
         },
         "aluminum": {
-          "amount": 100000,
-          "can_extract": false
+          "amount": 25000000,
+          "can_extract": true
         },
         "iron": {
-          "amount": 1000000,
-          "can_extract": false
+          "amount": 60000000,
+          "can_extract": true
         },
         "steel": {
-          "amount": 800000,
+          "amount": 30000000,
           "can_extract": false
         },
         "oil": {
@@ -10559,13 +10559,13 @@
       "population": 5600000,
       "economy": {
         "economic_power": 76,
-        "budget": 250000000000,
+        "budget": 123000000,
         "growth": "up",
         "inflation": 2.5,
         "unemployment": 3.9,
         "energy_status": "excellent",
         "foreign_trade": "positive",
-        "govt_debt": 196000000000,
+        "govt_debt": 96000000,
         "public_satisfaction": 82,
         "stability": 88
       },
@@ -10575,15 +10575,15 @@
           "can_extract": true
         },
         "aluminum": {
-          "amount": 1400000,
+          "amount": 25000000,
           "can_extract": true
         },
         "iron": {
-          "amount": 3000000,
+          "amount": 60000000,
           "can_extract": true
         },
         "steel": {
-          "amount": 600000,
+          "amount": 30000000,
           "can_extract": false
         },
         "oil": {
@@ -10762,13 +10762,13 @@
       "population": 43000000,
       "economy": {
         "economic_power": 15,
-        "budget": 3000000000,
+        "budget": 50000000,
         "growth": "flat",
         "inflation": 3.0,
         "unemployment": 14.0,
         "energy_status": "weak",
         "foreign_trade": "negative",
-        "govt_debt": 1400000000,
+        "govt_debt": 23000000,
         "public_satisfaction": 35,
         "stability": 40
       },
@@ -10778,15 +10778,15 @@
           "can_extract": true
         },
         "aluminum": {
-          "amount": 0,
-          "can_extract": false
+          "amount": 25000000,
+          "can_extract": true
         },
         "iron": {
-          "amount": 20000000,
-          "can_extract": false
+          "amount": 160000000,
+          "can_extract": true
         },
         "steel": {
-          "amount": 50000,
+          "amount": 30000000,
           "can_extract": false
         },
         "oil": {
@@ -10986,13 +10986,13 @@
       "population": 23400000,
       "economy": {
         "economic_power": 79,
-        "budget": 133000000000,
+        "budget": 127000000,
         "growth": "up",
         "inflation": 1.7,
         "unemployment": 3.4,
         "energy_status": "weak",
         "foreign_trade": "positive",
-        "govt_debt": 240000000000,
+        "govt_debt": 229000000,
         "public_satisfaction": 66,
         "stability": 58
       },
@@ -11002,15 +11002,15 @@
           "can_extract": false
         },
         "aluminum": {
-          "amount": 100000,
-          "can_extract": false
+          "amount": 25000000,
+          "can_extract": true
         },
         "iron": {
-          "amount": 0,
-          "can_extract": false
+          "amount": 60000000,
+          "can_extract": true
         },
         "steel": {
-          "amount": 6000000,
+          "amount": 48000000,
           "can_extract": false
         },
         "oil": {

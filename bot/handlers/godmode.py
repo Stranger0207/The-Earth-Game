@@ -12,6 +12,8 @@
 
 from __future__ import annotations
 
+import logging
+import re
 from datetime import datetime, timedelta, timezone
 
 from aiogram import F, Router
@@ -44,6 +46,7 @@ from ..database.models import (
     MilitaryAsset,
     MilitaryFactory,
     MilitarySale,
+    ProfanityWord,
     ResourceSale,
     Sanction,
     User,
@@ -54,6 +57,7 @@ from ..database.repositories import facilities as fac_repo
 from ..database.repositories import investments as inv_repo
 from ..database.repositories import military as mil_repo
 from ..database.repositories import military_factory as milfac_repo
+from ..database.repositories import profanity as profanity_repo
 from ..database.repositories import reserves as reserves_repo
 from ..database.repositories import users as users_repo
 from ..enums import (
@@ -78,8 +82,11 @@ from ..services.economy_service import facility_yield_for
 from ..services.news_service import send_log, send_to_admin_group
 from ..utils.formatting import render_economy_panel, render_military_panel, render_reserves_panel
 from ..utils.numbers import fa_money, fa_number, parse_amount
+from ..utils.screens import safe_edit
 from ..utils.ui import STYLE_MAIN, STYLE_NO, STYLE_OK, header
 from ..states import GodForm, ProfanityAdminForm
+
+logger = logging.getLogger(__name__)
 
 router = Router(name="godmode")
 settings = get_settings()

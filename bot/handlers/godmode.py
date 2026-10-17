@@ -73,12 +73,13 @@ from ..enums import (
     TradeStatus,
 )
 from ..loader import bot
+from ..services import profanity_service
 from ..services.economy_service import facility_yield_for
 from ..services.news_service import send_log, send_to_admin_group
 from ..utils.formatting import render_economy_panel, render_military_panel, render_reserves_panel
 from ..utils.numbers import fa_money, fa_number, parse_amount
 from ..utils.ui import STYLE_MAIN, STYLE_NO, STYLE_OK, header
-from ..states import GodForm
+from ..states import GodForm, ProfanityAdminForm
 
 router = Router(name="godmode")
 settings = get_settings()
@@ -139,6 +140,7 @@ def _home_kb() -> InlineKeyboardMarkup:
     builder.button(text="🏗 پروژه‌های اقتصادی", callback_data="god:projects", style=STYLE_MAIN)
     builder.button(text="☢️ برنامه‌های هسته‌ای", callback_data="god:nuclear", style=STYLE_MAIN)
     builder.button(text="💥 سیستم تلفات", callback_data="god:casualty", style=STYLE_NO)
+    builder.button(text="🤬 فیلتر فحش و کلمات رکیک", callback_data="god:profanity", style=STYLE_MAIN)
     builder.button(text="🔒 غیرفعال‌کردن آپشن", callback_data="god:locks", style=STYLE_NO)
     builder.button(text="⛔️ مدیریت بن کاربران", callback_data="god:ban_list", style=STYLE_NO)
     builder.button(text="🔴 پایان و ریست کامل فصل", callback_data="god:endseason", style=STYLE_NO)
@@ -2378,5 +2380,388 @@ async def cb_god_market_custom_reason_ask(call: CallbackQuery, state: FSMContext
         "<i>(این متن دقیقاً در تابلوی بورس به همه بازیکنان نمایش داده خواهد شد)</i>",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
             InlineKeyboardButton(text="🔙 لغو", callback_data=f"godm:res:{res_key}", style=STYLE_MAIN)
+        ]]),
+    )
+
+
+# ============================================================
+#  🤬 پنل و دستورات مدیریت فیلتر کلمات رکیک (/badwords)
+# ============================================================
+
+def _profanity_panel_kb(is_enabled: bool) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    if is_enabled:
+        builder.button(text="🔴 خاموش کردن فیلتر فحش", callback_data="prof:toggle", style=STYLE_NO)
+    else:
+        builder.button(text="🟢 روشن کردن فیلتر فحش", callback_data="prof:toggle", style=STYLE_OK)
+    builder.button(text="➕ افزودن کلمه جدید", callback_data="prof:add", style=STYLE_MAIN)
+    builder.button(text="➖ حذف کلمه", callback_data="prof:del", style=STYLE_MAIN)
+    builder.button(text="📋 فهرست کلمات فیلترشده", callback_data="prof:list:0", style=STYLE_MAIN)
+    builder.button(text="🔍 آزمایش یک متن", callback_data="prof:test", style=STYLE_MAIN)
+    builder.button(text="🔙 بازگشت به گاد مود", callback_data="god:home", style=STYLE_MAIN)
+    builder.adjust(1, 2, 2, 1)
+    return builder.as_markup()
+
+
+async def _render_profanity_screen(session: AsyncSession) -> tuple[str, InlineKeyboardMarkup]:
+    await profanity_service.ensure_seeded(session)
+    from ..database.repositories import profanity as profanity_repo
+
+    words_count = await profanity_repo.count_words(session)
+    enabled = profanity_service.is_filter_enabled()
+    status_str = "🟢 <b>روشن و فعال</b>" if enabled else "🔴 <b>خاموش و غیرفعال</b>"
+
+    text = (
+        header("مدیریت فیلتر فحش و کلمات رکیک", "🤬")
+        + f"\n\nوضعیت فعلی سیستم: {status_str}\n"
+        f"📊 تعداد کل کلمات در بلک‌لیست: <b>{fa_number(words_count)}</b> کلمه\n\n"
+        "💡 <b>دستورات سریع مدیریتی:</b>\n"
+        "• <code>/badwords toggle</code> — سوئیچ سریع خاموش/روشن\n"
+        "• <code>/addword کلمه</code> — افزودن کلمه به بلک‌لیست\n"
+        "• <code>/addword کلمه۱، کلمه۲، کلمه۳</code> — افزودن دسته‌ای کلمات\n"
+        "• <code>/delword کلمه</code> — حذف کلمه از بلک‌لیست\n\n"
+        "از دکمه‌های زیر برای مدیریت استفاده کنید:"
+    )
+    return text, _profanity_panel_kb(enabled)
+
+
+@router.message(Command("badwords", "profanity"))
+async def cmd_badwords(message: Message, session: AsyncSession, state: FSMContext) -> None:
+    """دستور ورود به پنل فیلتر فحش یا تاگل وضعیت."""
+    if not await _guard(message):
+        return
+
+    text = message.text or ""
+    parts = text.split(maxsplit=1)
+    if len(parts) > 1 and parts[1].strip().lower() == "toggle":
+        new_val = await profanity_service.toggle_filter(session)
+        st = "🟢 روشن و فعال" if new_val else "🔴 خاموش و غیرفعال"
+        await message.answer(f"✅ وضعیت فیلتر فحش تغییر یافت: {st}")
+        await send_log(bot, f"🤬 <b>تغییر وضعیت فیلتر فحش توسط مدیریت</b>\nوضعیت جدید: {st}")
+        return
+
+    await state.clear()
+    msg, kb = await _render_profanity_screen(session)
+    await message.answer(msg, reply_markup=kb)
+
+
+@router.callback_query(F.data == "god:profanity")
+async def cb_god_profanity(call: CallbackQuery, session: AsyncSession, state: FSMContext) -> None:
+    """باز کردن پنل فیلتر فحش از درون منوی گاد مود."""
+    if not await _guard(call):
+        return
+    await call.answer()
+    await state.clear()
+    msg, kb = await _render_profanity_screen(session)
+    await safe_edit(call, msg, reply_markup=kb)
+
+
+@router.callback_query(F.data == "prof:toggle")
+async def cb_prof_toggle(call: CallbackQuery, session: AsyncSession) -> None:
+    """تغییر وضعیت فعال/غیرفعال بودن فیلتر فحش."""
+    if not await _guard(call):
+        return
+    new_val = await profanity_service.toggle_filter(session)
+    st = "روشن" if new_val else "خاموش"
+    await call.answer(f"فیلتر فحش {st} شد ✅", show_alert=True)
+    await send_log(
+        bot,
+        f"🤬 <b>تغییر وضعیت فیلتر فحش توسط مدیریت</b>\n"
+        f"وضعیت جدید: {'🟢 فعال' if new_val else '🔴 غیرفعال'}",
+    )
+    msg, kb = await _render_profanity_screen(session)
+    await safe_edit(call, msg, reply_markup=kb)
+
+
+@router.message(Command("addword"))
+async def cmd_addword(message: Message, session: AsyncSession) -> None:
+    """افزودن مستقیم کلمه یا چند کلمه به بلک‌لیست."""
+    if not await _guard(message):
+        return
+
+    text = message.text or ""
+    parts = text.split(maxsplit=1)
+    if len(parts) < 2 or not parts[1].strip():
+        await message.answer("⚠️ لطفاً کلمه یا کلمات مورد نظر را وارد کنید:\nمثال: <code>/addword کلمه</code> یا <code>/addword کلمه۱، کلمه۲</code>")
+        return
+
+    raw_input = parts[1].strip()
+    raw_words = [w.strip() for w in re.split(r"[,،\n]+", raw_input) if w.strip()]
+    if not raw_words:
+        await message.answer("❌ کلمه معتبری یافت نشد.")
+        return
+
+    added = await profanity_service.add_words_bulk(session, raw_words, admin_id=message.from_user.id)
+    await message.answer(f"✅ {fa_number(added)} کلمه جدید با موفقیت به بلک‌لیست افزوده شد.")
+    await send_log(
+        bot,
+        f"🤬 <b>افزودن کلمات جدید به فیلتر فحش</b>\n"
+        f"تعداد اضافه شده: {added}\n"
+        f"کلمات: <code>{', '.join(raw_words[:10])}</code>",
+    )
+
+
+@router.message(Command("delword"))
+async def cmd_delword(message: Message, session: AsyncSession) -> None:
+    """حذف مستقیم کلمه از بلک‌لیست."""
+    if not await _guard(message):
+        return
+
+    text = message.text or ""
+    parts = text.split(maxsplit=1)
+    if len(parts) < 2 or not parts[1].strip():
+        await message.answer("⚠️ لطفاً کلمه مورد نظر برای حذف را وارد کنید:\nمثال: <code>/delword کلمه</code>")
+        return
+
+    word_to_del = parts[1].strip()
+    ok = await profanity_service.remove_word(session, word_to_del)
+    if ok:
+        await message.answer(f"✅ کلمه «{word_to_del}» با موفقیت از بلک‌لیست حذف شد.")
+        await send_log(bot, f"🤬 <b>حذف کلمه از فیلتر فحش توسط مدیریت</b>\nکلمه: <code>{word_to_del}</code>")
+    else:
+        await message.answer(f"ℹ️ کلمه «{word_to_del}» در بلک‌لیست یافت نشد.")
+
+
+@router.callback_query(F.data == "prof:add")
+async def cb_prof_add(call: CallbackQuery, state: FSMContext) -> None:
+    """ورود به فرم دریافت کلمه جدید برای افزودن."""
+    if not await _guard(call):
+        return
+    await call.answer()
+    await state.set_state(ProfanityAdminForm.waiting_for_add_word)
+    text = (
+        "➕ <b>افزودن کلمه یا کلمات رکیک به بلک‌لیست:</b>\n\n"
+        "لطفاً کلمه یا کلمات مورد نظر را ارسال کنید.\n"
+        "💡 می‌توانید چند کلمه را با کاما (،) یا فاصله یا در خطوط جداگانه ارسال کنید."
+    )
+    kb = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="🔙 انصراف", callback_data="god:profanity", style=STYLE_MAIN)
+    ]])
+    await safe_edit(call, text, reply_markup=kb)
+
+
+@router.message(ProfanityAdminForm.waiting_for_add_word, F.text)
+async def msg_prof_add_word(message: Message, state: FSMContext, session: AsyncSession) -> None:
+    """پردازش متن کلمات ارسالی برای افزودن."""
+    if not await _guard(message):
+        await state.clear()
+        return
+
+    raw_input = message.text.strip()
+    raw_words = [w.strip() for w in re.split(r"[,،\n]+", raw_input) if w.strip()]
+    if not raw_words:
+        await message.answer("❌ کلمه معتبری یافت نشد.")
+        return
+
+    await state.clear()
+    added = await profanity_service.add_words_bulk(session, raw_words, admin_id=message.from_user.id)
+    await message.answer(
+        f"✅ <b>{fa_number(added)}</b> کلمه با موفقیت ثبت و در کش فیلتر فعال شد.",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="🔙 بازگشت به فیلتر فحش", callback_data="god:profanity", style=STYLE_MAIN)
+        ]]),
+    )
+    await send_log(
+        bot,
+        f"🤬 <b>افزودن کلمات جدید به فیلتر فحش</b>\n"
+        f"تعداد اضافه شده: {added}\n"
+        f"کلمات: <code>{', '.join(raw_words[:10])}</code>",
+    )
+
+
+@router.callback_query(F.data == "prof:del")
+async def cb_prof_del(call: CallbackQuery, state: FSMContext) -> None:
+    """ورود به فرم دریافت کلمه برای حذف."""
+    if not await _guard(call):
+        return
+    await call.answer()
+    await state.set_state(ProfanityAdminForm.waiting_for_del_word)
+    text = (
+        "➖ <b>حذف کلمه از بلک‌لیست فیلتر فحش:</b>\n\n"
+        "لطفاً کلمه‌ای را که مایل به حذف آن از فیلتر هستید ارسال فرمایید:"
+    )
+    kb = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="🔙 انصراف", callback_data="god:profanity", style=STYLE_MAIN)
+    ]])
+    await safe_edit(call, text, reply_markup=kb)
+
+
+@router.message(ProfanityAdminForm.waiting_for_del_word, F.text)
+async def msg_prof_del_word(message: Message, state: FSMContext, session: AsyncSession) -> None:
+    """پردازش کلمه حذفی."""
+    if not await _guard(message):
+        await state.clear()
+        return
+
+    word_to_del = message.text.strip()
+    await state.clear()
+    ok = await profanity_service.remove_word(session, word_to_del)
+    if ok:
+        await message.answer(
+            f"✅ کلمه «{word_to_del}» با موفقیت از فیلتر فحش حذف شد.",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                InlineKeyboardButton(text="🔙 بازگشت به فیلتر فحش", callback_data="god:profanity", style=STYLE_MAIN)
+            ]]),
+        )
+        await send_log(bot, f"🤬 <b>حذف کلمه از فیلتر فحش توسط مدیریت</b>\nکلمه: <code>{word_to_del}</code>")
+    else:
+        await message.answer(
+            f"ℹ️ کلمه «{word_to_del}» در بلک‌لیست فیلتر یافت نشد.",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                InlineKeyboardButton(text="🔙 بازگشت به فیلتر فحش", callback_data="god:profanity", style=STYLE_MAIN)
+            ]]),
+        )
+
+
+@router.callback_query(F.data.startswith("prof:list:"))
+async def cb_prof_list(call: CallbackQuery, session: AsyncSession) -> None:
+    """نمایش صفحه‌بندی‌شده کلمات موجود در بلک‌لیست."""
+    if not await _guard(call):
+        return
+    await call.answer()
+
+    from ..database.repositories import profanity as profanity_repo
+
+    page = int(call.data.split(":")[2])
+    limit = 15
+    offset = page * limit
+
+    words, total = await profanity_repo.get_words_paginated(session, offset=offset, limit=limit)
+    total_pages = max(1, (total + limit - 1) // limit)
+
+    builder = InlineKeyboardBuilder()
+
+    lines = [
+        header("فهرست کلمات فیلترشده", "📋"),
+        f"\nتعداد کل کلمات: <b>{fa_number(total)}</b> | صفحه: <b>{fa_number(page + 1)} از {fa_number(total_pages)}</b>\n",
+    ]
+
+    if not words:
+        lines.append("<i>هیچ کلمه‌ای در بلک‌لیست ثبت نشده است.</i>")
+    else:
+        for idx, w in enumerate(words, start=offset + 1):
+            lines.append(f"{fa_number(idx)}. <code>{w.word}</code>")
+            builder.button(text=f"🗑 {w.word}", callback_data=f"prof:del_w:{w.id}:{page}", style=STYLE_NO)
+
+    builder.adjust(3)
+
+    # دکمه‌های ناوبری صفحه
+    nav_btns = []
+    if page > 0:
+        nav_btns.append(InlineKeyboardButton(text="⬅️ قبلی", callback_data=f"prof:list:{page - 1}", style=STYLE_MAIN))
+    if page + 1 < total_pages:
+        nav_btns.append(InlineKeyboardButton(text="بعدی ➡️", callback_data=f"prof:list:{page + 1}", style=STYLE_MAIN))
+    if nav_btns:
+        builder.row(*nav_btns)
+
+    builder.row(InlineKeyboardButton(text="🔙 بازگشت به فیلتر فحش", callback_data="god:profanity", style=STYLE_MAIN))
+
+    await safe_edit(call, "\n".join(lines), reply_markup=builder.as_markup())
+
+
+@router.callback_query(F.data.startswith("prof:del_w:"))
+async def cb_prof_del_item(call: CallbackQuery, session: AsyncSession) -> None:
+    """حذف تک‌کلیکی کلمه از درون فهرست صفحه‌بندی‌شده."""
+    if not await _guard(call):
+        return
+    parts = call.data.split(":")
+    word_id = int(parts[2])
+    page = int(parts[3])
+
+    from sqlalchemy import select
+    from ..database.models.profanity import ProfanityWord
+    from ..database.repositories import profanity as profanity_repo
+
+    stmt = select(ProfanityWord).where(ProfanityWord.id == word_id)
+    pw = (await session.execute(stmt)).scalars().first()
+    if pw:
+        w_text = pw.word
+        await profanity_service.remove_word(session, w_text)
+        await call.answer(f"کلمه «{w_text}» حذف شد ✅")
+        await send_log(bot, f"🤬 <b>حذف کلمه از فیلتر فحش</b>\nکلمه: <code>{w_text}</code>")
+    else:
+        await call.answer("کلمه یافت نشد.", show_alert=True)
+
+    # به‌روزرسانی مجدد صفحه
+    limit = 15
+    offset = page * limit
+    words, total = await profanity_repo.get_words_paginated(session, offset=offset, limit=limit)
+    total_pages = max(1, (total + limit - 1) // limit)
+    if page >= total_pages and page > 0:
+        page -= 1
+        offset = page * limit
+        words, total = await profanity_repo.get_words_paginated(session, offset=offset, limit=limit)
+        total_pages = max(1, (total + limit - 1) // limit)
+
+    builder = InlineKeyboardBuilder()
+    lines = [
+        header("فهرست کلمات فیلترشده", "📋"),
+        f"\nتعداد کل کلمات: <b>{fa_number(total)}</b> | صفحه: <b>{fa_number(page + 1)} از {fa_number(total_pages)}</b>\n",
+    ]
+    for idx, w in enumerate(words, start=offset + 1):
+        lines.append(f"{fa_number(idx)}. <code>{w.word}</code>")
+        builder.button(text=f"🗑 {w.word}", callback_data=f"prof:del_w:{w.id}:{page}", style=STYLE_NO)
+    builder.adjust(3)
+
+    nav_btns = []
+    if page > 0:
+        nav_btns.append(InlineKeyboardButton(text="⬅️ قبلی", callback_data=f"prof:list:{page - 1}", style=STYLE_MAIN))
+    if page + 1 < total_pages:
+        nav_btns.append(InlineKeyboardButton(text="بعدی ➡️", callback_data=f"prof:list:{page + 1}", style=STYLE_MAIN))
+    if nav_btns:
+        builder.row(*nav_btns)
+
+    builder.row(InlineKeyboardButton(text="🔙 بازگشت به فیلتر فحش", callback_data="god:profanity", style=STYLE_MAIN))
+    await safe_edit(call, "\n".join(lines), reply_markup=builder.as_markup())
+
+
+@router.callback_query(F.data == "prof:test")
+async def cb_prof_test(call: CallbackQuery, state: FSMContext) -> None:
+    """ورود به فرم تست یک متن دلخواه توسط ادمین."""
+    if not await _guard(call):
+        return
+    await call.answer()
+    await state.set_state(ProfanityAdminForm.waiting_for_test_text)
+    text = (
+        "🔍 <b>تست و راستی‌آزمایی متن در فیلتر فحش:</b>\n\n"
+        "لطفاً یک جمله یا متن آزمایشی را بفرستید تا موتور فیلتر آن را تحلیل کرده و نتیجه را به شما گزارش دهد."
+    )
+    kb = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="🔙 انصراف", callback_data="god:profanity", style=STYLE_MAIN)
+    ]])
+    await safe_edit(call, text, reply_markup=kb)
+
+
+@router.message(ProfanityAdminForm.waiting_for_test_text, F.text)
+async def msg_prof_test_text(message: Message, state: FSMContext) -> None:
+    """تحلیل متن آزمایشی و گزارش به ادمین."""
+    if not await _guard(message):
+        await state.clear()
+        return
+
+    test_input = message.text.strip()
+    await state.clear()
+
+    has_bad, bad_word = profanity_service.check_profanity(test_input)
+    norm = profanity_service.normalize_text(test_input)
+
+    if has_bad:
+        res_text = (
+            "🚨 <b>نتیجه تست: حاوی کلمات رکیک / مسدود می‌شود</b>\n\n"
+            f"🚫 <b>کلمه شناسایی‌شده:</b> <code>{bad_word}</code>\n"
+            f"🔤 <b>متن نرمال‌شده:</b> <code>{norm}</code>"
+        )
+    else:
+        res_text = (
+            "✅ <b>نتیجه تست: پاک و بدون کلمه ممنوعه</b>\n\n"
+            "این متن مجاز است و فیلتر به آن اجازه عبور می‌دهد.\n"
+            f"🔤 <b>متن نرمال‌شده:</b> <code>{norm}</code>"
+        )
+
+    await message.answer(
+        res_text,
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="🔍 تست متن دیگر", callback_data="prof:test", style=STYLE_MAIN),
+            InlineKeyboardButton(text="🔙 فیلتر فحش", callback_data="god:profanity", style=STYLE_MAIN),
         ]]),
     )

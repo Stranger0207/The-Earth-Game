@@ -59,6 +59,7 @@ _PRESERVED: dict[str, str] = {
     "reserves": "به‌تفکیک کشور حذف و از countries.json دوباره درج می‌شود",
     "military_assets": "به‌تفکیک کشور حذف و از countries.json دوباره درج می‌شود",
     "market_prices": "به‌جای حذف کامل، قیمت‌های آن به نرخ‌های پایه بازنشانی می‌شوند",
+    "profanity_words": "بانک کلمات رکیک فیلتر بین فصل‌ها حفظ می‌شود",
 }
 
 

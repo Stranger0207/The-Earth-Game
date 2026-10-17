@@ -37,10 +37,14 @@ class BotState(Base):
     # پخش اخبار ۱۲ ساعته بازار در کانال اقتصاد (آپدیت شماره ۴)
     market_news_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
+    # سیستم سراسری فیلتر فحش و کلمات رکیک
+    profanity_filter_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
     def __repr__(self) -> str:
         return (
             f"<BotState maintenance={self.maintenance} "
             f"freeze={self.global_freeze} "
+            f"profanity_filter={self.profanity_filter_enabled} "
             f"market_news={self.market_news_enabled} "
             f"auto={self.auto_off_enabled} {self.auto_off_start}-{self.auto_off_end}>"
         )

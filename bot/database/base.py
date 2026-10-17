@@ -105,6 +105,8 @@ _COLUMN_MIGRATIONS = [
     ("laws", "satisfaction_effect", "DOUBLE PRECISION NOT NULL DEFAULT 0.0"),
     # آپدیت شماره ۴ — پخش اخبار ۱۲ ساعته بازار در کانال اقتصاد
     ("bot_state", "market_news_enabled", "BOOLEAN NOT NULL DEFAULT TRUE"),
+    # سیستم سراسری فیلتر فحش و کلمات رکیک
+    ("bot_state", "profanity_filter_enabled", "BOOLEAN NOT NULL DEFAULT TRUE"),
 ]
 
 

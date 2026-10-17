@@ -343,4 +343,13 @@ class SuspensionForm(StatesGroup):
     waiting_for_unsuspend = State()  # دریافت آیدی عددی یا یوزرنیم برای رفع تعلیق
 
 
+class ProfanityAdminForm(StatesGroup):
+    """فرم مدیریت فیلتر کلمات رکیک توسط ادمین (/badwords)."""
+
+    waiting_for_add_word = State()   # دریافت کلمه یا کلمات جدید برای افزودن
+    waiting_for_del_word = State()   # دریافت کلمه برای حذف از فیلتر
+    waiting_for_test_text = State()  # دریافت متن دلخواه برای تست فیلتر
+
+
+
 

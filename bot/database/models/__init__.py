@@ -47,6 +47,7 @@ from .nuclear import (
     NuclearTest,
     NuclearWarhead,
 )
+from .profanity import ProfanityWord
 from .reserves import Reserve
 from .satellite import Satellite
 from .strait import BlockedCargo, StraitBlockRule, StraitConfig
@@ -97,6 +98,7 @@ __all__ = [
     "NuclearWarhead",
     "PhoneCall",
     "PhoneCallMessage",
+    "ProfanityWord",
     "Protest",
     "Reserve",
     "ResourceSale",

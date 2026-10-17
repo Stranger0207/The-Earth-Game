@@ -600,7 +600,10 @@ async def msg_sell_count(message: Message, state: FSMContext) -> None:
     data = await state.get_data()
     pick = data.get("sell_pick")
     if pick is None:
-        await message.answer("خطا در فروش.")
+        await message.answer(
+            "⚠️ نشست فروش منقضی شده است یا اطلاعات قلم انتخابی یافت نشد. لطفاً مجدداً از منوی نظامی گزینه «💰 فروش تجهیزات» را انتخاب فرمایید.",
+            reply_markup=military_menu_kb(),
+        )
         await state.clear()
         return
     if count is None or count <= 0 or int(count) > pick["count"]:
@@ -636,6 +639,16 @@ async def msg_sell_price(message: Message, state: FSMContext, session: AsyncSess
     price = parse_amount(message.text)
     if price is None or price <= 0:
         await message.answer("لطفاً مبلغ معتبر وارد کنید.")
+        return
+    data = await state.get_data()
+    pick = data.get("sell_pick")
+    count = data.get("sell_count")
+    if pick is None or count is None:
+        await message.answer(
+            "⚠️ نشست فروش منقضی شده است. لطفاً مجدداً از منوی نظامی گزینه «💰 فروش تجهیزات» را انتخاب فرمایید.",
+            reply_markup=military_menu_kb(),
+        )
+        await state.clear()
         return
     await state.update_data(sell_price=price)
     country = await get_player_country(session, db_user)
@@ -673,19 +686,21 @@ async def cb_sell_buyer(call: CallbackQuery, state: FSMContext, session: AsyncSe
     count = data.get("sell_count")
     price = data.get("sell_price")
     country = await get_player_country(session, db_user)
-    await state.clear()
-    if country is None or pick is None:
-        await safe_edit(call,"خطا در فروش.")
+    if country is None or pick is None or count is None or price is None:
+        await safe_edit(call, "⚠️ اطلاعات فروش منقضی شده است. لطفاً مجدداً اقدام فرمایید.", reply_markup=military_menu_kb())
+        await state.clear()
         return
     buyer = await countries_repo.get_country(session, buyer_id)
     if buyer is None:
-        await safe_edit(call,"کشور خریدار یافت نشد.")
+        await safe_edit(call, "کشور خریدار یافت نشد.", reply_markup=military_menu_kb())
+        await state.clear()
         return
 
     # اطمینان از موجودی فعلی فروشنده
     asset = await mil_repo.get_asset_by_name(session, country.id, pick["name"])
     if asset is None or asset.count < count:
-        await safe_edit(call,"موجودی شما برای این تعداد کافی نیست.", reply_markup=military_menu_kb())
+        await safe_edit(call, "موجودی شما برای این تعداد کافی نیست.", reply_markup=military_menu_kb())
+        await state.clear()
         return
 
     # (v1.11.2) سنجش توان فناورانه‌ی خریدار توسط AI.
@@ -735,6 +750,7 @@ async def cb_sell_buyer(call: CallbackQuery, state: FSMContext, session: AsyncSe
             f"تجهیزات: {fa_number(count)} {pick['unit']} {pick['name']}\n"
             f"دلیل: {reason}",
         )
+        await state.clear()
         return
 
     await state.update_data(sell_buyer_id=buyer_id)
@@ -777,16 +793,19 @@ async def cb_milsell_payer(
     payer = call.data.split(":")[1]
     data = await state.get_data()
     country = await get_player_country(session, db_user)
-    buyer_id = data["sell_buyer_id"]
-    buyer = await countries_repo.get_country(session, buyer_id)
-    pick = data["sell_pick"]
-    count = int(data["sell_count"])
-    price = float(data["sell_price"])
+    buyer_id = data.get("sell_buyer_id")
+    buyer = await countries_repo.get_country(session, buyer_id) if buyer_id else None
+    pick = data.get("sell_pick")
+    count_raw = data.get("sell_count")
+    price_raw = data.get("sell_price")
 
-    if not country or not buyer:
-        await safe_edit(call, NO_COUNTRY_TEXT)
+    if not country or not buyer or not pick or count_raw is None or price_raw is None:
+        await safe_edit(call, "⚠️ اطلاعات معامله منقضی شده است. لطفاً مجدداً اقدام فرمایید.", reply_markup=military_menu_kb())
         await state.clear()
         return
+
+    count = int(count_raw)
+    price = float(price_raw)
 
     sale = MilitarySale(
         seller_country=country.id,

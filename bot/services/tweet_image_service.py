@@ -126,6 +126,7 @@ def _draw_share_icon(draw: ImageDraw.ImageDraw, cx: int, cy: int) -> None:
 def render_tweet_image(
     *,
     country_name: str,
+    president_name: str | None = None,
     country_flag: str = "",
     username: str,
     content: str,
@@ -134,6 +135,7 @@ def render_tweet_image(
 ) -> bytes:
     """
     رندر کردن تصویر توییت با مشخصات رسمی توییتر در رم و بازگرداندن بایت‌های PNG.
+    نام حساب به نام مسئول/رئیس‌جمهور تنظیم می‌شود.
     """
     font_reg_path, font_bold_path = _ensure_fonts()
 
@@ -145,7 +147,8 @@ def render_tweet_image(
     else:
         font_name = font_handle = font_body = font_meta = ImageFont.load_default()
 
-    clean_country = clean_emojis(country_name).strip() or "کشور"
+    display_title = president_name or country_name
+    clean_country = clean_emojis(display_title).strip() or "مسئول رسمی"
     clean_handle = username.strip().lstrip("@")
     clean_body = clean_emojis(content).strip()
 

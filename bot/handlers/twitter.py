@@ -347,9 +347,11 @@ async def cb_tweet_confirm(
 
     # ۳. تولید تصویر گرافیکی توییت با Pillow در رم
     now = datetime.now(timezone.utc)
+    pres_name = db_user.president_name or country.name_fa
     try:
         tweet_bytes = render_tweet_image(
             country_name=country.name_fa,
+            president_name=pres_name,
             country_flag=country.flag,
             username=profile.username,
             content=content,
@@ -372,7 +374,7 @@ async def cb_tweet_confirm(
     photo_file = BufferedInputFile(tweet_bytes, filename=f"tweet_{tweet.id}.png")
     tweet_caption = (
         "🌍 توییت حساب رسمی\n"
-        f"📤 فرستنده: مسئول کشور {country.name_fa}\n\n"
+        f"📤 فرستنده: {pres_name} ({country.name_fa})\n\n"
         "🖼 متن کامل توییت در تصویر سند رسمی بالا درج شده است."
     )
 

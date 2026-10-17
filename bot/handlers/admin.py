@@ -71,9 +71,9 @@ async def cb_approve(
     await claims_repo.set_status(session, claim_id, ClaimStatus.APPROVED, call.from_user.id)
 
     # (v2.1) اگر بازی در حالت «انجماد سراسری» است، کشورگیرِ تازه هم خودکار معلق
-    # می‌شود تا مالک بازی خودش شروع بازی را اعلام کند.
+    # می‌شود تا مالک بازی خودش شروع بازی را اعلام کند (ادمین‌ها و مالکین مستثنی هستند).
     state = await bot_state_repo.get_state(session)
-    frozen = bool(getattr(state, "global_freeze", False))
+    frozen = bool(getattr(state, "global_freeze", False)) and not settings.is_admin(claim.user_id)
     if frozen:
         await users_repo.set_suspended(session, claim.user_id, True)
 
@@ -174,9 +174,9 @@ async def cb_vip_claim_approve(
         await users_repo.set_president_name(session, claim.user_id, claim.president_name)
     await claims_repo.set_status(session, claim_id, ClaimStatus.APPROVED, call.from_user.id)
 
-    # قانون انجماد سراسری (v2.1)
+    # قانون انجماد سراسری (v2.1) — ادمین‌ها و مالکین مستثنی هستند
     state = await bot_state_repo.get_state(session)
-    frozen = bool(getattr(state, "global_freeze", False))
+    frozen = bool(getattr(state, "global_freeze", False)) and not settings.is_admin(claim.user_id)
     if frozen:
         await users_repo.set_suspended(session, claim.user_id, True)
 
@@ -653,7 +653,8 @@ async def cmd_ban(message: Message, session: AsyncSession) -> None:
         return
 
     # بررسی عدم امکان بن کردن ادمین/مالک
-    if uid and settings.is_admin(uid):
+    target_check_id = uid or (user.telegram_id if user else None)
+    if target_check_id and (settings.is_admin(target_check_id) or settings.is_owner(target_check_id)):
         await message.answer("⛔️ امکان مسدودسازی ادمین یا مالک بازی وجود ندارد.")
         return
 

@@ -312,6 +312,8 @@ async def cb_freeze_all(call: CallbackQuery, session: AsyncSession) -> None:
     pairs = await _owner_users(session)
     frozen = 0
     for _, user in pairs:
+        if settings.is_admin(user.telegram_id):
+            continue
         if not getattr(user, "is_suspended", False):
             user.is_suspended = True
             frozen += 1
@@ -327,6 +329,8 @@ async def cb_freeze_all(call: CallbackQuery, session: AsyncSession) -> None:
 
     # اطلاع به پلیرها تا فکر نکنند ربات خراب شده است
     for country, user in pairs:
+        if settings.is_admin(user.telegram_id):
+            continue
         try:
             await bot.send_message(
                 user.telegram_id,
@@ -455,6 +459,10 @@ async def _set_suspended(
     country = await countries_repo.get_country(session, cid)
     if country is None or country.owner_user_id is None:
         await call.answer("این کشور مالک ندارد.", show_alert=True)
+        return
+
+    if suspended and settings.is_admin(country.owner_user_id):
+        await call.answer("⛔️ امکان تعلیق ادمین یا مالک بازی وجود ندارد.", show_alert=True)
         return
 
     await users_repo.set_suspended(session, country.owner_user_id, suspended)

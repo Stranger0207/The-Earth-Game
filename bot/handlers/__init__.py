@@ -21,6 +21,7 @@ from . import (
     interception,
     investment,
     joint,
+    kick,
     mail,
     maintenance,
     menu,
@@ -33,6 +34,7 @@ from . import (
     start,
     straits,
     suspension,
+    switch,
     team,
     twitter,
 )
@@ -47,6 +49,8 @@ def register_all_routers(dp: Dispatcher) -> None:
     dp.include_router(claim.router)
     dp.include_router(admin.router)
     dp.include_router(admin_roles.router)
+    dp.include_router(kick.router)
+    dp.include_router(switch.router)
     dp.include_router(team.router)
     dp.include_router(suspension.router)
     dp.include_router(maintenance.router)

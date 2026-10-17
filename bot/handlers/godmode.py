@@ -1317,6 +1317,9 @@ async def cb_ban(call: CallbackQuery, session: AsyncSession) -> None:
     if country is None or country.owner_user_id is None:
         await call.answer("این کشور مالک ندارد.", show_alert=True)
         return
+    if settings.is_admin(country.owner_user_id):
+        await call.answer("⛔️ امکان مسدودسازی ادمین یا مالک بازی وجود ندارد.", show_alert=True)
+        return
     await users_repo.set_banned(session, country.owner_user_id, True)
     await call.answer("کاربر بن شد ⛔️")
     try:
@@ -1407,6 +1410,9 @@ async def cb_suspend(call: CallbackQuery, session: AsyncSession) -> None:
     country = await countries_repo.get_country(session, cid)
     if country is None or country.owner_user_id is None:
         await call.answer("این کشور مالک ندارد.", show_alert=True)
+        return
+    if settings.is_admin(country.owner_user_id):
+        await call.answer("⛔️ امکان تعلیق ادمین یا مالک بازی وجود ندارد.", show_alert=True)
         return
     await users_repo.set_suspended(session, country.owner_user_id, True)
     await call.answer("مالک معلق شد ⏸")

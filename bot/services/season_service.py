@@ -173,6 +173,15 @@ async def reset_season(session: AsyncSession) -> dict[str, int]:
     await session.execute(delete(BlockedCargo))
     await session.execute(delete(StraitBlockRule))
     await session.execute(delete(StraitConfig))
+    # --- آپدیت شماره ۴: بازنشانی نرخ‌های بازار جهانی به قیمت پایه ---
+    from ..constants import DEFAULT_BASE_PRICES
+    from ..database.repositories import market as market_repo
+    await market_repo.reset_all_market_prices(
+        session=session,
+        base_prices={k.value: v for k, v in DEFAULT_BASE_PRICES.items()},
+        reason_code="SEASON_RESET",
+        reason_text="آغاز فصل جدید و بازنشانی بازار جهانی به نرخ پایه",
+    )
 
     # --- ۲) آزادسازی مالکیت همه‌ی کشورها و رفع تعلیق کاربران ---
     await session.execute(

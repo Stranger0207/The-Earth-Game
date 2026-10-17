@@ -29,8 +29,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..config import get_settings
 from ..constants import (
+    DEFAULT_BASE_PRICES,
     DEPLOY_BRANCHES,
     INVESTMENT_CATEGORIES,
+    MARKET_REASON_TEMPLATES,
     MIL_FACTORY_YIELD,
 )
 from ..database.models import (
@@ -58,6 +60,7 @@ from ..enums import (
     FACILITY_FA,
     MIL_FACTORY_CATEGORY,
     MIL_FACTORY_FA,
+    RESOURCE_EMOJI,
     RESOURCE_FA,
     RESOURCE_UNIT_FA,
     SANCTION_FA,
@@ -132,6 +135,7 @@ def _home_kb() -> InlineKeyboardMarkup:
     builder.button(text="✈️ پروازهای دیپلماتیک", callback_data="god:flights", style=STYLE_MAIN)
     builder.button(text="🚫 تحریم‌ها", callback_data="god:sanctions", style=STYLE_MAIN)
     builder.button(text="📈 سرمایه‌گذاری‌ها", callback_data="god:invest", style=STYLE_MAIN)
+    builder.button(text="📊 نرخ بازار جهانی", callback_data="god:market", style=STYLE_MAIN)
     builder.button(text="🏗 پروژه‌های اقتصادی", callback_data="god:projects", style=STYLE_MAIN)
     builder.button(text="☢️ برنامه‌های هسته‌ای", callback_data="god:nuclear", style=STYLE_MAIN)
     builder.button(text="💥 سیستم تلفات", callback_data="god:casualty", style=STYLE_NO)
@@ -1177,10 +1181,49 @@ async def msg_god_value(message: Message, state: FSMContext, session: AsyncSessi
         await send_log(bot, f"🏭 <b>افزودن کارخانه نظامی توسط مدیریت</b>\n{MIL_FACTORY_FA[ftype]} برای کشور {cid}")
         return
 
+    if kind == "market_custom_reason":
+        await state.clear()
+        res_key = data.get("god_res")
+        new_price = data.get("god_new_price")
+        delta_pct = data.get("god_delta_pct")
+        reason_text = message.text.strip()
+        from ..services import market_service
+        updated_mp = await market_service.update_price(
+            session=session,
+            resource=res_key,
+            delta_pct=delta_pct,
+            absolute_price=new_price,
+            reason_code="ADMIN_MANUAL",
+            custom_reason_text=reason_text,
+        )
+        await session.commit()
+        await message.answer(
+            f"✅ نرخ ذخیره <b>{res_key}</b> با موفقیت به <b>{fa_money(updated_mp.current_price)}</b> تغییر یافت.\n"
+            f"📌 دلیل ثبت‌شده: {reason_text}",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                InlineKeyboardButton(text="🔙 بازگشت به بازار", callback_data="god:market", style=STYLE_MAIN)
+            ]]),
+        )
+        await send_log(
+            bot,
+            f"📈 <b>تغییر دستی نرخ بازار توسط مدیریت</b>\n"
+            f"ذخیره: {res_key}\n"
+            f"نرخ جدید: {fa_money(updated_mp.current_price)}\n"
+            f"روند: {updated_mp.trend} ({updated_mp.change_pct:+.1f}٪)\n"
+            f"دلیل: {reason_text}",
+        )
+        return
+
     # --- kindهای با ورودی عددی ---
     value = parse_amount(message.text)
     if value is None:
         await message.answer("عدد نامعتبر است. لطفاً دوباره وارد کنید.")
+        return
+
+    if kind == "market_price_abs":
+        res_key = data.get("god_res")
+        await state.update_data(god_new_price=float(value))
+        await _show_god_market_reason_picker(message, state, res_key, new_price=float(value))
         return
 
     if kind == "invadd_amount":
@@ -1955,3 +1998,385 @@ async def cb_god_project_delete(call: CallbackQuery, session: AsyncSession) -> N
         await cb_god_country_projects(call, session)
     else:
         await call.answer("پروژه یافت نشد.", show_alert=True)
+
+
+# ============================================================
+#  📊 مدیریت نرخ لحظه‌ای بازار جهانی (آپدیت شماره ۴)
+# ============================================================
+
+async def _show_god_market_panel(target: Message | CallbackQuery, session: AsyncSession) -> None:
+    from ..database.repositories import bot_state as bstate_repo
+    from ..services import market_service
+
+    bstate = await bstate_repo.get_state(session)
+    news_enabled = getattr(bstate, "market_news_enabled", True)
+    status_tag = "🟢 فعال (روشن)" if news_enabled else "🔴 غیرفعال (خاموش)"
+
+    prices = await market_service.get_all_prices(session)
+
+    text_lines = [
+        "📊 <b>مدیریت نرخ‌های لحظه‌ای بازار جهانی (WTO)</b>",
+        f"🔔 وضعیت پخش اخبار ۱۲ ساعته در کانال اقتصاد: <b>{status_tag}</b>",
+        "━━━━━━━━━━━━━━━━━━━━",
+        "برای تغییر قیمت یا مشاهده جزئیات روی هر ذخیره کلیک کنید:\n",
+    ]
+
+    builder = InlineKeyboardBuilder()
+
+    for p in prices:
+        try:
+            rtype = ResourceType(p.resource)
+            emoji = RESOURCE_EMOJI.get(rtype, "📦")
+            name = RESOURCE_FA.get(rtype, p.resource)
+            unit = RESOURCE_UNIT_FA.get(rtype, "واحد")
+        except Exception:
+            emoji, name, unit = "📦", p.resource, "واحد"
+
+        trend_icon = "⚪️"
+        sign = ""
+        if p.trend == "UP" or p.change_pct > 0.05:
+            trend_icon = "🟢"
+            sign = "+"
+        elif p.trend == "DOWN" or p.change_pct < -0.05:
+            trend_icon = "🔴"
+
+        btn_text = f"{emoji} {name}: {fa_money(p.current_price)} ({trend_icon} {sign}{fa_number(p.change_pct, 1)}٪)"
+        builder.button(text=btn_text, callback_data=f"godm:res:{p.resource}", style=STYLE_MAIN)
+
+    builder.adjust(1)
+
+    # دکمه‌های کنترل سراسری
+    builder.row(
+        InlineKeyboardButton(
+            text=f"🔔 {'خاموش‌کردن' if news_enabled else 'روشن‌کردن'} اخبار ۱۲ ساعته",
+            callback_data="godm:toggle_news",
+            style=STYLE_NO if news_enabled else STYLE_OK,
+        ),
+        InlineKeyboardButton(
+            text="📢 انتشار فوری در کانال اقتصاد",
+            callback_data="godm:broadcast_now",
+            style=STYLE_OK,
+        ),
+    )
+    builder.row(
+        InlineKeyboardButton(text="🔙 بازگشت به گاد مود", callback_data="god:home", style=STYLE_MAIN)
+    )
+
+    full_text = "\n".join(text_lines)
+    if isinstance(target, CallbackQuery):
+        await safe_edit(target, full_text, reply_markup=builder.as_markup())
+    else:
+        await target.answer(full_text, reply_markup=builder.as_markup())
+
+
+@router.message(Command("market"))
+async def cmd_market(message: Message, session: AsyncSession) -> None:
+    """دستور مستقیم ورود به پنل مدیریت نرخ بازار جهانی (فقط ادمین)."""
+    if not await _guard(message):
+        return
+    await _show_god_market_panel(message, session)
+
+
+@router.message(Command("marketnews"))
+async def cmd_marketnews(message: Message, session: AsyncSession) -> None:
+    """دستور روشن/خاموش کردن ارسال اخبار ۱۲ ساعته بازار به کانال اقتصاد."""
+    if not await _guard(message):
+        return
+    from ..database.repositories import bot_state as bstate_repo
+
+    bstate = await bstate_repo.get_state(session)
+    cur = getattr(bstate, "market_news_enabled", True)
+    new_val = not cur
+    await bstate_repo.update_state(session, market_news_enabled=new_val)
+    await session.commit()
+
+    action_fa = "فعال شد 🟢" if new_val else "غیرفعال شد 🔴"
+    await message.answer(f"📢 ارسال اخبار ۱۲ ساعته نرخ ذخایر به کانال اقتصاد {action_fa}")
+    await send_log(
+        bot,
+        f"⚙️ <b>تغییر وضعیت اخبار بازار توسط مدیریت</b>\n"
+        f"وضعیت جدید: {'فعال 🟢' if new_val else 'غیرفعال 🔴'}\n"
+        f"توسط: @{message.from_user.username or message.from_user.id}",
+    )
+
+
+@router.callback_query(F.data == "god:market")
+async def cb_god_market(call: CallbackQuery, session: AsyncSession) -> None:
+    """ورود به پنل بازار جهانی از طریق منوی گاد مود."""
+    if not await _guard(call):
+        return
+    await call.answer()
+    await _show_god_market_panel(call, session)
+
+
+@router.callback_query(F.data == "godm:toggle_news")
+async def cb_god_market_toggle_news(call: CallbackQuery, session: AsyncSession) -> None:
+    """تاگل پخش اخبار ۱۲ ساعته بازار در کانال اقتصاد."""
+    if not await _guard(call):
+        return
+    from ..database.repositories import bot_state as bstate_repo
+
+    bstate = await bstate_repo.get_state(session)
+    cur = getattr(bstate, "market_news_enabled", True)
+    new_val = not cur
+    await bstate_repo.update_state(session, market_news_enabled=new_val)
+    await session.commit()
+
+    action_fa = "فعال شد 🟢" if new_val else "غیرفعال شد 🔴"
+    await call.answer(f"اخبار ۱۲ ساعته {action_fa}", show_alert=True)
+    await _show_god_market_panel(call, session)
+
+
+@router.callback_query(F.data == "godm:broadcast_now")
+async def cb_god_market_broadcast_now(call: CallbackQuery, session: AsyncSession) -> None:
+    """انتشار فوری و دستی گزارش نرخ‌ها در کانال اقتصاد."""
+    if not await _guard(call):
+        return
+    from ..scheduler.jobs import broadcast_market_rates
+
+    ok = await broadcast_market_rates(bot, force=True)
+    if ok:
+        await call.answer("تابلوی نرخ‌ها با موفقیت در کانال اقتصاد منتشر شد 📢", show_alert=True)
+        await send_log(bot, "📢 <b>انتشار فوری تابلوی بورس در کانال اقتصاد توسط مدیریت</b>")
+    else:
+        await call.answer("خطا در انتشار اخبار یا عدم وجود نرخ‌ها.", show_alert=True)
+
+
+@router.callback_query(F.data.startswith("godm:res:"))
+async def cb_god_market_resource(call: CallbackQuery, session: AsyncSession) -> None:
+    """مشاهده مشخصات یک ذخیره و گزینه‌های تغییر قیمت."""
+    if not await _guard(call):
+        return
+    await call.answer()
+    res_key = call.data.split(":")[2]
+
+    from ..services import market_service
+    mp = await market_service.get_current_price(session, res_key)
+    all_p = await market_service.get_all_prices(session)
+    record = next((p for p in all_p if p.resource == res_key), None)
+
+    try:
+        rtype = ResourceType(res_key)
+        emoji = RESOURCE_EMOJI.get(rtype, "📦")
+        name = RESOURCE_FA.get(rtype, res_key)
+        unit = RESOURCE_UNIT_FA.get(rtype, "واحد")
+        base_p = DEFAULT_BASE_PRICES.get(rtype, 100.0)
+    except Exception:
+        emoji, name, unit = "📦", res_key, "واحد"
+        base_p = 100.0
+
+    trend_icon = "⚪️"
+    change_pct = record.change_pct if record else 0.0
+    if record and (record.trend == "UP" or change_pct > 0.05):
+        trend_icon = "🟢"
+    elif record and (record.trend == "DOWN" or change_pct < -0.05):
+        trend_icon = "🔴"
+
+    last_reason = record.last_reason_text if record else "تعیین اولیه"
+
+    text = (
+        f"{emoji} <b>مدیریت نرخ ذخیره «{name}»</b>\n\n"
+        f"💵 <b>قیمت لحظه‌ای فعلی:</b> {fa_money(mp)} / {unit}\n"
+        f"📊 <b>قیمت پایه استاندارد:</b> {fa_money(base_p)}\n"
+        f"📉 <b>کف مجاز نوسان (۳۰٪):</b> {fa_money(base_p * 0.3)}\n"
+        f"📈 <b>سقف مجاز نوسان (۴۰۰٪):</b> {fa_money(base_p * 4.0)}\n"
+        f"📈 <b>آخرین روند:</b> {trend_icon} {fa_number(change_pct, 1)}٪\n"
+        f"📌 <b>دلیل آخرین تغییر:</b> {last_reason}\n\n"
+        "دستور مورد نظر را انتخاب کنید:"
+    )
+
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="✏️ تعیین قیمت مستقیم", callback_data=f"godm:set_abs:{res_key}", style=STYLE_OK),
+            ],
+            [
+                InlineKeyboardButton(text="📈 +۱۰٪", callback_data=f"godm:set_rel:{res_key}:10", style=STYLE_OK),
+                InlineKeyboardButton(text="📈 +۲۵٪", callback_data=f"godm:set_rel:{res_key}:25", style=STYLE_OK),
+                InlineKeyboardButton(text="📈 +۵۰٪", callback_data=f"godm:set_rel:{res_key}:50", style=STYLE_OK),
+            ],
+            [
+                InlineKeyboardButton(text="📉 -۱۰٪", callback_data=f"godm:set_rel:{res_key}:-10", style=STYLE_NO),
+                InlineKeyboardButton(text="📉 -۲۵٪", callback_data=f"godm:set_rel:{res_key}:-25", style=STYLE_NO),
+                InlineKeyboardButton(text="📉 -۵۰٪", callback_data=f"godm:set_rel:{res_key}:-50", style=STYLE_NO),
+            ],
+            [
+                InlineKeyboardButton(text="♻️ بازگرداندن به قیمت پایه اولیه", callback_data=f"godm:reset:{res_key}", style=STYLE_MAIN),
+            ],
+            [
+                InlineKeyboardButton(text="🔙 بازگشت به فهرست ذخایر", callback_data="god:market", style=STYLE_MAIN),
+            ],
+        ]
+    )
+    await safe_edit(call, text, reply_markup=kb)
+
+
+@router.callback_query(F.data.startswith("godm:set_abs:"))
+async def cb_god_market_set_abs(call: CallbackQuery, state: FSMContext) -> None:
+    """درخواست وارد کردن قیمت جدید به صورت مستقیم."""
+    if not await _guard(call):
+        return
+    await call.answer()
+    res_key = call.data.split(":")[2]
+    await state.set_state(GodForm.entering_value)
+    await state.update_data(god_kind="market_price_abs", god_res=res_key)
+
+    await safe_edit(
+        call,
+        f"✏️ لطفاً قیمت جدید هر واحد از <b>{res_key}</b> را به دلار وارد کنید (مثلاً 500k یا 12m):",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="🔙 لغو", callback_data=f"godm:res:{res_key}", style=STYLE_MAIN)
+        ]]),
+    )
+
+
+@router.callback_query(F.data.startswith("godm:set_rel:"))
+async def cb_god_market_set_rel(call: CallbackQuery, state: FSMContext) -> None:
+    """تغییر درصدی قیمت و انتقال به مرحله انتخاب دلیل."""
+    if not await _guard(call):
+        return
+    await call.answer()
+    parts = call.data.split(":")
+    res_key = parts[2]
+    delta_pct = float(parts[3])
+
+    await state.update_data(god_res=res_key, god_delta_pct=delta_pct, god_new_price=None)
+    await _show_god_market_reason_picker(call, state, res_key, delta_pct=delta_pct)
+
+
+@router.callback_query(F.data.startswith("godm:reset:"))
+async def cb_god_market_reset(call: CallbackQuery, state: FSMContext, session: AsyncSession) -> None:
+    """بازنشانی قیمت به نرخ پایه اولیه و انتقال به مرحله دلیل."""
+    if not await _guard(call):
+        return
+    await call.answer()
+    res_key = call.data.split(":")[2]
+    try:
+        rtype = ResourceType(res_key)
+        base_p = DEFAULT_BASE_PRICES.get(rtype, 100.0)
+    except Exception:
+        base_p = 100.0
+
+    await state.update_data(god_res=res_key, god_new_price=base_p, god_delta_pct=None)
+    await _show_god_market_reason_picker(call, state, res_key, new_price=base_p)
+
+
+async def _show_god_market_reason_picker(
+    target: Message | CallbackQuery,
+    state: FSMContext,
+    res_key: str,
+    new_price: float | None = None,
+    delta_pct: float | None = None,
+) -> None:
+    """نمایش منوی انتخاب دلیل آماده یا تایپ دلیل دلخواه."""
+    prompt = ""
+    if new_price is not None:
+        prompt = f"قیمت جدید هدف: <b>{fa_money(new_price)}</b>\n"
+    elif delta_pct is not None:
+        prompt = f"تغییر درصدی: <b>{delta_pct:+.1f}٪</b>\n"
+
+    text = (
+        f"📌 <b>ثبت دلیل تغییر نرخ برای {res_key}</b>\n\n"
+        f"{prompt}"
+        "یکی از دلایل آماده زیر را انتخاب کنید یا دلیل دلخواه خود را تایپ نمایید:"
+    )
+
+    builder = InlineKeyboardBuilder()
+
+    reasons_list = [
+        ("HIGH_DEMAND", "🟢 افزایش تقاضا"),
+        ("AUCTION_FEVER", "🟢 رقابت مزایده"),
+        ("STRAIT_CLOSURE", "🟢 مسدود شدن تنگه"),
+        ("STRAIT_INTERCEPTION", "🟢 توقیف/حمله به کشتی"),
+        ("GLOBAL_SHORTAGE", "🟢 کمبود عرضه جهانی"),
+        ("WAR_CONSUMPTION", "🟢 مصارف جنگی"),
+        ("OVERSUPPLY", "🔴 مازاد عرضه"),
+        ("LOW_DEMAND", "🔴 رکود تقاضا"),
+        ("STRAIT_REOPENED", "🔴 بازگشایی تنگه‌ها"),
+        ("MASS_SELLING", "🔴 فروش انبوه"),
+        ("ADMIN_MANUAL", "⚙️ مداخله مدیریت"),
+    ]
+
+    for code, label in reasons_list:
+        builder.button(text=label, callback_data=f"godm:apply_reason:{code}")
+
+    builder.adjust(2)
+    builder.row(
+        InlineKeyboardButton(text="✍️ تایپ دلیل دلخواه", callback_data="godm:custom_reason", style=STYLE_OK)
+    )
+    builder.row(
+        InlineKeyboardButton(text="🔙 لغو", callback_data=f"godm:res:{res_key}", style=STYLE_MAIN)
+    )
+
+    if isinstance(target, CallbackQuery):
+        await safe_edit(target, text, reply_markup=builder.as_markup())
+    else:
+        await target.answer(text, reply_markup=builder.as_markup())
+
+
+@router.callback_query(F.data.startswith("godm:apply_reason:"))
+async def cb_god_market_apply_reason(
+    call: CallbackQuery, state: FSMContext, session: AsyncSession
+) -> None:
+    """اعمال دلیل آماده انتخاب‌شده و ثبت نهایی تغییر نرخ."""
+    if not await _guard(call):
+        return
+    await call.answer()
+    reason_code = call.data.split(":")[2]
+
+    data = await state.get_data()
+    await state.clear()
+
+    res_key = data.get("god_res")
+    new_price = data.get("god_new_price")
+    delta_pct = data.get("god_delta_pct")
+
+    if not res_key:
+        await call.answer("اطلاعات ذخیره منقضی شده است.", show_alert=True)
+        await _show_god_market_panel(call, session)
+        return
+
+    from ..services import market_service
+    updated_mp = await market_service.update_price(
+        session=session,
+        resource=res_key,
+        delta_pct=delta_pct,
+        absolute_price=new_price,
+        reason_code=reason_code,
+    )
+    await session.commit()
+
+    reason_desc = MARKET_REASON_TEMPLATES.get(reason_code, reason_code)
+
+    await call.answer("نرخ جدید با موفقیت اعمال گردید ✅", show_alert=True)
+    await send_log(
+        bot,
+        f"📈 <b>تغییر نرخ بازار جهانی توسط مدیریت</b>\n"
+        f"ذخیره: {res_key}\n"
+        f"نرخ جدید: {fa_money(updated_mp.current_price)}\n"
+        f"روند: {updated_mp.trend} ({updated_mp.change_pct:+.1f}٪)\n"
+        f"دلیل: {reason_desc}",
+    )
+    await _show_god_market_panel(call, session)
+
+
+@router.callback_query(F.data == "godm:custom_reason")
+async def cb_god_market_custom_reason_ask(call: CallbackQuery, state: FSMContext) -> None:
+    """ورود به حالت تایپ دلیل دلخواه برای تغییر نرخ."""
+    if not await _guard(call):
+        return
+    await call.answer()
+    await state.set_state(GodForm.entering_value)
+    await state.update_data(god_kind="market_custom_reason")
+
+    data = await state.get_data()
+    res_key = data.get("god_res", "")
+
+    await safe_edit(
+        call,
+        f"✍️ لطفاً متن دلیل تغییر نرخ برای <b>{res_key}</b> را تایپ کرده و ارسال کنید:\n"
+        "<i>(این متن دقیقاً در تابلوی بورس به همه بازیکنان نمایش داده خواهد شد)</i>",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="🔙 لغو", callback_data=f"godm:res:{res_key}", style=STYLE_MAIN)
+        ]]),
+    )

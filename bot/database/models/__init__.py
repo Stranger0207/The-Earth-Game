@@ -32,6 +32,7 @@ from .governance import Law, Protest, VisaRequirement
 from .investment import Investment
 from .joint_request import JointBuildRequest
 from .letter import Letter
+from .market_price import MarketPrice
 from .military import MilitaryAsset
 from .military_base import BaseEquipment, MilitaryBase
 from .military_factory import MilitaryFactory
@@ -79,6 +80,7 @@ __all__ = [
     "JointBuildRequest",
     "Law",
     "Letter",
+    "MarketPrice",
     "GroupMeeting",
     "GroupMeetingParticipant",
     "Meeting",

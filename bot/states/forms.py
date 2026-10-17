@@ -25,14 +25,14 @@ class FacilityForm(StatesGroup):
 
 
 class SaleForm(StatesGroup):
-    """فرم فروش ذخیره به کشور دیگر."""
+    """فرم فروش ذخیره به کشور دیگر (آپدیت شماره ۴: نرخ خودکار جهانی یا هدیه)."""
 
     choosing_resource = State()
     entering_amount = State()
     choosing_buyer = State()
-    entering_price = State()
     choosing_transport_mode = State()  # انتخاب شیوه حمل‌ونقل (دریایی/هوایی/زمینی)
     choosing_fee_payer = State()       # انتخاب پرداخت‌کننده عوارض (فروشنده/خریدار)
+    choosing_pricing_type = State()    # انتخاب فروش با نرخ جهانی یا هدیه
     confirming = State()
 
 

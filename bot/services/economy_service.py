@@ -4,9 +4,12 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
 
 from sqlalchemy.ext.asyncio import AsyncSession
+
+logger = logging.getLogger(__name__)
 
 from ..constants import (
     FACILITY_COST_USD,
@@ -282,6 +285,18 @@ async def transfer_sale(
     seller.inflation = max(0.0, seller.inflation + SALE_SELLER_INFLATION_DELTA)
     seller.economic_power = min(100.0, seller.economic_power + SALE_SELLER_ECON_POWER_GAIN)
     buyer.inflation = max(0.0, buyer.inflation + SALE_BUYER_INFLATION_DELTA)
+
+    # --- اثر بر نرخ لحظه‌ای بازار جهانی (آپدیت شماره ۴) ---
+    try:
+        from . import market_service
+        await market_service.on_trade_executed(
+            session=session,
+            resource=resource,
+            amount=amount,
+            is_gift=(price <= 0),
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Failed to update market price on trade: %s", exc)
 
     return {
         "duty": duty,

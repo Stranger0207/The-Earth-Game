@@ -103,6 +103,8 @@ _COLUMN_MIGRATIONS = [
     # نتایج و اثرات لایحه
     ("laws", "stability_effect", "DOUBLE PRECISION NOT NULL DEFAULT 0.0"),
     ("laws", "satisfaction_effect", "DOUBLE PRECISION NOT NULL DEFAULT 0.0"),
+    # آپدیت شماره ۴ — پخش اخبار ۱۲ ساعته بازار در کانال اقتصاد
+    ("bot_state", "market_news_enabled", "BOOLEAN NOT NULL DEFAULT TRUE"),
 ]
 
 

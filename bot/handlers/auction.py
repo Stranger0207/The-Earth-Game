@@ -949,6 +949,18 @@ async def cb_auction_bid_confirm(
     # ۲. ثبت پیشنهاد در دیتابیس
     await auctions_repo.add_bid(session, auction.id, country.id, bid_amount, AUCTION_ENTRY_FEE)
 
+    # واکنش نرخ بازار جهانی به تب مزایده (آپدیت شماره ۴)
+    try:
+        from ..services import market_service
+        await market_service.on_auction_bid_placed(
+            session=session,
+            resource=auction.resource,
+            bid_amount=bid_amount,
+            base_amount=auction.base_price,
+        )
+    except Exception:
+        pass
+
     await call.message.edit_text(
         f"✅ <b>پیشنهاد شما با موفقیت ثبت گردید!</b>\n\n"
         f"مبلغ پیشنهادی: {fa_money(bid_amount)}\n"

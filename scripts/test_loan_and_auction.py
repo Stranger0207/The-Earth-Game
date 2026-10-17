@@ -116,9 +116,9 @@ async def run_tests() -> None:
         assert c2.govt_debt > 0
         print("  [OK] کشور با بدهی دولتی شناسایی شد و شرایط منع وام دارد.")
 
-        # کشور ۱ بدهی ندارد و رتبه عادی دارد -> سقف ۲ تریلیون
+        # کشور ۱ بدهی ندارد و رتبه عادی دارد -> سقف ۱۰۰ میلیون
         assert c1.credit_rating == CreditRating.NORMAL
-        assert LOAN_LIMIT_NORMAL == 2_000_000_000_000.0
+        assert LOAN_LIMIT_NORMAL == 100_000_000.0
 
         # بررسی مدت زمان تماس تلفنی
         assert PHONE_CALL_DURATION_MINUTES == 10, "مدت تماس تلفنی ۱۰ دقیقه نیست!"
@@ -129,8 +129,8 @@ async def run_tests() -> None:
         assert LOAN_COOLDOWN_DAYS == 4
         assert LOAN_COOLDOWN_HOURS == 96
 
-        # دریافت وام ۱.۵ تریلیون توسط کشور ۱
-        loan_amount = 1_500_000_000_000.0
+        # دریافت وام ۵۰ میلیون توسط کشور ۱
+        loan_amount = 50_000_000.0
         deadline = now + timedelta(days=LOAN_DURATION_DAYS)
         reward_deadline = now + timedelta(days=LOAN_GOOD_CREDIT_DAYS)
         loan1 = await loans_repo.create_loan(
@@ -139,7 +139,7 @@ async def run_tests() -> None:
         c1.budget += loan_amount
         await cd_repo.touch(session, c1.id, "bank_loan")
         await session.commit()
-        print(f"  [OK] وام #{loan1.id} به مبلغ ۱.۵ تریلیون دلار با موفقیت برای کشور ۱ ثبت شد.")
+        print(f"  [OK] وام #{loan1.id} به مبلغ ۵۰ میلیون دلار با موفقیت برای کشور ۱ ثبت شد.")
 
         # بررسی فعال شدن کول‌داون ۴ روزه
         cd_rem = await cd_repo.remaining_seconds(session, c1.id, "bank_loan", LOAN_COOLDOWN_HOURS)
@@ -150,11 +150,11 @@ async def run_tests() -> None:
         c1 = await session.get(Country, c1_id)
         active_loan = await loans_repo.get_active_loan(session, c1.id)
         assert active_loan is not None
-        assert active_loan.remaining_amount == 1_500_000_000_000.0
+        assert active_loan.remaining_amount == 50_000_000.0
         assert active_loan.status == LoanStatus.ACTIVE
 
         # بازپرداخت سریع زیر ۳ روز (مثلاً تسویه کامل در روز دوم)
-        pay_amount = 1_500_000_000_000.0
+        pay_amount = 50_000_000.0
         c1.budget -= pay_amount
         active_loan.remaining_amount = 0.0
         active_loan.status = LoanStatus.PAID
@@ -169,12 +169,12 @@ async def run_tests() -> None:
     async with session_factory() as session:
         c1 = await session.get(Country, c1_id)
         assert c1.credit_rating == CreditRating.GOOD
-        # سقف وام کشور خوش‌حساب باید ۵ تریلیون باشد
-        assert LOAN_LIMIT_GOOD == 5_000_000_000_000.0
-        print("  [OK] سقف وام کشور خوش‌حساب ۵ تریلیون دلار تأیید شد.")
+        # سقف وام کشور خوش‌حساب باید ۲۰۰ میلیون باشد
+        assert LOAN_LIMIT_GOOD == 200_000_000.0
+        print("  [OK] سقف وام کشور خوش‌حساب ۲۰۰ میلیون دلار تأیید شد.")
 
-        # کشور ۱ یک وام جدید ۴ تریلیونی می‌گیرد
-        loan2_amount = 4_000_000_000_000.0
+        # کشور ۱ یک وام جدید ۱۵۰ میلیونی می‌گیرد
+        loan2_amount = 150_000_000.0
         loan2 = await loans_repo.create_loan(
             session,
             c1.id,
@@ -207,17 +207,17 @@ async def run_tests() -> None:
         loan2.paid_at = now
         loan2.status = LoanStatus.PAID
 
-        # طبق پاسخ کاربر: کشور بدحساب پس از تسویه سقفش ۱ تریلیون می‌شود (bad_credit)
+        # طبق پاسخ کاربر: کشور بدحساب پس از تسویه سقفش ۵۰ میلیون می‌شود (bad_credit)
         if c1.credit_rating == CreditRating.DEFAULTER:
             c1.credit_rating = CreditRating.BAD_CREDIT
         await session.commit()
-        print("  [OK] تسویه وام معوقه -> رفع مسدودی و تنزیل سقف به ۱ تریلیون (bad_credit).")
+        print("  [OK] تسویه وام معوقه -> رفع مسدودی و تنزیل سقف به ۵۰ میلیون (bad_credit).")
 
     async with session_factory() as session:
         c1 = await session.get(Country, c1_id)
         assert c1.credit_rating == CreditRating.BAD_CREDIT
-        assert LOAN_LIMIT_BAD_CREDIT == 1_000_000_000_000.0
-        print("  [OK] سقف ۱ تریلیون دلار برای بدحساب تسویه‌شده تأیید شد.")
+        assert LOAN_LIMIT_BAD_CREDIT == 50_000_000.0
+        print("  [OK] سقف ۵۰ میلیون دلار برای بدحساب تسویه‌شده تأیید شد.")
 
     # ----------------------------------------------------
     #  تست‌های سیستم مزایده منابع طبیعی
@@ -278,20 +278,20 @@ async def run_tests() -> None:
         c2 = await session.get(Country, c2_id)
         auc2 = await session.get(Auction, auc2_id)
 
-        # کشور ۲ در مزایده شرکت می‌کند: کسر کارمزد ۲۰۰ میلیون دلار
+        # کشور ۲ در مزایده شرکت می‌کند: کسر کارمزد ۲۰۰ هزار دلار
         initial_c2_budget = c2.budget
-        assert AUCTION_ENTRY_FEE == 200_000_000.0
+        assert AUCTION_ENTRY_FEE == 200_000.0
         c2.budget -= AUCTION_ENTRY_FEE
 
-        # ثبت پیشنهاد ۱.۲ میلیارد دلاری
-        bid1_amount = 1_200_000_000.0
+        # ثبت پیشنهاد ۱۲ میلیون دلاری
+        bid1_amount = 12_000_000.0
         bid1 = await auctions_repo.add_bid(session, auc2.id, c2.id, bid1_amount, AUCTION_ENTRY_FEE)
         await session.commit()
 
         assert c2.budget == initial_c2_budget - AUCTION_ENTRY_FEE
         assert auc2.highest_bid == bid1_amount
         assert auc2.highest_bidder_country_id == c2.id
-        print("  [OK] پیشنهاد اول ثبت شد، کارمزد ۲۰۰ میلیون دلاری کسر شد و بالاترین پیشنهاد به‌روز شد.")
+        print("  [OK] پیشنهاد اول ثبت شد، کارمزد ۲۰۰ هزار دلاری کسر شد و بالاترین پیشنهاد به‌روز شد.")
 
         # سناریو ۳: تسویه مزایده (پایان زودهنگام یا زمان‌بند)
         c1 = await session.get(Country, c1_id)

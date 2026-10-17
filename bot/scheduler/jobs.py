@@ -1272,6 +1272,88 @@ async def process_timed_suspensions(bot: Bot) -> None:
             await session.commit()
 
 
+_last_market_decay_at: datetime | None = None
+
+
+async def process_market_decay() -> None:
+    """بررسی دوره‌ای تعادل بازار جهانی و کمبود ذخایر (آپدیت شماره ۴)."""
+    global _last_market_decay_at
+    now = _utcnow()
+    if _last_market_decay_at is None or (now - _last_market_decay_at).total_seconds() >= 3600:
+        _last_market_decay_at = now
+        from ..services import market_service
+
+        async with async_session_factory() as session:
+            try:
+                await market_service.process_periodic_market_decay(session)
+                await market_service.process_global_shortage_check(session)
+                await session.commit()
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Market decay/shortage check failed: %s", exc)
+
+
+async def broadcast_market_rates(bot: Bot, force: bool = False) -> bool:
+    """ارسال گزارش رسمی ۱۲ ساعته تابلوی بورس و نرخ لحظه‌ای بازار جهانی به کانال اقتصاد (آپدیت شماره ۴)."""
+    from sqlalchemy import select
+    from ..database.models.bot_state import BotState
+    from ..enums import RESOURCE_EMOJI, RESOURCE_FA, RESOURCE_UNIT_FA, ResourceType
+    from ..services import market_service
+    from ..services.news_service import publish_news
+    from ..utils.numbers import fa_money, fa_number
+
+    async with async_session_factory() as session:
+        res = await session.execute(select(BotState).where(BotState.id == 1))
+        bstate = res.scalar_one_or_none()
+        if not force and bstate is not None:
+            if not getattr(bstate, "market_news_enabled", True):
+                logger.info("Market news broadcast skipped: market_news_enabled is False.")
+                return False
+            if bstate.maintenance or bstate.global_freeze:
+                logger.info("Market news broadcast skipped: maintenance or global_freeze is True.")
+                return False
+
+        prices = await market_service.get_all_prices(session)
+
+    if not prices:
+        return False
+
+    report_lines = [
+        "📊 <b>تابلوی رسمی بورس و شاخص قیمت ذخایر جهانی (WTO)</b>",
+        "━━━━━━━━━━━━━━━━━━━━",
+        "<i>گزارش تحلیلی ۱۲ ساعته نوسانات بازار بین‌المللی:</i>\n",
+    ]
+    for p in prices:
+        try:
+            rtype = ResourceType(p.resource)
+            emoji = RESOURCE_EMOJI.get(rtype, "📦")
+            name = RESOURCE_FA.get(rtype, p.resource)
+            unit = RESOURCE_UNIT_FA.get(rtype, "واحد")
+        except Exception:
+            emoji, name, unit = "📦", p.resource, "واحد"
+
+        trend_icon = "⚪️"
+        sign = ""
+        if p.trend == "UP" or p.change_pct > 0.05:
+            trend_icon = "🟢"
+            sign = "+"
+        elif p.trend == "DOWN" or p.change_pct < -0.05:
+            trend_icon = "🔴"
+
+        change_str = f"{trend_icon} {sign}{fa_number(p.change_pct, 1)}٪"
+        price_str = f"{fa_money(p.current_price)} / {unit}"
+        reason = p.last_reason_text or "تعادل عرضه و تقاضای بین‌المللی"
+
+        report_lines.append(f"{emoji} <b>{name}:</b> {price_str} ({change_str})")
+        report_lines.append(f"   ▫️ <i>علت: {reason}</i>\n")
+
+    report_lines.append("━━━━━━━━━━━━━━━━━━━━")
+    report_lines.append("🌐 <i>مرکز مبادلات تجاری سازمان تجارت جهانی — به‌روزرسانی بعدی ۱۲ ساعت دیگر</i>")
+
+    news_text = "\n".join(report_lines).strip()
+    await publish_news(bot, NewsCategory.ECONOMY, news_text)
+    return True
+
+
 async def _tick(bot: Bot) -> None:
     """جاب اصلی که هر دقیقه همه‌ی پردازش‌های زمان‌دار را اجرا می‌کند.
 
@@ -1295,6 +1377,7 @@ async def _tick(bot: Bot) -> None:
         ("process_taxes", lambda: process_taxes(bot)),
         ("process_protests", lambda: process_protests(bot)),
         ("process_timed_suspensions", lambda: process_timed_suspensions(bot)),
+        ("process_market_decay", lambda: process_market_decay()),
     )
     for name, run in jobs:
         try:
@@ -1304,13 +1387,22 @@ async def _tick(bot: Bot) -> None:
 
 
 def setup_scheduler(bot: Bot) -> AsyncIOScheduler:
-    """زمان‌بند را پیکربندی و اجرا می‌کند (تیک هر ۶۰ ثانیه)."""
+    """زمان‌بند را پیکربندی و اجرا می‌کند (تیک هر ۶۰ ثانیه + ارسال ۱۲ ساعته اخبار بازار)."""
     scheduler.add_job(
         _tick,
         trigger="interval",
         seconds=60,
         args=[bot],
         id="main_tick",
+        replace_existing=True,
+        max_instances=1,
+    )
+    scheduler.add_job(
+        broadcast_market_rates,
+        trigger="interval",
+        hours=12,
+        args=[bot],
+        id="market_rates_broadcast",
         replace_existing=True,
         max_instances=1,
     )

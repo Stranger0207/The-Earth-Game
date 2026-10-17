@@ -34,9 +34,13 @@ class BotState(Base):
     # تازه‌تأییدشده هم خودکار معلق می‌شود (کاربر بدون کشور می‌تواند /claim بزند).
     global_freeze: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
+    # پخش اخبار ۱۲ ساعته بازار در کانال اقتصاد (آپدیت شماره ۴)
+    market_news_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
     def __repr__(self) -> str:
         return (
             f"<BotState maintenance={self.maintenance} "
             f"freeze={self.global_freeze} "
+            f"market_news={self.market_news_enabled} "
             f"auto={self.auto_off_enabled} {self.auto_off_start}-{self.auto_off_end}>"
         )

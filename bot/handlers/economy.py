@@ -148,6 +148,50 @@ async def cb_reserves(call: CallbackQuery, session: AsyncSession, db_user: User)
     )
 
 
+@router.callback_query(F.data.in_({"econ:market_rates", "econ:market_rates:refresh"}))
+async def cb_market_rates(call: CallbackQuery, session: AsyncSession, db_user: User) -> None:
+    """نمایش پنل زنده نرخ‌های لحظه‌ای بازار جهانی ذخایر (آپدیت شماره ۴)."""
+    country = await get_player_country(session, db_user)
+    if country is None:
+        await call.answer()
+        await safe_edit(call, NO_COUNTRY_TEXT)
+        return
+
+    if not await assert_feature(call, session, country, "econ.market_rates"):
+        return
+
+    if call.data == "econ:market_rates:refresh":
+        await call.answer("نرخ‌ها بروزرسانی شد 🔄")
+    else:
+        await call.answer()
+
+    from ..services import market_service
+    from ..utils.formatting import render_market_rates_panel
+
+    prices = await market_service.get_all_prices(session)
+    text = render_market_rates_panel(prices)
+
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="🔄 بروزرسانی لحظه‌ای نرخ‌ها",
+                    callback_data="econ:market_rates:refresh",
+                    style=STYLE_OK,
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="🔙 بازگشت به منوی اقتصاد",
+                    callback_data="menu:economy",
+                    style=STYLE_MAIN,
+                )
+            ],
+        ]
+    )
+    await safe_edit(call, text, reply_markup=kb)
+
+
 # ============================================================
 #  احداث تأسیسات
 # ============================================================
@@ -689,54 +733,23 @@ async def _show_sale_buyers(
 
 
 @router.callback_query(SaleForm.choosing_buyer, F.data.startswith("sell_buyer:"))
-async def cb_sell_buyer(call: CallbackQuery, state: FSMContext) -> None:
+async def cb_sell_buyer(
+    call: CallbackQuery, state: FSMContext, session: AsyncSession, db_user: User
+) -> None:
+    """انتخاب کشور خریدار و ورود مستقیم به انتخاب شیوه حمل‌ونقل (حذف مرحله قیمت‌گذاری دستی)."""
     await call.answer()
     buyer_id = int(call.data.split(":")[1])
     await state.update_data(buyer_id=buyer_id)
-    await state.set_state(SaleForm.entering_price)
-    await safe_edit(call,
-        "مبلغ فروش را به دلار وارد کنید (مثلاً 500m برای ۵۰۰ میلیون):",
-        reply_markup=_back_kb("sback:buyer"),
-    )
 
-
-@router.callback_query(StateFilter(SaleForm), F.data == "sback:buyer")
-async def cb_sale_back_buyer(
-    call: CallbackQuery, state: FSMContext, session: AsyncSession, db_user: User
-) -> None:
-    """بازگشت به انتخاب کشور خریدار."""
-    await call.answer()
-    country = await get_player_country(session, db_user)
-    if country is None:
-        await safe_edit(call,NO_COUNTRY_TEXT)
-        return
-    await _show_sale_buyers(call, state, session, country.id)
-
-
-@router.message(SaleForm.entering_price, F.text)
-async def msg_sell_price(
-    message: Message, state: FSMContext, session: AsyncSession, db_user: User
-) -> None:
-    price = parse_amount(message.text)
-    if price is None or price <= 0:
-        await message.answer("لطفاً یک مبلغ معتبر وارد کنید.")
-        return
     data = await state.get_data()
     country = await get_player_country(session, db_user)
-    if country is None:
-        await message.answer(NO_COUNTRY_TEXT)
+    buyer = await countries_repo.get_country(session, buyer_id)
+    if not country or not buyer:
+        await safe_edit(call, NO_COUNTRY_TEXT)
         await state.clear()
         return
 
     resource = data["resource"]
-    buyer_id = data["buyer_id"]
-    buyer = await countries_repo.get_country(session, buyer_id)
-    if buyer is None:
-        await message.answer("کشور خریدار یافت نشد.")
-        await state.clear()
-        return
-
-    await state.update_data(price=price)
 
     # تعیین شیوه‌های مجاز حمل‌ونقل (سوخت در هواپیما ممنوع، دریایی نیازمند دریا، زمینی برای همه)
     allowed_modes: list[TransportMode] = []
@@ -756,10 +769,11 @@ async def msg_sell_price(
     if not can_sea:
         notice += "⚠️ <i>به دلیل محصور بودن در خشکی، حمل دریایی امکان‌پذیر نیست.</i>\n"
 
-    await message.answer(
-        f"🚢✈️ <b>انتخاب شیوه حمل‌ونقل محموله:</b>\n\n{notice}"
+    await safe_edit(
+        call,
+        f"🚢✈️ <b>انتخاب شیوه حمل‌ونقل محموله به {buyer.flag} {buyer.name_fa}:</b>\n\n{notice}"
         "لطفاً روش ارسال محموله را انتخاب کنید:",
-        reply_markup=transport_modes_kb(allowed_modes, back_data="sback:buyer"),
+        reply_markup=transport_modes_kb(allowed_modes, back_data="sback:amt"),
     )
 
 
@@ -845,9 +859,9 @@ async def cb_sale_back_mode(
 
     await safe_edit(
         call,
-        f"🚢✈️ <b>انتخاب شیوه حمل‌ونقل محموله:</b>\n\n{notice}"
+        f"🚢✈️ <b>انتخاب شیوه حمل‌ونقل محموله به {buyer.flag} {buyer.name_fa}:</b>\n\n{notice}"
         "لطفاً روش ارسال محموله را انتخاب کنید:",
-        reply_markup=transport_modes_kb(allowed_modes, back_data="sback:buyer"),
+        reply_markup=transport_modes_kb(allowed_modes, back_data="sback:amt"),
     )
 
 
@@ -855,9 +869,78 @@ async def cb_sale_back_mode(
 async def cb_sell_fee_payer(
     call: CallbackQuery, state: FSMContext, session: AsyncSession, db_user: User
 ) -> None:
-    """ثبت نهایی معامله و ارسال پیش‌فاکتور شفاف برای خریدار."""
+    """تعیین پرداخت‌کننده عوارض و انتقال به مرحله تعیین نوع قیمت (نرخ جهانی یا هدیه)."""
     await call.answer()
     payer = call.data.split(":")[1]
+    await state.update_data(fee_payer=payer)
+
+    data = await state.get_data()
+    country = await get_player_country(session, db_user)
+    buyer = await countries_repo.get_country(session, data["buyer_id"])
+    if not country or not buyer:
+        await safe_edit(call, NO_COUNTRY_TEXT)
+        await state.clear()
+        return
+
+    from ..services import market_service
+    resource = data["resource"]
+    amount = float(data["amount"])
+    unit = RESOURCE_UNIT_FA[ResourceType(resource)]
+    rname = RESOURCE_FA[ResourceType(resource)]
+
+    current_price = await market_service.get_current_price(session, resource)
+    total_market_val = round(amount * current_price, 2)
+    await state.update_data(market_unit_price=current_price, market_total_val=total_market_val)
+
+    await state.set_state(SaleForm.choosing_pricing_type)
+
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text=f"💰 فروش به نرخ مصوب جهانی ({fa_money(total_market_val)})",
+                    callback_data="sell_type:market",
+                    style=STYLE_OK,
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="🎁 ارسال محموله به عنوان هدیه (رایگان)",
+                    callback_data="sell_type:gift",
+                    style=STYLE_MAIN,
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="🔙 بازگشت به شیوه حمل",
+                    callback_data="sback:mode",
+                    style=STYLE_MAIN,
+                )
+            ],
+        ]
+    )
+
+    await safe_edit(
+        call,
+        f"🏷 <b>تعیین ارزش و شرایط ارسال محموله</b>\n\n"
+        f"📦 <b>محموله:</b> {fa_number(amount)} {unit} {rname}\n"
+        f"🎯 <b>مقصد:</b> {buyer.flag} {buyer.name_fa}\n"
+        f"📊 <b>نرخ لحظه‌ای بازار جهانی:</b> {fa_money(current_price)} به ازای هر {unit}\n"
+        f"💵 <b>ارزش کل به نرخ رسمی WTO:</b> <b>{fa_money(total_market_val)}</b>\n\n"
+        "<i>قیمت‌گذاری به صورت هوشمند بر اساس بازار جهانی انجام می‌شود. نحوه ارسال را انتخاب کنید:</i>",
+        reply_markup=kb,
+    )
+
+
+@router.callback_query(SaleForm.choosing_pricing_type, F.data.startswith("sell_type:"))
+async def cb_sell_pricing_type(
+    call: CallbackQuery, state: FSMContext, session: AsyncSession, db_user: User
+) -> None:
+    """ثبت نهایی معامله بر اساس نرخ جهانی یا هدیه و ارسال پیش‌فاکتور شفاف برای خریدار."""
+    await call.answer()
+    sale_type = call.data.split(":")[1]
+    is_gift = (sale_type == "gift")
+
     data = await state.get_data()
     country = await get_player_country(session, db_user)
     buyer = await countries_repo.get_country(session, data["buyer_id"])
@@ -867,10 +950,12 @@ async def cb_sell_fee_payer(
         return
 
     resource = data["resource"]
-    amount = data["amount"]
-    price = data["price"]
+    amount = float(data["amount"])
+    payer = data["fee_payer"]
     mode_str = data["transport_mode"]
     mode = TransportMode(mode_str)
+
+    price = 0.0 if is_gift else float(data.get("market_total_val", 0.0))
 
     transport_fee = 0.0
     strait_toll_fee = 0.0
@@ -913,15 +998,17 @@ async def cb_sell_fee_payer(
     mode_fa = TRANSPORT_MODE_FA[mode]
     waiver_note = " 🛂 (تخفیف لغو روادید اعمال شد!)" if has_waiver else ""
 
+    price_label = "🎁 رایگان (ارسال به عنوان هدیه)" if is_gift else f"{fa_money(price)} (نرخ مصوب WTO)"
+
     await safe_edit(
         call,
-        f"📨 <b>پیشنهاد فروش برای {buyer.flag} {buyer.name_fa} ارسال شد:</b>\n\n"
+        f"📨 <b>پیشنهاد ارسال محموله برای {buyer.flag} {buyer.name_fa} ارسال شد:</b>\n\n"
         f"📦 <b>محموله:</b> {fa_number(amount)} {unit} {rname}\n"
-        f"💰 <b>قیمت کالا:</b> {fa_money(price)}\n"
+        f"💰 <b>شرایط مالی:</b> {price_label}\n"
         f"🚚 <b>شیوه ارسال:</b> {mode_fa}\n"
         f"💵 <b>عوارض لجستیک و تنگه‌ها:</b> {fa_money(total_logistics)}{waiver_note}\n"
         f"💳 <b>پرداخت‌کننده عوارض:</b> {payer_fa}\n\n"
-        "پس از تأیید خریدار، محموله ارسال خواهد شد.",
+        "پس از تأیید کشور مقصد، محموله بارگیری و ارسال خواهد شد.",
     )
 
     if buyer.owner_user_id:
@@ -931,10 +1018,13 @@ async def cb_sell_fee_payer(
             s_names = [geo.get_strait_def(sid)["name_fa"] for sid in strait_ids if geo.get_strait_def(sid)]
             straits_note = f"\n🌊 <b>تنگه‌های مسیر:</b> {', '.join(s_names)}"
 
+        accept_text = "🎁 پذیرش هدیه" if is_gift else "✅ خرید"
+        title_text = "🎁 <b>پیشنهاد دریافت محموله اهدایی (هدیه)</b>" if is_gift else "🛒 <b>پیش‌فاکتور خرید منبع</b>"
+
         kb = InlineKeyboardMarkup(
             inline_keyboard=[[
                 InlineKeyboardButton(
-                    text="✅ خرید", callback_data=f"sale_accept:{sale.id}", style=STYLE_OK
+                    text=accept_text, callback_data=f"sale_accept:{sale.id}", style=STYLE_OK
                 ),
                 InlineKeyboardButton(
                     text="❌ رد", callback_data=f"sale_reject:{sale.id}", style=STYLE_NO
@@ -944,10 +1034,10 @@ async def cb_sell_fee_payer(
         try:
             await bot.send_message(
                 buyer.owner_user_id,
-                f"🛒 <b>پیش‌فاکتور خرید منبع</b>\n\n"
-                f"فروشنده: {country.flag} {country.name_fa}\n"
+                f"{title_text}\n\n"
+                f"فرستنده: {country.flag} {country.name_fa}\n"
                 f"منبع: {fa_number(amount)} {unit} {rname}\n"
-                f"قیمت کالا: {fa_money(price)}\n"
+                f"شرایط مالی: {price_label}\n"
                 f"شیوه ارسال: {mode_fa}\n"
                 f"عوارض لجستیک: {fa_money(total_logistics)}{waiver_note}\n"
                 f"پرداخت‌کننده عوارض: {payer_fa}{straits_note}\n\n"
@@ -1096,10 +1186,13 @@ async def cb_sale_accept(
     unit = RESOURCE_UNIT_FA[ResourceType(sale.resource)]
     seller_name = f"{seller.flag} {seller.name_fa}" if seller else "?"
     buyer_name = f"{buyer.flag} {buyer.name_fa}"
+    is_gift = (sale.price <= 0)
+
     if settings.wto_channel_id is not None:
+        c_type = "امدادی و اهدایی" if is_gift else "تجاری"
         caption = (
             "🔵 | اطلاع رسانی سازمان نقل و انتقالات جهانی\n\n"
-            f"✈ | یک محموله تجاری کشور {seller_name} را به مقصد کشور {buyer_name} ترک کرد.\n"
+            f"✈ | یک محموله {c_type} کشور {seller_name} را به مقصد کشور {buyer_name} ترک کرد.\n"
             f"⏳ | مدت زمان پرواز: {fa_number(minutes)} دقیقه"
         )
         await send_photo_news(bot, settings.wto_channel_id, "wto", caption)
@@ -1111,13 +1204,15 @@ async def cb_sale_accept(
             text="⚡️ تحویل فوری محموله", callback_data=f"gdeliver:res:{sale.id}", style=STYLE_OK
         )
     ]])
+    log_title = "🎁 <b>ارسال محموله هدیه</b>" if is_gift else "🧾 <b>گزارش تجارت</b>"
+    price_tag = "رایگان (هدیه)" if is_gift else fa_money(sale.price)
     await send_log(
         bot,
-        "🧾 <b>گزارش تجارت</b>\n"
+        f"{log_title}\n"
         f"فروشنده: {seller_name}\n"
         f"خریدار: {buyer_name}\n"
         f"منبع: {fa_number(sale.amount)} {unit} {rname}\n"
-        f"قیمت: {fa_money(sale.price)}",
+        f"قیمت: {price_tag}",
         reply_markup=deliver_kb,
     )
 

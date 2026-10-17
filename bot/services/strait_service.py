@@ -283,6 +283,13 @@ async def confiscate_shipment(
 
     await session.flush()
 
+    # شوک ناامنی و افزایش قیمت منبع در بازار جهانی (آپدیت شماره ۴)
+    try:
+        from . import market_service
+        await market_service.on_strait_incident(session, strait_id, sale.resource)
+    except Exception:
+        pass
+
     seller_title = f"{seller.flag} {seller.name_fa}" if seller else "?"
     buyer_title = f"{buyer.flag} {buyer.name_fa}" if buyer else "?"
 

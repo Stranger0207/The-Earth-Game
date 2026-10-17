@@ -152,6 +152,13 @@ async def cb_strait_block_all(
         session, strait_id, is_blocked=True, block_scope=StraitBlockScope.ALL.value
     )
 
+    # واکنش جهش نرخ نفت و گاز به مسدودسازی تنگه (آپدیت شماره ۴)
+    try:
+        from ..services import market_service
+        await market_service.on_strait_status_changed(session, strait_id, is_closed=True)
+    except Exception:
+        pass
+
     news_text = (
         f"🚨 <b>مسدودسازی فوری آبراه بین‌المللی {cfg.name_fa}!</b>\n\n"
         f"دولت {country.flag} {country.name_fa} رسماً اعلام کرد که تنگه استراتژیک <b>{cfg.name_fa}</b> "
@@ -187,6 +194,13 @@ async def cb_strait_unblock(
     await straits_repo.update_strait_config(
         session, strait_id, is_blocked=False, block_scope=StraitBlockScope.NONE.value
     )
+
+    # واکنش تخلیه حباب انرژی به بازگشایی تنگه (آپدیت شماره ۴)
+    try:
+        from ..services import market_service
+        await market_service.on_strait_status_changed(session, strait_id, is_closed=False)
+    except Exception:
+        pass
 
     news_text = (
         f"🟢 <b>آزادسازی و بازگشایی آبراه {cfg.name_fa}</b>\n\n"

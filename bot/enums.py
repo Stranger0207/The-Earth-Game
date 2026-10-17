@@ -58,6 +58,27 @@ RESOURCE_EMOJI: dict[ResourceType, str] = {
 }
 
 
+class MarketTrend(str, enum.Enum):
+    """روند تغییرات نرخ ذخایر در بازار جهانی (آپدیت شماره ۴)."""
+
+    UP = "UP"          # صعودی 🟢
+    DOWN = "DOWN"      # نزولی 🔴
+    STABLE = "STABLE"  # ثابت ⚪️
+
+
+MARKET_TREND_FA: dict[MarketTrend, str] = {
+    MarketTrend.UP: "صعودی",
+    MarketTrend.DOWN: "نزولی",
+    MarketTrend.STABLE: "ثابت",
+}
+
+MARKET_TREND_EMOJI: dict[MarketTrend, str] = {
+    MarketTrend.UP: "🟢",
+    MarketTrend.DOWN: "🔴",
+    MarketTrend.STABLE: "⚪️",
+}
+
+
 class FacilityType(str, enum.Enum):
     """انواع تأسیساتی که یک کشور می‌تواند احداث کند."""
 

@@ -186,3 +186,42 @@ def render_military_panel(country: Country, assets: list[MilitaryAsset]) -> str:
         lines.append("")
 
     return "\n".join(lines).strip()
+
+
+def render_market_rates_panel(prices: list) -> str:
+    """📊 رندر تابلوی بورس و نرخ لحظه‌ای ذخایر جهانی (WTO)."""
+    lines = [
+        "📊 <b>تابلوی زنده بورس و نرخ لحظه‌ای ذخایر جهانی (WTO)</b>",
+        "━━━━━━━━━━━━━━━━━━━━",
+    ]
+    for p in prices:
+        try:
+            rtype = ResourceType(p.resource)
+            emoji = RESOURCE_EMOJI.get(rtype, "📦")
+            name = RESOURCE_FA.get(rtype, p.resource)
+            unit = RESOURCE_UNIT_FA.get(rtype, "واحد")
+        except Exception:
+            emoji, name, unit = "📦", p.resource, "واحد"
+
+        trend_icon = "⚪️"
+        sign = ""
+        if getattr(p, "trend", "") == "UP" or p.change_pct > 0.05:
+            trend_icon = "🟢"
+            sign = "+"
+        elif getattr(p, "trend", "") == "DOWN" or p.change_pct < -0.05:
+            trend_icon = "🔴"
+
+        change_str = f"{trend_icon} {sign}{fa_number(p.change_pct, 1)}٪"
+        price_str = f"{fa_money(p.current_price)} / {unit}"
+
+        reason = p.last_reason_text or "نوسانات عرضه و تقاضای بازار"
+        lines.append(f"{emoji} <b>{name}:</b> {price_str} | {change_str}")
+        lines.append(f"   📌 <i>علت: {reason}</i>")
+        lines.append("────────────────────")
+
+    if lines and lines[-1] == "────────────────────":
+        lines.pop()
+
+    lines.append("━━━━━━━━━━━━━━━━━━━━")
+    lines.append("<i>💡 قیمت‌ها به صورت زنده بر اساس معاملات، تنگه‌ها، مزایده‌ها و کمبود جهانی نوسان می‌کنند.</i>")
+    return "\n".join(lines).strip()

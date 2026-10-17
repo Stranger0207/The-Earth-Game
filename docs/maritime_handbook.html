@@ -1,0 +1,811 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <title>هندبوک جامع ناوبری دریایی، لجستیک و ژئوپلیتیک تنگه‌ها | بازی زمین</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;600;700;800;900&display=swap');
+
+    :root {
+      --bg-dark: #070b14;
+      --bg-card: rgba(15, 23, 42, 0.75);
+      --bg-card-hover: rgba(30, 41, 59, 0.85);
+      --border-card: rgba(255, 255, 255, 0.08);
+      --border-gold: rgba(245, 158, 11, 0.4);
+      --gold-primary: #f59e0b;
+      --gold-light: #fbbf24;
+      --gold-gradient: linear-gradient(135deg, #f59e0b, #d97706);
+      --cyan-primary: #0ea5e9;
+      --cyan-gradient: linear-gradient(135deg, #38bdf8, #0284c7);
+      --emerald-primary: #10b981;
+      --rose-primary: #f43f5e;
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Vazirmatn', -apple-system, BlinkMacSystemFont, Tahoma, sans-serif;
+      background-color: var(--bg-dark);
+      color: var(--text-main);
+      line-height: 1.8;
+      padding: 0;
+      font-size: 14px;
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+    }
+
+    @page {
+      size: A4;
+      margin: 14mm 14mm 14mm 14mm;
+    }
+
+    .page-break {
+      page-break-after: always;
+      break-after: page;
+    }
+
+    .no-break {
+      page-break-inside: avoid;
+      break-inside: avoid;
+    }
+
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+
+    /* COVER PAGE */
+    .cover-page {
+      min-height: 980px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      align-items: center;
+      text-align: center;
+      padding: 60px 30px;
+      background: radial-gradient(circle at 50% 20%, rgba(14, 165, 233, 0.15), transparent 70%),
+                  radial-gradient(circle at 80% 80%, rgba(245, 158, 11, 0.1), transparent 60%),
+                  #070b14;
+      border: 1px solid var(--border-gold);
+      border-radius: 20px;
+      box-shadow: 0 0 50px rgba(0,0,0,0.8);
+      margin-bottom: 30px;
+    }
+
+    .cover-badge {
+      display: inline-block;
+      padding: 8px 24px;
+      background: rgba(245, 158, 11, 0.12);
+      border: 1px solid var(--gold-primary);
+      border-radius: 50px;
+      color: var(--gold-light);
+      font-weight: 700;
+      font-size: 13px;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+    }
+
+    .cover-icon {
+      font-size: 72px;
+      margin: 20px 0;
+      filter: drop-shadow(0 0 25px rgba(14, 165, 233, 0.6));
+    }
+
+    .cover-title {
+      font-size: 34px;
+      font-weight: 900;
+      color: #fff;
+      margin-bottom: 12px;
+      background: linear-gradient(135deg, #ffffff, #cbd5e1);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      line-height: 1.4;
+    }
+
+    .cover-subtitle {
+      font-size: 18px;
+      font-weight: 600;
+      color: var(--gold-light);
+      margin-bottom: 24px;
+    }
+
+    .cover-desc {
+      max-width: 650px;
+      color: var(--text-muted);
+      font-size: 14px;
+      line-height: 2;
+      margin: 0 auto;
+    }
+
+    .cover-footer {
+      width: 100%;
+      display: flex;
+      justify-content: space-between;
+      border-top: 1px solid rgba(255, 255, 255, 0.1);
+      padding-top: 25px;
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    /* HEADERS */
+    h2.section-title {
+      font-size: 22px;
+      font-weight: 800;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin: 35px 0 18px 0;
+      padding-bottom: 10px;
+      border-bottom: 2px solid rgba(245, 158, 11, 0.3);
+      position: relative;
+    }
+
+    h2.section-title::after {
+      content: '';
+      position: absolute;
+      bottom: -2px;
+      right: 0;
+      width: 60px;
+      height: 2px;
+      background: var(--gold-primary);
+    }
+
+    h3.sub-title {
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--cyan-primary);
+      margin: 20px 0 10px 0;
+    }
+
+    /* CARDS */
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-card);
+      border-radius: 14px;
+      padding: 20px;
+      margin-bottom: 18px;
+      backdrop-filter: blur(10px);
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+    }
+
+    .card.gold-glow {
+      border: 1px solid rgba(245, 158, 11, 0.3);
+      background: linear-gradient(145deg, rgba(245, 158, 11, 0.05), rgba(15, 23, 42, 0.8));
+    }
+
+    .card.cyan-glow {
+      border: 1px solid rgba(14, 165, 233, 0.3);
+      background: linear-gradient(145deg, rgba(14, 165, 233, 0.05), rgba(15, 23, 42, 0.8));
+    }
+
+    .card.danger-glow {
+      border: 1px solid rgba(244, 63, 94, 0.3);
+      background: linear-gradient(145deg, rgba(244, 63, 94, 0.05), rgba(15, 23, 42, 0.8));
+    }
+
+    /* GRID */
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+      margin: 15px 0;
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 16px;
+      margin: 15px 0;
+    }
+
+    /* FEATURE BADGES */
+    .feature-box {
+      background: rgba(15, 23, 42, 0.9);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 12px;
+      padding: 16px;
+      text-align: center;
+    }
+
+    .feature-box .icon {
+      font-size: 32px;
+      margin-bottom: 8px;
+    }
+
+    .feature-box .title {
+      font-weight: 700;
+      font-size: 15px;
+      color: #fff;
+      margin-bottom: 4px;
+    }
+
+    .feature-box .fee {
+      color: var(--gold-light);
+      font-weight: 800;
+      font-size: 14px;
+      margin-bottom: 8px;
+    }
+
+    .feature-box .desc {
+      font-size: 12px;
+      color: var(--text-muted);
+      line-height: 1.6;
+    }
+
+    /* TABLES */
+    table.luxury-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 15px 0;
+      font-size: 13px;
+    }
+
+    table.luxury-table th {
+      background: rgba(30, 41, 59, 0.9);
+      color: var(--gold-light);
+      text-align: right;
+      padding: 12px 14px;
+      font-weight: 700;
+      border-bottom: 2px solid rgba(245, 158, 11, 0.3);
+    }
+
+    table.luxury-table td {
+      padding: 12px 14px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      color: #e2e8f0;
+    }
+
+    table.luxury-table tr:nth-child(even) {
+      background: rgba(15, 23, 42, 0.4);
+    }
+
+    /* PILLS & TAGS */
+    .pill {
+      display: inline-block;
+      padding: 3px 10px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 700;
+    }
+
+    .pill-gold {
+      background: rgba(245, 158, 11, 0.15);
+      color: var(--gold-light);
+      border: 1px solid var(--gold-primary);
+    }
+
+    .pill-cyan {
+      background: rgba(14, 165, 233, 0.15);
+      color: #38bdf8;
+      border: 1px solid var(--cyan-primary);
+    }
+
+    .pill-emerald {
+      background: rgba(16, 185, 129, 0.15);
+      color: #34d399;
+      border: 1px solid var(--emerald-primary);
+    }
+
+    .pill-rose {
+      background: rgba(244, 63, 94, 0.15);
+      color: #fb7185;
+      border: 1px solid var(--rose-primary);
+    }
+
+    /* TELEGRAM UI MOCKUP */
+    .tg-bubble {
+      background: #18222d;
+      border: 1px solid #233140;
+      border-radius: 12px 12px 2px 12px;
+      padding: 16px;
+      max-width: 520px;
+      margin: 15px auto;
+      font-size: 13px;
+      color: #e4ecf2;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.4);
+    }
+
+    .tg-header {
+      font-weight: 800;
+      color: #42b2fc;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .tg-buttons {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-top: 14px;
+    }
+
+    .tg-btn-row {
+      display: flex;
+      gap: 6px;
+    }
+
+    .tg-btn {
+      flex: 1;
+      background: #2b394a;
+      color: #64b5f6;
+      border-radius: 8px;
+      padding: 9px 12px;
+      font-size: 12px;
+      font-weight: 600;
+      text-align: center;
+      border: none;
+    }
+
+    .tg-btn.btn-ok {
+      background: rgba(16, 185, 129, 0.25);
+      color: #34d399;
+      border: 1px solid rgba(16, 185, 129, 0.4);
+    }
+
+    .tg-btn.btn-danger {
+      background: rgba(239, 68, 68, 0.25);
+      color: #f87171;
+      border: 1px solid rgba(239, 68, 68, 0.4);
+    }
+
+    .tg-btn.btn-gold {
+      background: rgba(245, 158, 11, 0.25);
+      color: #fbbf24;
+      border: 1px solid rgba(245, 158, 11, 0.4);
+    }
+
+    /* ALERTS */
+    .alert-box {
+      display: flex;
+      gap: 14px;
+      padding: 14px 18px;
+      border-radius: 10px;
+      margin: 14px 0;
+      font-size: 13px;
+    }
+
+    .alert-gold {
+      background: rgba(245, 158, 11, 0.1);
+      border-right: 4px solid var(--gold-primary);
+      color: #fef3c7;
+    }
+
+    .alert-cyan {
+      background: rgba(14, 165, 233, 0.1);
+      border-right: 4px solid var(--cyan-primary);
+      color: #e0f2fe;
+    }
+
+    .alert-rose {
+      background: rgba(244, 63, 94, 0.1);
+      border-right: 4px solid var(--rose-primary);
+      color: #ffe4e6;
+    }
+
+    /* STEP FLOW */
+    .step-list {
+      list-style: none;
+      counter-reset: step-counter;
+      margin: 15px 0;
+    }
+
+    .step-item {
+      position: relative;
+      padding-right: 42px;
+      margin-bottom: 16px;
+      counter-increment: step-counter;
+    }
+
+    .step-item::before {
+      content: counter(step-counter);
+      position: absolute;
+      right: 0;
+      top: 0;
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: var(--gold-gradient);
+      color: #000;
+      font-weight: 800;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 13px;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+
+    <!-- COVER PAGE -->
+    <div class="cover-page no-break">
+      <div>
+        <span class="cover-badge">THE EARTH GAME • راهنمای رسمی آپدیت ۳ و ۱۱</span>
+        <div class="cover-icon">🌊⚓✈️</div>
+        <h1 class="cover-title">هندبوک جامع ناوبری دریایی، لجستیک و ژئوپلیتیک تنگه‌ها</h1>
+        <div class="cover-subtitle">دکترین بین‌المللی حمل‌ونقل، عوارض گمرکی، ره‌گیری نظامی و پنل اموال بلوکه‌شده</div>
+        <p class="cover-desc">
+          این سند راهنمای رسمی و جامع برای رهبران، وزرای اقتصاد و فرماندهان نظامی ۳۹ کشور بازی زمین است.
+          کلیه قوانین مربوط به تفکیک روش‌های ارسال بار، ممنوعیت‌های سوخت، ترانزیت زمینی، مالیات ۱۴ آبراه حیاتی جهان و پروتکل‌های توقیف و مصادره در این دفترچه مدون شده است.
+        </p>
+      </div>
+
+      <div class="cover-footer">
+        <div>نسخه مستندات: ۱.۱۲ (به‌روزرسانی رسمی)</div>
+        <div>مرجع: ستاد عالی فرماندهی و سازمان تجارت جهانی (WTO)</div>
+        <div>طبقه سند: فوق استراتژیک</div>
+      </div>
+    </div>
+
+    <!-- CHAPTER 1 -->
+    <div class="no-break">
+      <h2 class="section-title"><span>✈️</span> فصل اول: انقلاب لجستیک — تفکیک سه‌گانه شیوه‌های ارسال کالا</h2>
+      <p style="color: var(--text-muted); margin-bottom: 14px;">
+        در نسخه جدید بازی زمین، انتقال فله‌ای و بدون اصطکاک کالاها پایان یافته است. هر محموله بسته به ماهیت خود (سوخت، فلزات گرانبها یا تجهیزات نظامی) و موقعیت جغرافیایی کشورها نیازمند انتخاب شیوه حمل متفاوتی است:
+      </p>
+
+      <div class="grid-3">
+        <div class="feature-box">
+          <div class="icon">🚢</div>
+          <div class="title">حمل‌ونقل دریایی (SEA)</div>
+          <div class="fee">عوارض: ۲,۰۰۰,۰۰۰ $</div>
+          <div class="desc">
+            مخصوص ذخایر طبیعی و محموله‌های سنگین سوخت.<br>
+            <b>شرط الزامی:</b> دسترسی مبدأ و مقصد به دریا.<br>
+            <span class="pill pill-rose" style="margin-top:6px;">ممنوعیت کامل تسلیحات نظامی</span>
+          </div>
+        </div>
+
+        <div class="feature-box">
+          <div class="icon">✈️</div>
+          <div class="title">حمل‌ونقل هوایی (AIR)</div>
+          <div class="fee">عوارض: ۸,۰۰۰,۰۰۰ $</div>
+          <div class="desc">
+            ارسال سریع کلیه ادوات نظامی و فلزات.<br>
+            (فولاد، آهن، آلومینیوم، طلا).<br>
+            <span class="pill pill-rose" style="margin-top:6px;">ممنوعیت مطلق سوخت و انرژی</span>
+          </div>
+        </div>
+
+        <div class="feature-box">
+          <div class="icon">🚛</div>
+          <div class="title">ترانزیت زمینی (LAND)</div>
+          <div class="fee">عوارض: ۵,۰۰۰,۰۰۰ $</div>
+          <div class="desc">
+            شاهراه نجات کشورهای محصور در خشکی.<br>
+            فعال برای تمامی کشورها بدون استثنا.<br>
+            <span class="pill pill-emerald" style="margin-top:6px;">مجاز برای سوخت و فلزات</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="alert-box alert-gold">
+        <div>⚠️</div>
+        <div>
+          <b>قانون طلایی سوخت و هواپیما:</b> با توجه به استانداردهای بین‌المللی هوانوردی، منابع انرژی شامل <b>نفت (OIL)، گاز (GAS)، زغال‌سنگ (COAL) و اورانیوم (URANIUM)</b> به هیچ عنوان اجازه حمل با هواپیما را ندارند و سیستم ربات اجازه ثبت حمل هوایی برای آن‌ها را نمی‌دهد.
+        </div>
+      </div>
+
+      <div class="alert-box alert-cyan">
+        <div>💡</div>
+        <div>
+          <b>راهکار نجات کشورهای بدون مرز آبی (Landlocked):</b> کشورهایی نظیر <b>افغانستان</b> و <b>سوئیس</b> که به دریا راه ندارند، محموله‌های سوختی خود را از طریق <b>«ترانزیت زمینی» با هزینه ثابت ۵ میلیون دلار</b> معامله می‌کنند تا مبادلات تجاری انرژی جهان مسدود نشود.
+        </div>
+      </div>
+    </div>
+
+    <div class="page-break"></div>
+
+    <!-- CHAPTER 2 -->
+    <div class="no-break">
+      <h2 class="section-title"><span>💳</span> فصل دوم: اقتصاد حمل‌ونقل و انتخاب پرداخت‌کننده عوارض</h2>
+      <p style="color: var(--text-muted); margin-bottom: 14px;">
+        هنگام ایجاد سفارش فروش ذخیره در بازار یا فروش نظامی، فروشنده تعیین می‌کند که هزینه لجستیک و عوارض آبراه‌ها بر عهده چه کسی خواهد بود:
+      </p>
+
+      <div class="grid-2">
+        <div class="card gold-glow">
+          <div style="font-weight:700; color:var(--gold-light); font-size:15px; margin-bottom:8px;">
+            💳 ۱. پرداخت توسط خودم (فروشنده)
+          </div>
+          <p style="font-size:13px; color:var(--text-muted);">
+            فروشنده تمام هزینه لجستیک پایه و عوارض عبور از تنگه‌ها را متقبل می‌شود. در زمان تایید خریدار، مبلغ عوارض از خزانه‌ی فروشنده کسر گردیده و خریدار تنها خالص بهای توافق‌شده را می‌پردازد. (مناسب برای پیشنهادات جذاب و تخفیف‌های تجاری).
+          </p>
+        </div>
+
+        <div class="card cyan-glow">
+          <div style="font-weight:700; color:#38bdf8; font-size:15px; margin-bottom:8px;">
+            📦 ۲. پرداخت توسط کشور خریدار
+          </div>
+          <p style="font-size:13px; color:var(--text-muted);">
+            تمامی هزینه‌های ارسال و عوارض تنگه‌های مسیر در پیش‌فاکتور به حساب خریدار منظور می‌شود. خریدار در لحظه کلیک روی تایید معامله، باید هم بهای محموله و هم مجموع هزینه‌های حمل‌ونقل را در خزانه کشورش داشته باشد.
+          </p>
+        </div>
+      </div>
+
+      <h3 class="sub-title">📱 نمونه فاکتور صادر شده در ربات (پیش‌فاکتور خریدار)</h3>
+      <div class="tg-bubble">
+        <div class="tg-header">📦 پیش‌فاکتور خرید محموله نفت خام #482</div>
+        فروشنده: 🇶🇦 قطر<br>
+        خریدار: 🇩🇪 آلمان<br>
+        منبع: <b>۵,۰۰۰ بشکه نفت خام</b><br>
+        ارزش کالا: <b>۲۰,۰۰۰,۰۰۰ دلار</b><br>
+        شیوه ارسال: <b>🌊 دریایی (SEA)</b><br>
+        عوارض پایه حمل: <b>۲,۰۰۰,۰۰۰ دلار</b><br>
+        عوارض تنگه‌های مسیر: <b>۳,۵۰۰,۰۰۰ دلار</b> (هرمز، سوئز، جبل‌الطارق)<br>
+        طرف پرداخت‌کننده عوارض: <b>📦 خریدار (آلمان)</b><br>
+        <hr style="border:0; border-top:1px dashed #2b394a; margin:10px 0;">
+        <b>مبلغ نهایی قابل کسر از خزانه خریدار: ۲۵,۵۰۰,۰۰۰ دلار</b>
+        <div class="tg-buttons">
+          <button class="tg-btn btn-ok">✅ تأیید و پرداخت نهایی</button>
+          <button class="tg-btn btn-danger">❌ رد پیش‌فاکتور</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- CHAPTER 3 -->
+    <div class="no-break">
+      <h2 class="section-title"><span>🗺️</span> فصل سوم: اطلس ژئوپلیتیک ۱۴ تنگه استراتژیک جهان</h2>
+      <p style="color: var(--text-muted); margin-bottom: 12px;">
+        ربات تلگرام از الگوریتم کوتاه‌ترین مسیر آبی وزن‌دار (Dijkstra) برای مسیریابی بین سواحل ۳۹ کشور استفاده می‌کند. عبور از هر یک از تنگه‌های زیر منوط به پرداخت عوارض و رعایت وضعیت مسدودسازی آن آبراه است:
+      </p>
+
+      <table class="luxury-table">
+        <thead>
+          <tr>
+            <th>نام تنگه</th>
+            <th>کشور کنترل‌کننده</th>
+            <th>آب‌های تحت اتصال</th>
+            <th>اهمیت استراتژیک</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><b>تنگه هرمز</b> (hormuz)</td>
+            <td>🇮🇷 ایران</td>
+            <td>خلیج فارس ⬅️ دریای عمان و اقیانوس هند</td>
+            <td>شاهراه اصلی صادرات انرژی خاورمیانه</td>
+          </tr>
+          <tr>
+            <td><b>کانال سوئز</b> (suez)</td>
+            <td>🇪🇬 مصر</td>
+            <td>دریای مدیترانه ⬅️ دریای سرخ</td>
+            <td>کوتاه‌ترین مسیر ترانزیت آسیا به اروپا</td>
+          </tr>
+          <tr>
+            <td><b>تنگه باب‌المندب</b> (bab_el_mandeb)</td>
+            <td>🇾🇪 یمن</td>
+            <td>دریای سرخ ⬅️ خلیج عدن</td>
+            <td>ورودی جنوبی حیاتی کانال سوئز</td>
+          </tr>
+          <tr>
+            <td><b>تنگه جبل‌الطارق</b> (gibraltar)</td>
+            <td>🇪🇸 اسپانیا</td>
+            <td>مدیترانه ⬅️ اقیانوس اطلس</td>
+            <td>ورودی غربی مدیترانه به اقیانوس اطلس</td>
+          </tr>
+          <tr>
+            <td><b>تنگه دوور / مانش</b> (dover)</td>
+            <td>🇬🇧 بریتانیا</td>
+            <td>دریای شمال ⬅️ اقیانوس اطلس</td>
+            <td>مسیر پرتردد شمال و غرب اروپا</td>
+          </tr>
+          <tr>
+            <td><b>تنگه بسفر</b> (bosphorus)</td>
+            <td>🇹🇷 ترکیه</td>
+            <td>دریای سیاه ⬅️ دریای مرمره</td>
+            <td>تنها مسیر خروج کشورهای حوزه دریای سیاه</td>
+          </tr>
+          <tr>
+            <td><b>تنگه داردانل</b> (dardanelles)</td>
+            <td>🇹🇷 ترکیه</td>
+            <td>دریای مرمره ⬅️ دریای اژه و مدیترانه</td>
+            <td>تنگه مکمل بسفر در هدایت جریان دریایی</td>
+          </tr>
+          <tr>
+            <td><b>تنگه کرچ</b> (kerch)</td>
+            <td>🇷🇺 روسیه</td>
+            <td>دریای آزوف ⬅️ دریای سیاه</td>
+            <td>گذرگاه ژئوپلیتیک شرق اروپا</td>
+          </tr>
+          <tr>
+            <td><b>تنگه برینگ</b> (bering)</td>
+            <td>🇺🇸 ایالات متحده</td>
+            <td>اقیانوس آرام شمالی ⬅️ قطب شمال</td>
+            <td>کنترل راهبردی مسیر شمالگان و آلاسکا</td>
+          </tr>
+          <tr>
+            <td><b>تنگه مسینا</b> (messina)</td>
+            <td>🇮🇹 ایتالیا</td>
+            <td>دریای تیرنی ⬅️ دریای ایونی</td>
+            <td>قلب ناوبری مرکز دریای مدیترانه</td>
+          </tr>
+          <tr>
+            <td><b>تنگه تسوشیما</b> (tsushima)</td>
+            <td>🇰🇷 کره جنوبی</td>
+            <td>دریای ژاپن ⬅️ دریای چین شرقی</td>
+            <td>شاهرگ ترانزیت شرق آسیا و اقیانوس آرام</td>
+          </tr>
+          <tr>
+            <td><b>تنگه لاپروش</b> (laperouse)</td>
+            <td>🇯🇵 ژاپن</td>
+            <td>دریای اختسک ⬅️ دریای ژاپن</td>
+            <td>کنترل گذرگاه‌های شمالی اقیانوس آرام</td>
+          </tr>
+          <tr>
+            <td><b>تنگه تایوان</b> (taiwan_strait)</td>
+            <td>🇹🇼 تایوان</td>
+            <td>دریای چین جنوبی ⬅️ دریای چین شرقی</td>
+            <td>مهم‌ترین مسیر کانتینری و تراشه‌ای جهان</td>
+          </tr>
+          <tr>
+            <td><b>تنگه اورسوند</b> (oresund)</td>
+            <td>🇸🇪 سوئد</td>
+            <td>دریای بالتیک ⬅️ دریای شمال</td>
+            <td>ورودی شریان‌های تجاری اسکاندیناوی</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="page-break"></div>
+
+    <!-- CHAPTER 4 -->
+    <div class="no-break">
+      <h2 class="section-title"><span>🌊</span> فصل چهارم: پنل مدیریت تنگه‌ها — ابزار قدرت ژئوپلیتیک</h2>
+      <p style="color: var(--text-muted); margin-bottom: 14px;">
+        کشورهایی که حاکمیت حداقل یک تنگه را بر عهده دارند، دکمه ویژه <b>«🌊 مدیریت تنگه‌ها»</b> را در <b>ستاد فرماندهی کل</b> و <b>منوی اقتصاد</b> مشاهده می‌کنند:
+      </p>
+
+      <div class="card gold-glow">
+        <h3 style="color:var(--gold-light); font-size:16px; margin-bottom:8px;">💰 ۱. تعیین عوارض عبور از تنگه (Toll System)</h3>
+        <ul style="padding-right:20px; font-size:13px; color:#cbd5e1; line-height:2;">
+          <li><b>عوارض عمومی (پایه):</b> این نرخ بر روی کشتی‌های تمامی کشورهای جهان که از آبراه عبور کنند اعمال شده و مستقیماً به خزانه‌ی کشور کنترل‌کننده واریز می‌شود.</li>
+          <li><b>عوارض اختصاصی کشوری:</b> می‌توانید برای یک کشور خاص نرخ متفاوت تعیین کنید (مثلاً عوارض صفر دلار برای متحدان نظامی یا عوارض سنگین تا سقف ۱۰ میلیون دلار برای رقبا).</li>
+        </ul>
+      </div>
+
+      <div class="card danger-glow">
+        <h3 style="color:#f87171; font-size:16px; margin-bottom:8px;">🚫 ۲. دکترین مسدودسازی تنگه (Strait Blockade)</h3>
+        <p style="font-size:13px; color:#cbd5e1; line-height:1.8;">
+          کشور حاکم می‌تواند در لحظه اراده کند و وضعیت تردد آبراه را تغییر دهد:
+        </p>
+        <div class="grid-2" style="margin-top:10px;">
+          <div style="background:rgba(0,0,0,0.3); padding:10px; border-radius:8px;">
+            <b style="color:#f87171;">مسدودسازی سراسری (Block ALL):</b><br>
+            هیچ کشتی تجاری در جهان حق تردد از تنگه را نخواهد داشت مگر با چراغ سبز موردی.
+          </div>
+          <div style="background:rgba(0,0,0,0.3); padding:10px; border-radius:8px;">
+            <b style="color:var(--gold-light);">مسدودسازی هدفمند (Custom Block):</b><br>
+            تنگه فقط به روی کشتی‌های کشورهای مشخص‌شده در بلک‌لیست مسدود می‌شود.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CHAPTER 5 -->
+    <div class="no-break">
+      <h2 class="section-title"><span>🚨</span> فصل پنجم: پروتکل رهگیری — ۴ گزینه سرنوشت‌ساز مرزبانی</h2>
+      <p style="color: var(--text-muted); margin-bottom: 12px;">
+        اگر یک کشتی از تنگه‌ای عبور کند که به روی کشور فروشنده یا خریدار مسدود است، بلافاصله کشتی در میانه آبراه متوقف شده (<b>HELD_AT_STRAIT</b>) و آلارم فوری زیر در پیوی رهبر کشور حاکم ظاهر می‌شود:
+      </p>
+
+      <div class="tg-bubble" style="max-width:540px;">
+        <div class="tg-header" style="color:#f87171;">🚨 هشدار ورود کشتی غیرمجاز به تنگه هرمز!</div>
+        شناسه معامله: <b>#209</b><br>
+        کشتی حامل: <b>۱۰,۰۰۰ بشکه نفت خام</b><br>
+        مبدأ: 🇶🇦 قطر | مقصد: 🇮🇱 کشور تحریم‌شده<br>
+        وضعیت تنگه: <b>⛔ مسدود به روی مقصد</b><br>
+        کشتی در حال حاضر متوقف شده و تحت محاصره گشت ساحلی شماست.
+        <div class="tg-buttons">
+          <div class="tg-btn-row">
+            <button class="tg-btn btn-ok">🟢 اجازه عبور (صلح‌آمیز)</button>
+            <button class="tg-btn btn-danger">💥 حمله و غرق کشتی</button>
+          </div>
+          <div class="tg-btn-row">
+            <button class="tg-btn btn-gold">⚓ مصادره مستقیم به ذخایر</button>
+            <button class="tg-btn">🔒 مصادره به اموال بلوکه‌شده</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid-2">
+        <div class="feature-box">
+          <div class="title" style="color:#34d399;">🟢 ۱. اجازه عبور</div>
+          <div class="desc">توقیف برداشته شده و محموله با آرامش به سمت مقصد ادامه مسیر می‌دهد.</div>
+        </div>
+        <div class="feature-box">
+          <div class="title" style="color:#f87171;">💥 ۲. حمله و غرق کردن کشتی</div>
+          <div class="desc">محموله کاملاً نابود می‌شود و خبر فوری جنگی در کانال اخبار نظامی و لاگ پخش می‌گردد.</div>
+        </div>
+        <div class="feature-box">
+          <div class="title" style="color:var(--gold-light);">⚓ ۳. مصادره به ذخایر خودی</div>
+          <div class="desc">کل بار کشتی بی‌درنگ به موجودی انبارها و ذخایر کشور شما اضافه می‌شود.</div>
+        </div>
+        <div class="feature-box">
+          <div class="title" style="color:#38bdf8;">🔒 ۴. مصادره به اموال بلوکه‌شده</div>
+          <div class="desc">بار در گمرک نظامی شما بایگانی می‌شود تا بعداً برای مذاکره یا اخاذی استفاده شود.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="page-break"></div>
+
+    <!-- CHAPTER 6 & 7 -->
+    <div class="no-break">
+      <h2 class="section-title"><span>🔒</span> فصل ششم: پنل مدیریت اموال بلوکه‌شده (Blocked Assets)</h2>
+      <p style="color: var(--text-muted); margin-bottom: 12px;">
+        اگر محموله‌ای را به «اموال بلوکه‌شده» منتقل کنید، در منوی تنگه‌ها دکمه <b>«🔒 اموال بلوکه‌شده»</b> ظاهر می‌شود. رهبر کشور برای هر محموله ۳ کارت بازی استراتژیک در دست دارد:
+      </p>
+
+      <div class="card">
+        <table class="luxury-table">
+          <thead>
+            <tr>
+              <th>عملیات</th>
+              <th>مکانیسم اجرایی</th>
+              <th>اثر سیاسی / اقتصادی</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><b style="color:#34d399;">📥 ترخیص به ذخایر خودی</b></td>
+              <td>منبع توقیف‌شده از حالت تعلیق خارج و به موجودی کشور شما افزوده می‌شود.</td>
+              <td>تقویت مستقیم بنیه صنعتی یا سوختی کشور بدون هزینه استخراج.</td>
+            </tr>
+            <tr>
+              <td><b style="color:#38bdf8;">↩️ عودت به کشور مبدأ</b></td>
+              <td>محموله به کشور فرستنده (فروشنده اصلی) برگردانده می‌شود.</td>
+              <td>اهرم دیپلماسی صلح در نشست‌های دوجانبه برای دریافت امتیاز سیاسی.</td>
+            </tr>
+            <tr>
+              <td><b style="color:#f87171;">🗑 تخریب و امحای کامل</b></td>
+              <td>محموله در گمرک سوزانده شده و خبر نابودی آن به طرفین ابلاغ می‌شود.</td>
+              <td>وارد آوردن ضربه مالی سنگین به کشور متخاصم.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h2 class="section-title"><span>⏳</span> فصل هفتم: قانون ضرب‌الاجل ۲۴ ساعته (Timeout Rule)</h2>
+      <div class="alert-box alert-gold">
+        <div>⏱️</div>
+        <div>
+          <b>قانون انقضای توقیف:</b> اگر یک کشتی در تنگه‌ای متوقف شود و کشور حاکم بر تنگه ظرف مدت <b>۲۴ ساعت</b> هیچ تصمیمی (عبور، حمله، یا مصادره) اتخاذ نکند، اسکدولر هوشمند ربات وارد عمل شده و برای جلوگیری از بن‌بست بازی:
+          <ol style="margin-right:20px; margin-top:6px;">
+            <li>محموله را خودکار از توقیف آزاد می‌کند.</li>
+            <li>کل ذخایر مسدود را به کشور فروشنده برمی‌گرداند.</li>
+            <li>پیام اخطار رسمی در کانال لاگ و پیوی طرفین ثبت می‌کند.</li>
+          </ol>
+        </div>
+      </div>
+
+      <h2 class="section-title"><span>🎯</span> فصل هشتم: راهنمای گام‌به‌گام برای بازیکنان و رهبران</h2>
+      <ul class="step-list">
+        <li class="step-item">
+          <b>اگر صادرکننده سوخت هستید:</b> قبل از ثبت سفارش دقت کنید خریدار شما به دریا دسترسی دارد یا خیر. اگر محصور در خشکی است، حتماً گزینه ترانزیت زمینی را مد نظر داشته باشید.
+        </li>
+        <li class="step-item">
+          <b>اگر واردکننده هستید:</b> قبل از تایید معامله، وضعیت تنگه‌های بین خود و فروشنده را بررسی کنید. اگر یکی از تنگه‌ها مسدود باشد، بار شما به خطر خواهد افتاد!
+        </li>
+        <li class="step-item">
+          <b>اگر دارنده تنگه هستید:</b> می‌توانید با تعیین عوارض مناسب (مثلاً ۱ الی ۳ میلیون دلار) درآمد سرشاری بدون شلیک یک گلوله به دست آورید و در صورت لزوم با بستن تنگه، دشمنانتان را فلج کنید!
+        </li>
+      </ul>
+    </div>
+
+  </div>
+
+</body>
+</html>

@@ -11,10 +11,14 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMar
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..constants import (
+    AIR_TRANSPORT_FEE,
     BUILD_LIMIT_WINDOW_HOURS,
     FACILITY_COST_USD,
     FACILITY_TOTAL_LIMIT_NON_VIP,
+    FUEL_RESOURCES,
+    LAND_TRANSPORT_FEE,
     RESOURCE_SALE_COOLDOWN_HOURS,
+    SEA_TRANSPORT_FEE,
     build_limit_group_for,
 )
 from ..database.models import Facility, ResourceSale, User
@@ -22,16 +26,21 @@ from ..database.repositories import cooldowns as cd_repo
 from ..database.repositories import countries as countries_repo
 from ..database.repositories import facilities as fac_repo
 from ..database.repositories import reserves as reserves_repo
+from ..database.repositories import straits as straits_repo
 from ..database.repositories import tariff as tariff_repo
 from ..database.repositories import trade as trade_repo
 from ..enums import (
     FACILITY_FA,
+    FEE_PAYER_FA,
     RESOURCE_FA,
     RESOURCE_UNIT_FA,
+    TRANSPORT_MODE_FA,
     FacilityType,
+    FeePayer,
     NewsCategory,
     ResourceType,
     TradeStatus,
+    TransportMode,
 )
 from ..keyboards.common import countries_kb
 from ..keyboards.covert import escort_offer_kb
@@ -39,13 +48,17 @@ from ..keyboards.economy import (
     economy_menu_kb,
     facility_list_nav_kb,
     facility_types_kb,
+    fee_payer_kb,
     mine_resource_pages_kb,
     mine_resources_kb,
     my_facilities_menu_kb,
     sell_resources_kb,
+    transport_modes_kb,
 )
 from ..config import get_settings
 from ..loader import bot
+from ..services import geo_service as geo
+from ..services import strait_service
 from ..services.ai import evaluators
 from ..services.economy_service import EconomyError, build_facility, transfer_sale
 from ..enums import AdminGroupType
@@ -55,6 +68,7 @@ from ..states import FacilityForm, SaleForm, TariffForm
 from ..utils.formatting import render_economy_panel, render_reserves_panel
 from ..utils.numbers import fa_money, fa_number, parse_amount
 from ..utils.screens import safe_edit
+
 from ..utils.ui import STYLE_MAIN, STYLE_NO, STYLE_OK, header
 from .deps import NO_COUNTRY_TEXT, assert_feature, get_player_country
 
@@ -712,7 +726,6 @@ async def msg_sell_price(
         return
 
     resource = data["resource"]
-    amount = data["amount"]
     buyer_id = data["buyer_id"]
     buyer = await countries_repo.get_country(session, buyer_id)
     if buyer is None:
@@ -720,14 +733,166 @@ async def msg_sell_price(
         await state.clear()
         return
 
-    # ساخت رکورد فروش در حالت در انتظار تأیید خریدار
+    await state.update_data(price=price)
+
+    # تعیین شیوه‌های مجاز حمل‌ونقل (سوخت در هواپیما ممنوع، دریایی نیازمند دریا، زمینی برای همه)
+    allowed_modes: list[TransportMode] = []
+    is_fuel = resource in FUEL_RESOURCES
+    can_sea = geo.can_use_sea_transport(country.name_en, buyer.name_en)
+
+    if not is_fuel:
+        allowed_modes.append(TransportMode.AIR)
+    if can_sea:
+        allowed_modes.append(TransportMode.SEA)
+    allowed_modes.append(TransportMode.LAND)
+
+    await state.set_state(SaleForm.choosing_transport_mode)
+    notice = ""
+    if is_fuel:
+        notice += "⚠️ <i>به دلیل ماهیت سوختی این منبع، حمل هوایی ممنوع است.</i>\n"
+    if not can_sea:
+        notice += "⚠️ <i>به دلیل محصور بودن در خشکی، حمل دریایی امکان‌پذیر نیست.</i>\n"
+
+    await message.answer(
+        f"🚢✈️ <b>انتخاب شیوه حمل‌ونقل محموله:</b>\n\n{notice}"
+        "لطفاً روش ارسال محموله را انتخاب کنید:",
+        reply_markup=transport_modes_kb(allowed_modes, back_data="sback:buyer"),
+    )
+
+
+@router.callback_query(SaleForm.choosing_transport_mode, F.data.startswith("sell_mode:"))
+async def cb_sell_transport_mode(
+    call: CallbackQuery, state: FSMContext, session: AsyncSession, db_user: User
+) -> None:
+    """انتخاب روش حمل‌ونقل و رفتن به مرحله انتخاب پرداخت‌کننده عوارض."""
+    await call.answer()
+    mode_str = call.data.split(":")[1]
+    mode = TransportMode(mode_str)
+    await state.update_data(transport_mode=mode.value)
+
+    data = await state.get_data()
+    country = await get_player_country(session, db_user)
+    buyer = await countries_repo.get_country(session, data["buyer_id"])
+    if not country or not buyer:
+        await safe_edit(call, NO_COUNTRY_TEXT)
+        await state.clear()
+        return
+
+    fee_details = ""
+    if mode == TransportMode.AIR:
+        fee_details = f"• عوارض پایه هوایی: {fa_money(AIR_TRANSPORT_FEE)}"
+    elif mode == TransportMode.LAND:
+        fee_details = f"• عوارض پایه ترانزیت زمینی: {fa_money(LAND_TRANSPORT_FEE)}"
+    else:
+        strait_ids = geo.get_route_straits(country.name_en, buyer.name_en)
+        strait_names = [geo.get_strait_def(sid)["name_fa"] for sid in strait_ids if geo.get_strait_def(sid)]
+        straits_str = "، ".join(strait_names) if strait_names else "بدون عبور از تنگه"
+        fee_details = (
+            f"• عوارض پایه دریایی: {fa_money(SEA_TRANSPORT_FEE)}\n"
+            f"• تنگه‌های مسیر دریایی: {straits_str}"
+        )
+
+    await state.set_state(SaleForm.choosing_fee_payer)
+    await safe_edit(
+        call,
+        f"💳 <b>تعیین پرداخت‌کننده عوارض لجستیک</b>\n\n"
+        f"شیوه ارسال انتخابی: <b>{TRANSPORT_MODE_FA[mode]}</b>\n"
+        f"{fee_details}\n\n"
+        "عوارض حمل‌ونقل و تنگه‌ها بر عهده‌ی کدام طرف باشد؟",
+        reply_markup=fee_payer_kb(back_data="sback:mode"),
+    )
+
+
+@router.callback_query(StateFilter(SaleForm), F.data == "sback:mode")
+async def cb_sale_back_mode(
+    call: CallbackQuery, state: FSMContext, session: AsyncSession, db_user: User
+) -> None:
+    """بازگشت به مرحله انتخاب شیوه حمل‌ونقل."""
+    await call.answer()
+    data = await state.get_data()
+    country = await get_player_country(session, db_user)
+    buyer = await countries_repo.get_country(session, data["buyer_id"])
+    if not country or not buyer:
+        await safe_edit(call, NO_COUNTRY_TEXT)
+        await state.clear()
+        return
+
+    resource = data["resource"]
+    allowed_modes: list[TransportMode] = []
+    is_fuel = resource in FUEL_RESOURCES
+    can_sea = geo.can_use_sea_transport(country.name_en, buyer.name_en)
+
+    if not is_fuel:
+        allowed_modes.append(TransportMode.AIR)
+    if can_sea:
+        allowed_modes.append(TransportMode.SEA)
+    allowed_modes.append(TransportMode.LAND)
+
+    await state.set_state(SaleForm.choosing_transport_mode)
+    notice = ""
+    if is_fuel:
+        notice += "⚠️ <i>به دلیل ماهیت سوختی این منبع، حمل هوایی ممنوع است.</i>\n"
+    if not can_sea:
+        notice += "⚠️ <i>به دلیل محصور بودن در خشکی، حمل دریایی امکان‌پذیر نیست.</i>\n"
+
+    await safe_edit(
+        call,
+        f"🚢✈️ <b>انتخاب شیوه حمل‌ونقل محموله:</b>\n\n{notice}"
+        "لطفاً روش ارسال محموله را انتخاب کنید:",
+        reply_markup=transport_modes_kb(allowed_modes, back_data="sback:buyer"),
+    )
+
+
+@router.callback_query(SaleForm.choosing_fee_payer, F.data.startswith("sell_payer:"))
+async def cb_sell_fee_payer(
+    call: CallbackQuery, state: FSMContext, session: AsyncSession, db_user: User
+) -> None:
+    """ثبت نهایی معامله و ارسال پیش‌فاکتور شفاف برای خریدار."""
+    await call.answer()
+    payer = call.data.split(":")[1]
+    data = await state.get_data()
+    country = await get_player_country(session, db_user)
+    buyer = await countries_repo.get_country(session, data["buyer_id"])
+    if not country or not buyer:
+        await safe_edit(call, NO_COUNTRY_TEXT)
+        await state.clear()
+        return
+
+    resource = data["resource"]
+    amount = data["amount"]
+    price = data["price"]
+    mode_str = data["transport_mode"]
+    mode = TransportMode(mode_str)
+
+    transport_fee = 0.0
+    strait_toll_fee = 0.0
+    strait_ids: list[str] = []
+
+    if mode == TransportMode.AIR:
+        transport_fee = AIR_TRANSPORT_FEE
+    elif mode == TransportMode.LAND:
+        transport_fee = LAND_TRANSPORT_FEE
+    else:
+        transport_fee = SEA_TRANSPORT_FEE
+        strait_ids = geo.get_route_straits(country.name_en, buyer.name_en)
+        payer_cid = country.id if payer == "SELLER" else buyer.id
+        tolls_map = await straits_repo.calculate_route_tolls(session, strait_ids, payer_cid)
+        strait_toll_fee = sum(tolls_map.values())
+
+    total_logistics = transport_fee + strait_toll_fee
+
     sale = ResourceSale(
         seller_country=country.id,
-        buyer_country=buyer_id,
+        buyer_country=buyer.id,
         resource=resource,
         amount=amount,
         price=price,
+        transport_mode=mode.value,
+        fee_payer=payer,
+        transport_fee=transport_fee,
+        strait_toll_fee=strait_toll_fee,
         status=TradeStatus.PENDING,
+        strait_status="NONE",
     )
     sale = await trade_repo.add_sale(session, sale)
     await session.flush()
@@ -735,33 +900,48 @@ async def msg_sell_price(
 
     unit = RESOURCE_UNIT_FA[ResourceType(resource)]
     rname = RESOURCE_FA[ResourceType(resource)]
-    await message.answer(
-        f"📨 پیشنهاد فروش برای {buyer.flag} {buyer.name_fa} ارسال شد:\n"
-        f"{fa_number(amount)} {unit} {rname} به مبلغ {fa_money(price)}\n\n"
-        "پس از تأیید خریدار، محموله توسط WTO ارسال می‌شود."
+    payer_fa = FEE_PAYER_FA[FeePayer(payer)]
+    mode_fa = TRANSPORT_MODE_FA[mode]
+
+    await safe_edit(
+        call,
+        f"📨 <b>پیشنهاد فروش برای {buyer.flag} {buyer.name_fa} ارسال شد:</b>\n\n"
+        f"📦 <b>محموله:</b> {fa_number(amount)} {unit} {rname}\n"
+        f"💰 <b>قیمت کالا:</b> {fa_money(price)}\n"
+        f"🚚 <b>شیوه ارسال:</b> {mode_fa}\n"
+        f"💵 <b>عوارض لجستیک و تنگه‌ها:</b> {fa_money(total_logistics)}\n"
+        f"💳 <b>پرداخت‌کننده عوارض:</b> {payer_fa}\n\n"
+        "پس از تأیید خریدار، محموله ارسال خواهد شد.",
     )
 
-    # ارسال پیشنهاد به مالک کشور خریدار
     if buyer.owner_user_id:
+        buyer_total = price + (total_logistics if payer == "BUYER" else 0.0)
+        straits_note = ""
+        if strait_ids:
+            s_names = [geo.get_strait_def(sid)["name_fa"] for sid in strait_ids if geo.get_strait_def(sid)]
+            straits_note = f"\n🌊 <b>تنگه‌های مسیر:</b> {', '.join(s_names)}"
+
         kb = InlineKeyboardMarkup(
-            inline_keyboard=[
-                [
-                    InlineKeyboardButton(
-                        text="✅ خرید", callback_data=f"sale_accept:{sale.id}", style=STYLE_OK
-                    ),
-                    InlineKeyboardButton(
-                        text="❌ رد", callback_data=f"sale_reject:{sale.id}", style=STYLE_NO
-                    ),
-                ]
-            ]
+            inline_keyboard=[[
+                InlineKeyboardButton(
+                    text="✅ خرید", callback_data=f"sale_accept:{sale.id}", style=STYLE_OK
+                ),
+                InlineKeyboardButton(
+                    text="❌ رد", callback_data=f"sale_reject:{sale.id}", style=STYLE_NO
+                ),
+            ]]
         )
         try:
             await bot.send_message(
                 buyer.owner_user_id,
-                f"🛒 <b>پیشنهاد خرید منبع</b>\n\n"
+                f"🛒 <b>پیش‌فاکتور خرید منبع</b>\n\n"
                 f"فروشنده: {country.flag} {country.name_fa}\n"
                 f"منبع: {fa_number(amount)} {unit} {rname}\n"
-                f"قیمت: {fa_money(price)}",
+                f"قیمت کالا: {fa_money(price)}\n"
+                f"شیوه ارسال: {mode_fa}\n"
+                f"عوارض لجستیک: {fa_money(total_logistics)}\n"
+                f"پرداخت‌کننده عوارض: {payer_fa}{straits_note}\n\n"
+                f"💳 <b>مبلغ نهایی کسر از شما:</b> {fa_money(buyer_total)}",
                 reply_markup=kb,
             )
         except Exception:  # noqa: BLE001
@@ -772,7 +952,7 @@ async def msg_sell_price(
 async def cb_sale_accept(
     call: CallbackQuery, session: AsyncSession, db_user: User
 ) -> None:
-    """تأیید خرید توسط خریدار: انتقال مالی و ارسال محموله توسط WTO."""
+    """تأیید خرید توسط خریدار: تسویه مالی، کنترل تنگه‌ها و ارسال محموله."""
     sale_id = int(call.data.split(":")[1])
     sale = await trade_repo.get_sale(session, sale_id)
     if sale is None or sale.status != TradeStatus.PENDING:
@@ -784,17 +964,63 @@ async def cb_sale_accept(
         await call.answer("شما مجاز به تأیید این خرید نیستید.", show_alert=True)
         return
 
+    seller = await countries_repo.get_country(session, sale.seller_country)
+    mode = getattr(sale, "transport_mode", "SEA") or "SEA"
+    fee_payer = getattr(sale, "fee_payer", "SELLER") or "SELLER"
+    t_fee = float(getattr(sale, "transport_fee", 0.0) or 0.0)
+
+    strait_tolls: dict[str, float] = {}
+    strait_ids: list[str] = []
+    if mode == "SEA" and seller and buyer:
+        strait_ids = geo.get_route_straits(seller.name_en, buyer.name_en)
+        payer_cid = sale.seller_country if fee_payer == "SELLER" else sale.buyer_country
+        strait_tolls = await straits_repo.calculate_route_tolls(session, strait_ids, payer_cid)
+
     try:
         sale_info = await transfer_sale(
-            session, sale.seller_country, sale.buyer_country,
-            sale.resource, sale.amount, sale.price,
+            session,
+            sale.seller_country,
+            sale.buyer_country,
+            sale.resource,
+            sale.amount,
+            sale.price,
+            transport_fee=t_fee,
+            fee_payer=fee_payer,
+            strait_tolls=strait_tolls,
         )
     except EconomyError as exc:
         await call.answer(str(exc), show_alert=True)
         return
 
-    # تخمین زمان رسیدن محموله توسط AI
-    seller = await countries_repo.get_country(session, sale.seller_country)
+    # بررسی مسدود بودن تنگه‌های مسیر در حمل دریایی
+    blocked_sid: str | None = None
+    if mode == "SEA" and strait_ids:
+        blocked_sid = await straits_repo.get_first_blocked_strait(
+            session, strait_ids, sale.seller_country, sale.buyer_country
+        )
+
+    if blocked_sid:
+        await strait_service.hold_shipment_at_strait(bot, session, sale, blocked_sid)
+        s_def = geo.get_strait_def(blocked_sid)
+        s_name = s_def["name_fa"] if s_def else blocked_sid
+        await call.answer("خرید تأیید شد، اما کشتی در تنگه متوقف گردید ⚠️")
+        await safe_edit(
+            call,
+            call.message.html_text + f"\n\n⚠️ <b>توقف در تنگه {s_name}</b>\n"
+            "این آبراه مسدود است و محموله تا صدور دستور مرزبانی کشور کنترل‌کننده متوقف شد.",
+        )
+        if seller and seller.owner_user_id:
+            try:
+                await bot.send_message(
+                    seller.owner_user_id,
+                    f"⚠️ محموله ارسالی شما به {buyer.flag} {buyer.name_fa} در تنگه مسدودشده‌ی <b>{s_name}</b> متوقف شد "
+                    "و در انتظار تصمیم‌گیری مرزبانی دریایی است.",
+                )
+            except Exception:  # noqa: BLE001
+                pass
+        return
+
+    # در صورت باز بودن مسیر، تخمین زمان رسیدن توسط AI و حرکت محموله
     rname = RESOURCE_FA[ResourceType(sale.resource)]
     unit_fa = RESOURCE_UNIT_FA[ResourceType(sale.resource)]
     eta_data = await evaluators.estimate_shipping_time(
@@ -804,6 +1030,7 @@ async def cb_sale_accept(
     minutes = max(5, min(minutes, 120))
     sale.ship_eta = _utcnow() + timedelta(minutes=minutes)
     sale.status = TradeStatus.IN_TRANSIT
+    sale.strait_status = "PASSED" if strait_ids else "NONE"
 
     # ثبت کول‌داون فروش برای فروشنده
     await cd_repo.touch(session, sale.seller_country, "resource_sale")
@@ -823,14 +1050,12 @@ async def cb_sale_accept(
                 f"\n⚠️ تعرفه‌ی {fa_number(sale_info.get('tariff_percent', 0))}٪ آمریکا "
                 f"({fa_money(duty)}) کسر شد. خالص دریافتی: {fa_money(sale_info.get('net_to_seller', 0))}."
             )
-        # (v1.11.1) در همین لحظه‌ی ارسال محموله، از فروشنده می‌پرسیم آیا اسکورت
-        # می‌فرستد یا نه. اسکورت فقط جنگنده است و محموله را از رهگیری حفظ می‌کند.
         try:
             await bot.send_message(
                 seller.owner_user_id,
                 f"✅ {buyer.flag} {buyer.name_fa} پیشنهاد فروش شما را پذیرفت. "
                 f"محموله در راه است.{tariff_note}\n\n"
-                f"🚢 <b>محموله:</b> {fa_number(sale.amount)} {unit_fa} {rname}\n"
+                f"📦 <b>محموله:</b> {fa_number(sale.amount)} {unit_fa} {rname}\n"
                 f"🎯 <b>مقصد:</b> {buyer.flag} {buyer.name_fa}\n"
                 f"⏱ زمان رسیدن: حدود {fa_number(minutes)} دقیقه\n\n"
                 "🛡 <b>آیا می‌خواهید برای این محموله اسکورت بفرستید؟</b>\n"
@@ -840,6 +1065,7 @@ async def cb_sale_accept(
             )
         except Exception:  # noqa: BLE001
             pass
+
 
     # لاگ تعرفه‌ی اجراشده: به آمریکا (پیوی) و گروه لاگ (v1.6)
     duty = sale_info.get("duty", 0) if sale_info else 0

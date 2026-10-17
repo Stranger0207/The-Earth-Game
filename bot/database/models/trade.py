@@ -8,7 +8,8 @@ from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from ..base import Base
-from ...enums import TradeStatus
+from ...enums import FeePayer, TradeStatus, TransportMode
+
 
 
 def _utcnow() -> datetime:
@@ -46,6 +47,21 @@ class ResourceSale(Base):
     escort_power: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
     # تجهیزات اسکورت: [{"name","count","unit"}]
     escort_json: Mapped[str] = mapped_column(Text, default="[]", nullable=False)
+
+    # --- شیوه حمل‌ونقل و عوارض لجستیک (آپدیت ۳ و ۱۱) ---
+    transport_mode: Mapped[str] = mapped_column(
+        String(8), default=TransportMode.SEA.value, nullable=False
+    )
+    fee_payer: Mapped[str] = mapped_column(
+        String(8), default=FeePayer.SELLER.value, nullable=False
+    )
+    transport_fee: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    strait_toll_fee: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    strait_status: Mapped[str] = mapped_column(String(24), default="NONE", nullable=False)
+    held_at_strait_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    held_since: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     ship_eta: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True

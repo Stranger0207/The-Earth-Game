@@ -27,6 +27,7 @@ from ..keyboards.command_center import (
     industry_menu_kb,
 )
 from ..keyboards.common import back_kb
+from ..services import geo_service as geo
 from ..utils.numbers import fa_number
 from ..utils.screens import safe_edit, show_menu
 from ..utils.ui import DIVIDER, STYLE_MAIN, header
@@ -51,13 +52,19 @@ async def cb_command_center(
         await safe_edit(call, NO_COUNTRY_TEXT)
         return
 
+    has_straits = bool(geo.get_straits_for_country(country.name_en))
     text = (
         header("ستاد فرماندهی کل", "🎖") + "\n\n"
         f"🏴 کشور: {country.flag} <b>{country.name_fa}</b>\n"
         f"{DIVIDER}\n"
         "بخش موردنظر را انتخاب کنید:"
     )
-    await show_menu(call, text, command_center_kb(bool(country.is_vip)), image_key="military")
+    await show_menu(
+        call,
+        text,
+        command_center_kb(bool(country.is_vip), has_straits=has_straits),
+        image_key="military",
+    )
 
 
 # ============================================================

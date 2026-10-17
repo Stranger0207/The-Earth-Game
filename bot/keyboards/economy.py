@@ -5,7 +5,15 @@ from __future__ import annotations
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from ..enums import FACILITY_FA, RESOURCE_EMOJI, RESOURCE_FA, FacilityType, ResourceType
+from ..enums import (
+    FACILITY_FA,
+    RESOURCE_EMOJI,
+    RESOURCE_FA,
+    FacilityType,
+    ResourceType,
+    TransportMode,
+)
+
 from ..utils.numbers import fa_number
 from ..utils.ui import STYLE_MAIN, STYLE_NO, STYLE_OK
 
@@ -19,8 +27,8 @@ MINEABLE_RESOURCES: list[ResourceType] = [
 ]
 
 
-def economy_menu_kb(is_usa: bool = False) -> InlineKeyboardMarkup:
-    """منوی اصلی اقتصاد. برای آمریکا دکمه‌ی تعرفه‌ی بین‌المللی هم اضافه می‌شود (v1.5)."""
+def economy_menu_kb(is_usa: bool = False, has_straits: bool = False) -> InlineKeyboardMarkup:
+    """منوی اصلی اقتصاد. برای آمریکا دکمه‌ی تعرفه‌ی بین‌المللی و برای کشورهای دارای تنگه دکمه‌ی عوارض تنگه اضافه می‌شود."""
     builder = InlineKeyboardBuilder()
     builder.button(text="📊 گزارش اقتصادی", callback_data="econ:report", style=STYLE_MAIN)
     builder.button(text="📦 ذخایر", callback_data="econ:reserves", style=STYLE_MAIN)
@@ -31,10 +39,16 @@ def economy_menu_kb(is_usa: bool = False) -> InlineKeyboardMarkup:
     builder.button(text="📈 سرمایه‌گذاری", callback_data="econ:invest", style=STYLE_MAIN)
     builder.button(text="🏷 مزایده", callback_data="econ:auction", style=STYLE_MAIN)
     builder.button(text="🛰 ماهواره اقتصادی", callback_data="sat:econ_menu", style=STYLE_MAIN)
+    if has_straits:
+        builder.button(text="🌊 مدیریت و عوارض تنگه", callback_data="menu:straits", style=STYLE_OK)
     if is_usa:
         builder.button(text="🇺🇸 تعرفه بین‌المللی", callback_data="econ:tariffs", style=STYLE_NO)
     builder.button(text="🔙 بازگشت", callback_data="menu:main", style=STYLE_MAIN)
-    if is_usa:
+    if has_straits and is_usa:
+        builder.adjust(2, 2, 2, 2, 2, 1, 1)
+    elif has_straits:
+        builder.adjust(2, 2, 2, 2, 2, 1)
+    elif is_usa:
         builder.adjust(2, 2, 2, 2, 1, 1, 1)
     else:
         builder.adjust(2, 2, 2, 2, 1, 1)
@@ -290,3 +304,38 @@ def auction_durations_kb() -> InlineKeyboardMarkup:
     builder.button(text="🔙 بازگشت", callback_data="econ:auction", style=STYLE_MAIN)
     builder.adjust(2, 2, 1)
     return builder.as_markup()
+
+
+def transport_modes_kb(allowed_modes: list[TransportMode], back_data: str) -> InlineKeyboardMarkup:
+    """انتخاب شیوه حمل‌ونقل محموله (آپدیت ۳ و ۱۱)."""
+    builder = InlineKeyboardBuilder()
+    for mode in allowed_modes:
+        if mode == TransportMode.AIR:
+            label = "✈️ حمل هوایی (عوارض: ۸ میلیون دلار)"
+        elif mode == TransportMode.SEA:
+            label = "🚢 حمل دریایی (عوارض: ۲ میلیون دلار + عوارض تنگه)"
+        else:
+            label = "🚛 ترانزیت زمینی (عوارض: ۵ میلیون دلار)"
+        builder.button(text=label, callback_data=f"sell_mode:{mode.value}", style=STYLE_MAIN)
+    builder.button(text="🔙 بازگشت", callback_data=back_data, style=STYLE_MAIN)
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def fee_payer_kb(back_data: str, prefix: str = "sell_payer") -> InlineKeyboardMarkup:
+    """انتخاب پرداخت‌کننده عوارض حمل‌ونقل و تنگه‌ها."""
+    builder = InlineKeyboardBuilder()
+    builder.button(
+        text="💳 پرداخت عوارض توسط خودم (فروشنده)",
+        callback_data=f"{prefix}:SELLER",
+        style=STYLE_MAIN,
+    )
+    builder.button(
+        text="📦 پرداخت عوارض توسط کشور خریدار",
+        callback_data=f"{prefix}:BUYER",
+        style=STYLE_MAIN,
+    )
+    builder.button(text="🔙 بازگشت", callback_data=back_data, style=STYLE_MAIN)
+    builder.adjust(1)
+    return builder.as_markup()
+

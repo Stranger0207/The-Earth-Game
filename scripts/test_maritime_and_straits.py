@@ -1,0 +1,607 @@
+"""
+تست جامع سیستم حمل‌ونقل دریایی، هوایی و زمینی + ژئوپلیتیک تنگه‌ها و اموال بلوکه‌شده (آپدیت‌های ۳ و ۱۱).
+
+اجرا:
+    python -m scripts.test_maritime_and_straits
+"""
+
+from __future__ import annotations
+
+import asyncio
+import os
+import sys
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from unittest.mock import AsyncMock
+
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
+os.environ["BOT_TOKEN"] = "123456:TEST_TOKEN_ONLY"
+os.environ["DATABASE_URL"] = "sqlite+aiosqlite:///:memory:"
+os.environ["GROQ_API_KEY"] = "gsk_test"
+os.environ["OWNER_IDS"] = "[111]"
+os.environ["ADMIN_IDS"] = "[111, 222]"
+os.environ["PYTHONUTF8"] = "1"
+
+_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(_ROOT))
+
+from sqlalchemy import select, text
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+
+from bot.constants import (
+    AIR_TRANSPORT_FEE,
+    FUEL_RESOURCES,
+    LAND_TRANSPORT_FEE,
+    LOCKABLE_FEATURES,
+    SEA_TRANSPORT_FEE,
+    STRAIT_HOLD_TIMEOUT_HOURS,
+    STRAIT_TOLL_MAX,
+)
+from bot.database.base import Base
+from bot.database.models import (
+    BlockedCargo,
+    Country,
+    MilitarySale,
+    Reserve,
+    ResourceSale,
+    StraitBlockRule,
+    StraitConfig,
+    User,
+)
+from bot.database.repositories import reserves as reserves_repo
+from bot.database.repositories import straits as straits_repo
+from bot.database.repositories import trade as trade_repo
+from bot.enums import (
+    FeePayer,
+    ResourceType,
+    StraitBlockScope,
+    TradeStatus,
+    TransportMode,
+)
+from bot.services import economy_service
+from bot.services import geo_service as geo
+from bot.services import strait_service
+
+_passed = 0
+_failed: list[str] = []
+
+
+def check(label: str, condition: bool, detail: str = "") -> None:
+    global _passed
+    if condition:
+        _passed += 1
+        print(f"  ✅ {label}")
+    else:
+        _failed.append(f"{label} — {detail}")
+        print(f"  ❌ {label} — {detail}")
+
+
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+async def setup_test_engine():
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=False)
+    # اجبار بررسی کلیدهای خارجی برای شبیه‌سازی دقیق رفتار PostgreSQL
+    async with engine.begin() as conn:
+        await conn.execute(text("PRAGMA foreign_keys = ON;"))
+        await conn.run_sync(Base.metadata.create_all)
+    session_factory = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
+
+    import bot.database.base as db_base
+    import bot.scheduler.jobs as jobs_mod
+    db_base.async_session_factory = session_factory
+    jobs_mod.async_session_factory = session_factory
+
+    return engine, session_factory
+
+
+async def main():
+    print("\n" + "=" * 65)
+    print("🌊🚢 تست جامع آپدیت‌های ۳ و ۱۱: حمل‌ونقل و ژئوپلیتیک تنگه‌ها")
+    print("=" * 65)
+
+    # -------------------------------------------------------------
+    # ۱. تست تعاریف تنگه‌ها و گراف دریایی (geo_service)
+    # -------------------------------------------------------------
+    print("\n[بخش ۱] بررسی تعاریف تنگه‌ها، کنترل‌کننده‌ها و مسیریابی دریایی:")
+
+    straits = geo.list_all_strait_defs()
+    check("تعداد تنگه‌های تعریف‌شده حداقل ۱۴ عدد است", len(straits) >= 14, f"len={len(straits)}")
+
+    hormuz = geo.get_strait_def("hormuz")
+    check("تنگه هرمز در لیست است و کنترل‌کننده آن ایران است", hormuz is not None and hormuz["controller"] == "Iran")
+
+    suez = geo.get_strait_def("suez")
+    check("کانال سوئز در لیست است و کنترل‌کننده آن مصر است", suez is not None and suez["controller"] == "Egypt")
+
+    bab = geo.get_strait_def("bab_el_mandeb")
+    check("تنگه باب‌المندب در لیست است و کنترل‌کننده آن یمن است", bab is not None and bab["controller"] == "Yemen")
+
+    dover = geo.get_strait_def("dover")
+    check("تنگه دوور در لیست است و کنترل‌کننده آن بریتانیا است", dover is not None and dover["controller"] == "Britain")
+
+    gibraltar = geo.get_strait_def("gibraltar")
+    check("تنگه جبل‌الطارق در لیست است و کنترل‌کننده آن اسپانیا است", gibraltar is not None and gibraltar["controller"] == "Spain")
+
+    # بررسی دسترسی به دریا و کشورهای محصور در خشکی
+    check("افغانستان محصور در خشکی است", geo.is_landlocked("Afghanistan"))
+    check("سوئیس محصور در خشکی است", geo.is_landlocked("Switzerland"))
+    check("ایران به دریا دسترسی دارد", not geo.is_landlocked("Iran"))
+    check("آلمان به دریا دسترسی دارد", not geo.is_landlocked("Germany"))
+
+    check("امکان حمل دریایی بین ایران و آلمان وجود دارد", geo.can_use_sea_transport("Iran", "Germany"))
+    check("امکان حمل دریایی برای افغانستان وجود ندارد", not geo.can_use_sea_transport("Afghanistan", "Iran"))
+
+    # مسیریابی دقیق تنگه‌ها در سفر دریایی
+    # مسیر خلیج فارس به شمال اروپا: قطر/ایران به آلمان/بریتانیا
+    route_straits = geo.get_route_straits("Qatar", "Germany")
+    print(f"      مسیر قطر به آلمان: {route_straits}")
+    check("مسیر دریایی قطر به آلمان شامل هرمز است", "hormuz" in route_straits)
+    check("مسیر دریایی قطر به آلمان شامل باب‌المندب است", "bab_el_mandeb" in route_straits)
+    check("مسیر دریایی قطر به آلمان شامل کانال سوئز است", "suez" in route_straits)
+    check("مسیر دریایی قطر به آلمان شامل جبل‌الطارق است", "gibraltar" in route_straits)
+    check("مسیر دریایی قطر به آلمان شامل دوور است", "dover" in route_straits)
+
+    # مسیر روسیه (دریای آزوف/سیاه) به ایتالیا
+    russia_route = geo.get_route_straits("Russia", "Italy")
+    print(f"      مسیر روسیه به ایتالیا: {russia_route}")
+    check("مسیر روسیه به ایتالیا شامل تنگه‌های کرچ یا بسفر/داردانل است", "bosphorus" in russia_route or "kerch" in russia_route)
+
+    # مسیر محصور در خشکی هیچ مسیری ندارد
+    afg_route = geo.get_route_straits("Afghanistan", "Iran")
+    check("کشور محصور در خشکی هیچ تنگه دریایی را برنمی‌گرداند", afg_route == [])
+
+    # -------------------------------------------------------------
+    # ۲. تست قوانین انواع حمل‌ونقل و سوخت
+    # -------------------------------------------------------------
+    print("\n[بخش ۲] بررسی نرخ‌های عوارض و قوانین سوخت / زمین / هوا:")
+
+    check("عوارض هوایی ۸ میلیون دلار است", AIR_TRANSPORT_FEE == 8_000_000)
+    check("عوارض دریایی ۲ میلیون دلار است", SEA_TRANSPORT_FEE == 2_000_000)
+    check("عوارض ترانزیت زمینی ۵ میلیون دلار است", LAND_TRANSPORT_FEE == 5_000_000)
+
+    check("منابع سوختی شامل نفت، گاز، زغال‌سنگ و اورانیوم است",
+          ResourceType.OIL in FUEL_RESOURCES and
+          ResourceType.GAS in FUEL_RESOURCES and
+          ResourceType.COAL in FUEL_RESOURCES and
+          ResourceType.URANIUM in FUEL_RESOURCES)
+
+    # شبیه‌سازی فرم انتخاب روش ارسال
+    # الف) برای سوخت با کشور محصور در خشکی (عربستان به افغانستان):
+    is_fuel = ResourceType.OIL in FUEL_RESOURCES
+    is_coastal_possible = geo.can_use_sea_transport("Saudi Arabia", "Afghanistan")
+    allowed_modes_fuel_landlocked = []
+    if is_coastal_possible:
+        allowed_modes_fuel_landlocked.append(TransportMode.SEA)
+    if not is_fuel:
+        allowed_modes_fuel_landlocked.append(TransportMode.AIR)
+    allowed_modes_fuel_landlocked.append(TransportMode.LAND)
+
+    check("برای سوخت به افغانستان، حمل هوایی ممنوع و حمل دریایی ناممکن است (فقط زمینی)",
+          allowed_modes_fuel_landlocked == [TransportMode.LAND])
+
+    # ب) برای منابع غیر سوختی با دو کشور ساحلی (فولاد از ایران به آلمان):
+    is_fuel = ResourceType.STEEL in FUEL_RESOURCES
+    is_coastal_possible = geo.can_use_sea_transport("Iran", "Germany")
+    allowed_modes_steel_coastal = []
+    if is_coastal_possible:
+        allowed_modes_steel_coastal.append(TransportMode.SEA)
+    if not is_fuel:
+        allowed_modes_steel_coastal.append(TransportMode.AIR)
+    allowed_modes_steel_coastal.append(TransportMode.LAND)
+
+    check("برای فولاد بین دو کشور ساحلی، هر ۳ روش دریایی، هوایی و زمینی مجاز است",
+          len(allowed_modes_steel_coastal) == 3 and
+          TransportMode.SEA in allowed_modes_steel_coastal and
+          TransportMode.AIR in allowed_modes_steel_coastal and
+          TransportMode.LAND in allowed_modes_steel_coastal)
+
+    # -------------------------------------------------------------
+    # ۳. تست پایگاه‌داده و مخازن تنگه‌ها (straits_repo)
+    # -------------------------------------------------------------
+    print("\n[بخش ۳] بررسی تنظیمات تنگه‌ها، مسدودسازی و عوارض عبور در دیتابیس:")
+
+    engine, session_factory = await setup_test_engine()
+
+    async with session_factory() as session:
+        # ساخت کاربران و کشورهای تستی
+        u1 = User(telegram_id=101, username="u101", first_name="Iran Leader")
+        u2 = User(telegram_id=102, username="u102", first_name="Germany Leader")
+        u3 = User(telegram_id=103, username="u103", first_name="Qatar Leader")
+        session.add_all([u1, u2, u3])
+        await session.flush()
+
+        iran = Country(id=1, name_fa="ایران", name_en="Iran", flag="🇮🇷", region="middle_east", budget=100_000_000, owner_user_id=101)
+        germany = Country(id=2, name_fa="آلمان", name_en="Germany", flag="🇩🇪", region="europe", budget=200_000_000, owner_user_id=102)
+        qatar = Country(id=3, name_fa="قطر", name_en="Qatar", flag="🇶🇦", region="middle_east", budget=300_000_000, owner_user_id=103)
+        session.add_all([iran, germany, qatar])
+        await session.flush()
+
+        # تست مقداردهی اولیه تنگه‌ها
+        await straits_repo.ensure_default_straits(session)
+        iran_straits = await straits_repo.list_straits_by_controller(session, "Iran")
+        check("تنگه‌های تحت حاکمیت ایران بارگذاری شدند", len(iran_straits) >= 1 and iran_straits[0].strait_id == "hormuz")
+
+        # تغییر عوارض عمومی تنگه هرمز
+        hormuz_cfg = await straits_repo.get_strait_config(session, "hormuz")
+        check("کانفیگ تنگه هرمز وجود دارد", hormuz_cfg is not None)
+        await straits_repo.update_strait_config(session, "hormuz", default_toll=500_000)
+        hormuz_cfg = await straits_repo.get_strait_config(session, "hormuz")
+        check("عوارض عمومی هرمز به ۵۰۰ هزار دلار تغییر یافت", hormuz_cfg.default_toll == 500_000)
+
+        # تعیین عوارض اختصاصی برای آلمان
+        await straits_repo.set_block_rule(session, "hormuz", germany.id, is_blocked=False, custom_toll=1_200_000)
+        tolls_map = await straits_repo.calculate_route_tolls(session, ["hormuz"], germany.id)
+        total_toll = sum(tolls_map.values())
+        check("عوارض اختصاصی آلمان در هرمز ۱.۲ میلیون دلار محاسبه شد", total_toll == 1_200_000)
+
+        # مسدودسازی سفارشی برای یک کشور
+        await straits_repo.update_strait_config(session, "hormuz", is_blocked=True, block_scope=StraitBlockScope.CUSTOM.value)
+        await straits_repo.set_block_rule(session, "hormuz", germany.id, is_blocked=True)
+
+        blocked_strait = await straits_repo.get_first_blocked_strait(
+            session, ["hormuz"], seller_id=qatar.id, buyer_id=germany.id
+        )
+        check("تنگه هرمز برای کشور آلمان مسدود تشخیص داده شد", blocked_strait == "hormuz")
+
+        blocked_strait_iran = await straits_repo.get_first_blocked_strait(
+            session, ["hormuz"], seller_id=qatar.id, buyer_id=iran.id
+        )
+        check("تنگه هرمز برای کشور ایران مسدود نیست", blocked_strait_iran is None)
+
+        # رفع انسداد
+        await straits_repo.update_strait_config(session, "hormuz", is_blocked=False, block_scope=StraitBlockScope.NONE.value)
+        blocked_after = await straits_repo.get_first_blocked_strait(
+            session, ["hormuz"], seller_id=qatar.id, buyer_id=germany.id
+        )
+        check("پس از رفع انسداد، تنگه هرمز باز است", blocked_after is None)
+
+        await session.commit()
+
+    # -------------------------------------------------------------
+    # ۴. تست تسویه مالی معامله (transfer_sale) با پرداخت‌کننده عوارض و واریز به حاکمان تنگه
+    # -------------------------------------------------------------
+    print("\n[بخش ۴] تست تسویه مالی معامله با عوارض حمل‌ونقل و تنگه‌ها:")
+
+    async with session_factory() as session:
+        iran = await session.get(Country, 1)
+        germany = await session.get(Country, 2)
+        qatar = await session.get(Country, 3)
+
+        initial_iran_budget = iran.budget
+        initial_qatar_budget = qatar.budget
+        initial_germany_budget = germany.budget
+
+        await reserves_repo.ensure_reserve(session, qatar.id, ResourceType.OIL.value)
+        await reserves_repo.add_amount(session, qatar.id, ResourceType.OIL.value, 50_000)
+
+        # ایجاد رکورد معامله تستی: قطر (فروشنده) به آلمان (خریدار)
+        # حمل دریایی: عوارض ۲ میلیون دلار + عوارض هرمز ۵۰۰ هزار دلار
+        # پرداخت‌کننده: فروشنده (قطر)
+        # قیمت معامله: ۲۰ میلیون دلار
+        sale_seller_pays = ResourceSale(
+            id=10,
+            seller_country=qatar.id,
+            buyer_country=germany.id,
+            resource=ResourceType.OIL.value,
+            amount=5000,
+            price=20_000_000,
+            status=TradeStatus.PENDING.value,
+            transport_mode="SEA",
+            fee_payer="SELLER",
+            transport_fee=2_000_000,
+            strait_toll_fee=500_000,
+        )
+        session.add(sale_seller_pays)
+        await session.flush()
+
+        strait_tolls = {"hormuz": 500_000.0}
+
+        # انجام انتقال
+        await economy_service.transfer_sale(
+            session,
+            sale_seller_pays.seller_country,
+            sale_seller_pays.buyer_country,
+            sale_seller_pays.resource,
+            sale_seller_pays.amount,
+            sale_seller_pays.price,
+            transport_fee=2_000_000,
+            fee_payer="SELLER",
+            strait_tolls=strait_tolls,
+        )
+
+        check("عوارض تنگه هرمز مستقیماً به خزانه ایران واریز شد", iran.budget == initial_iran_budget + 500_000)
+        # خریدار (آلمان) مبلغ ۲۰ میلیون پرداخت کرده
+        check("از خریدار فقط مبلغ معامله کسر شد", germany.budget == initial_germany_budget - 20_000_000)
+        # فروشنده (قطر) مبلغ ۲۰ میلیون دریافت کرده ولی ۲ میلیون حمل + ۵۰۰ هزار عوارض پرداخت کرده (خالص: +۱۷.۵ میلیون)
+        check("از فروشنده عوارض حمل‌ونقل و تنگه کسر شد", qatar.budget == initial_qatar_budget + 20_000_000 - 2_500_000)
+
+        # تست حالت دوم: پرداخت عوارض توسط خریدار
+        iran.budget = initial_iran_budget
+        germany.budget = initial_germany_budget
+        qatar.budget = initial_qatar_budget
+
+        sale_buyer_pays = ResourceSale(
+            id=11,
+            seller_country=qatar.id,
+            buyer_country=germany.id,
+            resource=ResourceType.OIL.value,
+            amount=5000,
+            price=20_000_000,
+            status=TradeStatus.PENDING.value,
+            transport_mode="SEA",
+            fee_payer="BUYER",
+            transport_fee=2_000_000,
+            strait_toll_fee=500_000,
+        )
+        session.add(sale_buyer_pays)
+        await session.flush()
+
+        await economy_service.transfer_sale(
+            session,
+            sale_buyer_pays.seller_country,
+            sale_buyer_pays.buyer_country,
+            sale_buyer_pays.resource,
+            sale_buyer_pays.amount,
+            sale_buyer_pays.price,
+            transport_fee=2_000_000,
+            fee_payer="BUYER",
+            strait_tolls=strait_tolls,
+        )
+
+        check("عوارض تنگه در حالت پرداخت توسط خریدار به حاکم تنگه واریز شد", iran.budget == initial_iran_budget + 500_000)
+        # خریدار: ۲۰ میلیون قیمت + ۲ میلیون حمل + ۵۰۰ هزار عوارض = ۲۲.۵ میلیون کسر شده
+        check("از خریدار هم قیمت و هم عوارض حمل و تنگه کسر شد", germany.budget == initial_germany_budget - 22_500_000)
+        # فروشنده: تمام ۲۰ میلیون قیمت را دریافت کرده
+        check("فروشنده مبلغ کامل را بدون کسر عوارض دریافت کرد", qatar.budget == initial_qatar_budget + 20_000_000)
+
+        await session.commit()
+
+    # -------------------------------------------------------------
+    # ۵. تست سیستم توقیف، انهدام، مصادره و اموال بلوکه‌شده در تنگه (strait_service)
+    # -------------------------------------------------------------
+    print("\n[بخش ۵] تست توقیف در تنگه، صدور اجازه عبور، انهدام و پنل اموال بلوکه‌شده:")
+
+    fake_bot = AsyncMock()
+
+    async with session_factory() as session:
+        iran = await session.get(Country, 1)
+        germany = await session.get(Country, 2)
+        qatar = await session.get(Country, 3)
+
+        # ساخت محموله در حال حرکت
+        sale = ResourceSale(
+            id=20,
+            seller_country=qatar.id,
+            buyer_country=germany.id,
+            resource=ResourceType.OIL.value,
+            amount=10_000,
+            price=40_000_000,
+            status=TradeStatus.IN_TRANSIT.value,
+            transport_mode="SEA",
+            ship_eta=_utcnow() + timedelta(hours=5),
+        )
+        session.add(sale)
+        await session.flush()
+
+        # ۱) توقیف محموله در تنگه هرمز توسط ایران
+        await strait_service.hold_shipment_at_strait(fake_bot, session, sale, "hormuz")
+        check("وضعیت محموله به HELD_AT_STRAIT تغییر یافت", sale.strait_status == "HELD_AT_STRAIT")
+        check("شناسه تنگه توقیف‌کننده ثبت شد", sale.held_at_strait_id == "hormuz")
+        check("زمان توقیف ثبت شد", sale.held_since is not None)
+
+        # ۲) اقدام اول: صدور اجازه عبور
+        res_allow = await strait_service.allow_passage(fake_bot, session, sale.id, "hormuz", iran)
+        check("اجازه عبور صادر شد", res_allow["status"] == "allowed")
+        check("وضعیت محموله به PASSED و IN_TRANSIT تغییر یافت", sale.strait_status == "PASSED" and sale.status == TradeStatus.IN_TRANSIT.value)
+
+        # ۳) اقدام دوم: انهدام و غرق کشتی
+        sale.strait_status = "HELD_AT_STRAIT"
+        sale.held_at_strait_id = "hormuz"
+        sale.held_since = _utcnow()
+        await session.flush()
+
+        res_destroy = await strait_service.destroy_shipment(fake_bot, session, sale.id, "hormuz", iran)
+        check("کشتی با موفقیت منهدم شد", res_destroy["status"] == "destroyed")
+        check("وضعیت محموله DESTROYED و معامله REJECTED شد", sale.strait_status == "DESTROYED" and sale.status == TradeStatus.REJECTED.value)
+
+        # ۴) اقدام سوم: مصادره مستقیم به ذخایر خودی
+        sale.strait_status = "HELD_AT_STRAIT"
+        sale.held_at_strait_id = "hormuz"
+        sale.held_since = _utcnow()
+        await session.flush()
+
+        res_confiscate_direct = await strait_service.confiscate_shipment(
+            fake_bot, session, sale.id, "hormuz", iran, to_blocked_assets=False
+        )
+        check("کشتی مستقیماً مصادره شد", res_confiscate_direct["status"] == "confiscated")
+        iran_reserves = await reserves_repo.get_reserve(session, iran.id, ResourceType.OIL.value)
+        check("نفت مصادره شده به ذخایر ایران افزوده شد", iran_reserves is not None and iran_reserves.amount >= 10_000)
+
+        # ۵) اقدام چهارم: مصادره و انتقال به اموال بلوکه‌شده
+        sale2 = ResourceSale(
+            id=21,
+            seller_country=qatar.id,
+            buyer_country=germany.id,
+            resource=ResourceType.STEEL.value,
+            amount=3_000,
+            price=15_000_000,
+            status=TradeStatus.IN_TRANSIT.value,
+            transport_mode="SEA",
+            strait_status="HELD_AT_STRAIT",
+            held_at_strait_id="hormuz",
+            held_since=_utcnow(),
+        )
+        session.add(sale2)
+        await session.flush()
+
+        res_confiscate_blocked = await strait_service.confiscate_shipment(
+            fake_bot, session, sale2.id, "hormuz", iran, to_blocked_assets=True
+        )
+        check("کشتی به اموال بلوکه‌شده منتقل شد", res_confiscate_blocked["status"] == "confiscated" and res_confiscate_blocked["to_blocked"])
+
+        blocked_list = await straits_repo.list_blocked_cargos_by_holding(session, iran.id)
+        check("رکورد اموال بلوکه‌شده برای ایران ثبت شده است", len(blocked_list) >= 1)
+        cargo_record = blocked_list[0]
+        check("منبع بلوکه‌شده فولاد به میزان ۳۰۰۰ واحد است", cargo_record.resource == ResourceType.STEEL.value and cargo_record.amount == 3000)
+
+        # ۶) تست ۳ دکمه پنل اموال بلوکه‌شده:
+        # دکمه الف: ادعای مالکیت و انتقال به انبار خودی
+        res_claim = await strait_service.claim_blocked_cargo_to_reserves(fake_bot, session, cargo_record.id, iran)
+        check("مالکیت مال بلوکه‌شده ادعا و به انبار خودی منتقل شد", res_claim["status"] == "claimed")
+        iran_steel = await reserves_repo.get_reserve(session, iran.id, ResourceType.STEEL.value)
+        check("فولاد به ذخایر ایران افزوده شد", iran_steel is not None and iran_steel.amount >= 3000)
+
+        # دکمه ب: عودت به کشور مبدأ (فروشنده)
+        cargo_return = await straits_repo.add_blocked_cargo(
+            session,
+            holding_country_id=iran.id,
+            source_country_id=qatar.id,
+            dest_country_id=germany.id,
+            resource=ResourceType.GAS.value,
+            amount=8_000,
+            strait_id="hormuz",
+        )
+        res_ret = await strait_service.return_blocked_cargo_to_source(fake_bot, session, cargo_return.id, iran)
+        check("مال بلوکه‌شده با موفقیت به فروشنده (قطر) بازگردانده شد", res_ret["status"] == "returned")
+        qatar_gas = await reserves_repo.get_reserve(session, qatar.id, ResourceType.GAS.value)
+        check("گاز به ذخایر قطر عودت داده شد", qatar_gas is not None and qatar_gas.amount >= 8_000)
+
+        # دکمه ج: امحا و نابودی مال بلوکه‌شده
+        cargo_destroy = await straits_repo.add_blocked_cargo(
+            session,
+            holding_country_id=iran.id,
+            source_country_id=qatar.id,
+            dest_country_id=germany.id,
+            resource=ResourceType.GOLD.value,
+            amount=500,
+            strait_id="hormuz",
+        )
+        res_dest_cargo = await strait_service.destroy_blocked_cargo(fake_bot, session, cargo_destroy.id, iran)
+        check("مال بلوکه‌شده با موفقیت منهدم شد", res_dest_cargo["status"] == "destroyed")
+        check("رکورد مال بلوکه‌شده از دیتابیس حذف گردید", await straits_repo.get_blocked_cargo(session, cargo_destroy.id) is None)
+
+        await session.commit()
+
+    # -------------------------------------------------------------
+    # ۶. تست جاب اسکدولر (process_shipments) و مهلت ۲۴ ساعته
+    # -------------------------------------------------------------
+    print("\n[بخش ۶] تست اسکدولر تحویل محموله‌ها و عودت خودکار پس از ۲۴ ساعت توقیف:")
+
+    from bot.scheduler.jobs import process_shipments
+
+    async with session_factory() as session:
+        # الف) محموله‌ای که هنوز در مهلت ۲۴ ساعت است (۲ ساعت گذشته)
+        sale_held_recent = ResourceSale(
+            id=30,
+            seller_country=3,
+            buyer_country=2,
+            resource=ResourceType.OIL.value,
+            amount=1000,
+            price=5_000_000,
+            status=TradeStatus.IN_TRANSIT.value,
+            transport_mode="SEA",
+            strait_status="HELD_AT_STRAIT",
+            held_at_strait_id="hormuz",
+            held_since=_utcnow() - timedelta(hours=2),
+            ship_eta=_utcnow() - timedelta(hours=1),  # زمان ETA گذشته ولی در تنگه متوقف است!
+        )
+        # ب) محموله‌ای که بیش از ۲۴ ساعت در تنگه رها شده (۲۵ ساعت گذشته)
+        sale_held_expired = ResourceSale(
+            id=31,
+            seller_country=3,
+            buyer_country=2,
+            resource=ResourceType.COAL.value,
+            amount=2000,
+            price=4_000_000,
+            status=TradeStatus.IN_TRANSIT.value,
+            transport_mode="SEA",
+            strait_status="HELD_AT_STRAIT",
+            held_at_strait_id="hormuz",
+            held_since=_utcnow() - timedelta(hours=25),
+            ship_eta=_utcnow() - timedelta(hours=20),
+        )
+        session.add_all([sale_held_recent, sale_held_expired])
+        await session.commit()
+
+    # اجرای جاب تحویل
+    await process_shipments(fake_bot)
+
+    async with session_factory() as session:
+        s_recent = await session.get(ResourceSale, 30)
+        s_expired = await session.get(ResourceSale, 31)
+
+        check("محموله متوقف‌شده کمتر از ۲۴ ساعت تحویل داده نشد و همچنان متوقف ماند",
+              s_recent.strait_status == "HELD_AT_STRAIT" and s_recent.status == TradeStatus.IN_TRANSIT.value)
+
+        check("محموله متوقف‌شده بیش از ۲۴ ساعت به وضعیت RETURNED و REJECTED تغییر کرد",
+              s_expired.strait_status == "RETURNED" and s_expired.status == TradeStatus.REJECTED.value)
+
+        qatar_coal = await reserves_repo.get_reserve(session, 3, ResourceType.COAL.value)
+        check("ذخایر محموله منقضی‌شده به کشور فروشنده (قطر) بازگردانده شد",
+              qatar_coal is not None and qatar_coal.amount >= 2000)
+
+    # -------------------------------------------------------------
+    # ۷. تست ریست فصل و یکپارچگی کلیدهای خارجی (season_service)
+    # -------------------------------------------------------------
+    print("\n[بخش ۷] تست پاک‌سازی فصلی جدول‌های تنگه بدون خطای کلید خارجی:")
+
+    from bot.services import season_service
+
+    async with session_factory() as session:
+        # درج رکوردهای اضافی
+        cargo_dummy = BlockedCargo(
+            holding_country_id=1,
+            source_country_id=3,
+            dest_country_id=2,
+            resource=ResourceType.IRON.value,
+            amount=1000,
+            strait_id="hormuz",
+        )
+        rule_dummy = StraitBlockRule(
+            strait_id="hormuz",
+            target_country_id=2,
+        )
+        session.add_all([cargo_dummy, rule_dummy])
+        await session.commit()
+
+        # اجرای ریست فصل
+        try:
+            await season_service.reset_season(session)
+            check("ریست فصل بدون نقض Foreign Key انجام شد", True)
+        except Exception as exc:
+            check("ریست فصل بدون نقض Foreign Key انجام شد", False, f"Exception: {exc}")
+
+        # اطمینان از پاک شدن جدول‌ها
+        res_cargos = await session.execute(select(BlockedCargo))
+        res_rules = await session.execute(select(StraitBlockRule))
+        res_configs = await session.execute(select(StraitConfig))
+
+        check("جدول BlockedCargo به طور کامل پاک شد", len(res_cargos.scalars().all()) == 0)
+        check("جدول StraitBlockRule به طور کامل پاک شد", len(res_rules.scalars().all()) == 0)
+        check("جدول StraitConfig به طور کامل پاک شد", len(res_configs.scalars().all()) == 0)
+
+    # -------------------------------------------------------------
+    # پایان تست‌ها و گزارش نهایی
+    # -------------------------------------------------------------
+    print("\n" + "=" * 65)
+    print(f"نتیجه نهایی تست‌ها: {_passed} موفق | {len(_failed)} ناموفق")
+    print("=" * 65)
+
+    if _failed:
+        print("\n❌ موارد ناموفق:")
+        for fail in _failed:
+            print(f"  - {fail}")
+        sys.exit(1)
+    else:
+        print("\n🎉 تمامی بخش‌های آپدیت ۳ و ۱۱ با موفقیت پاس شدند!")
+        sys.exit(0)
+
+
+if __name__ == "__main__":
+    asyncio.run(main())

@@ -31,6 +31,7 @@ from . import (
     satellite,
     security_roles,
     start,
+    straits,
     suspension,
     team,
     twitter,
@@ -71,6 +72,7 @@ def register_all_routers(dp: Dispatcher) -> None:
     dp.include_router(military_base.router)
     dp.include_router(satellite.router)
     dp.include_router(nuclear.router)
+    dp.include_router(straits.router)
     dp.include_router(deployment.router)
     dp.include_router(advisor.router)
 

@@ -633,6 +633,8 @@ LOCKABLE_FEATURES: dict[str, tuple[str, str]] = {
     "military.nuclear": ("☢️ تأسیسات هسته‌ای", FEATURE_CAT_MILITARY),
     "military.factory": ("🏭 کارخانه نظامی", FEATURE_CAT_MILITARY),
     "military.sale": ("💰 فروش تسلیحات", FEATURE_CAT_MILITARY),
+    "military.straits": ("🌊 مدیریت تنگه‌ها", FEATURE_CAT_MILITARY),
+    "straits_management": ("🌊 مدیریت تنگه‌ها", FEATURE_CAT_MILITARY),
     "security_roles": ("🛡 پروژه‌های امنیتی", FEATURE_CAT_MILITARY),
     "military_roles": ("⚔️ رول‌های نظامی", FEATURE_CAT_MILITARY),
     "military.security_role": ("🛡 پروژه‌های امنیتی", FEATURE_CAT_MILITARY),
@@ -672,5 +674,19 @@ TWEET_CHANNEL_ID: int = -1004317808331
 
 # پیام پیش‌فرض هنگام تلاش برای استفاده از آپشن قفل‌شده
 FEATURE_LOCKED_TEXT = "🔒 «{name}» توسط مدیریت بازی موقتاً غیرفعال شده است."
+
+# ============================================================
+#  سیستم حمل‌ونقل سه‌گانه و تنگه‌ها (آپدیت ۳ و ۱۱)
+# ============================================================
+AIR_TRANSPORT_FEE: float = 8_000_000.0   # عوارض ثابت حمل هوایی (۸ میلیون دلار)
+SEA_TRANSPORT_FEE: float = 2_000_000.0   # عوارض ثابت حمل دریایی (۲ میلیون دلار)
+LAND_TRANSPORT_FEE: float = 5_000_000.0  # عوارض ثابت ترانزیت زمینی (۵ میلیون دلار)
+
+STRAIT_TOLL_MAX: float = 10_000_000.0    # سقف عوارض تعیین‌شده برای هر تنگه (۱۰ میلیون دلار)
+STRAIT_HOLD_TIMEOUT_HOURS: int = 24      # مهلت تصمیم‌گیری کنترل‌کننده تنگه پیش از عودت خودکار کشتی به مبدأ
+
+# منابع سوختی که حمل هوایی آنها اکیداً ممنوع است
+FUEL_RESOURCES: set[str] = {"oil", "gas", "coal", "uranium"}
+
 
 

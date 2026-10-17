@@ -47,6 +47,7 @@ from .nuclear import (
 )
 from .reserves import Reserve
 from .satellite import Satellite
+from .strait import BlockedCargo, StraitBlockRule, StraitConfig
 from .tariff import TariffRate
 from .trade import ResourceSale
 from .twitter import Tweet, TweetLike, TwitterProfile
@@ -59,6 +60,8 @@ __all__ = [
     "AuctionBid",
     "BankLoan",
     "BaseEquipment",
+    "BlockedCargo",
+
     "BotState",
     "ClaimRequest",
     "Commander",
@@ -98,6 +101,8 @@ __all__ = [
     "Satellite",
     "SecurityRole",
     "Speech",
+    "StraitBlockRule",
+    "StraitConfig",
     "TariffRate",
     "Tweet",
     "TweetLike",

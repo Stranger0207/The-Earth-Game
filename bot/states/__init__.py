@@ -34,6 +34,7 @@ from .forms import (
     SecurityRoleDraftForm,
     SecurityRoleRejectForm,
     SpeechForm,
+    StraitForm,
     SuspensionForm,
     TariffForm,
     TeamManageForm,
@@ -82,6 +83,7 @@ __all__ = [
     "SatelliteForm",
     "SecurityRoleDraftForm",
     "SecurityRoleRejectForm",
+    "StraitForm",
     "SuspensionForm",
     "TeamManageForm",
 ]

@@ -13,7 +13,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from ..utils.ui import STYLE_MAIN, STYLE_NO, STYLE_OK
 
 
-def command_center_kb(is_vip: bool = False) -> InlineKeyboardMarkup:
+def command_center_kb(is_vip: bool = False, has_straits: bool = False) -> InlineKeyboardMarkup:
     """منوی اصلی ستاد فرماندهی کل."""
     builder = InlineKeyboardBuilder()
     builder.button(text="📊 وضعیت ارتش", callback_data="cc:status", style=STYLE_MAIN)
@@ -21,11 +21,16 @@ def command_center_kb(is_vip: bool = False) -> InlineKeyboardMarkup:
     builder.button(text="🏗 پایگاه‌های نظامی", callback_data="mil:base", style=STYLE_MAIN)
     builder.button(text="🏭 صنایع نظامی", callback_data="cc:industry", style=STYLE_MAIN)
     builder.button(text="⚓ رهگیری محموله", callback_data="op:intercept", style=STYLE_MAIN)
+    if has_straits:
+        builder.button(text="🌊 مدیریت تنگه‌ها", callback_data="menu:straits", style=STYLE_OK)
     builder.button(text="🎖 فرماندهان", callback_data="cc:commanders", style=STYLE_MAIN)
     builder.button(text="🛡 پروژه‌های امنیتی (رول)", callback_data="mil:security_roles", style=STYLE_MAIN)
     builder.button(text="⚔️ عملیات و رول نظامی", callback_data="mil:ops_roles", style=STYLE_MAIN)
     builder.button(text="🔙 بازگشت", callback_data="menu:main", style=STYLE_MAIN)
-    builder.adjust(2, 2, 2, 2, 1)
+    if has_straits:
+        builder.adjust(2, 2, 2, 2, 1, 1)
+    else:
+        builder.adjust(2, 2, 2, 2, 1)
     return builder.as_markup()
 
 

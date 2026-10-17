@@ -12,6 +12,7 @@ from ..database.repositories import reserves as reserves_repo
 from ..keyboards.diplomacy import diplomacy_menu_kb
 from ..keyboards.economy import economy_menu_kb
 from ..keyboards.menu import main_menu_kb
+from ..services import geo_service as geo
 from ..utils.formatting import render_economy_panel
 from ..utils.screens import safe_edit, show_menu
 from ..utils.ui import header
@@ -38,8 +39,12 @@ async def cb_economy(call: CallbackQuery, session: AsyncSession, db_user: User) 
     await call.answer()
     country = await get_player_country(session, db_user)
     is_usa = country is not None and country.name_en == "USA"
+    has_straits = bool(country and geo.get_straits_for_country(country.name_en))
     await show_menu(
-        call, header("بخش اقتصاد", "💰"), economy_menu_kb(is_usa=is_usa), image_key="economy"
+        call,
+        header("بخش اقتصاد", "💰"),
+        economy_menu_kb(is_usa=is_usa, has_straits=has_straits),
+        image_key="economy",
     )
 
 

@@ -198,20 +198,60 @@ async def process_investments(bot: Bot) -> None:
 
 async def process_shipments(bot: Bot) -> None:
     """محموله‌های WTO که زمان رسیدنشان فرارسیده را تحویل می‌دهد."""
+    from ..constants import STRAIT_HOLD_TIMEOUT_HOURS
     from ..database.repositories import countries as countries_repo
     from ..enums import RESOURCE_FA, RESOURCE_UNIT_FA
+    from ..services import geo_service as geo
+    from ..services.news_service import send_log
     from ..utils.numbers import fa_number
 
-    # v1.6: هنگام رسیدن محموله دیگر در کانال WTO خبری نمی‌رود؛ فقط پیوی خریدار و گروه لاگ
-    from ..services.news_service import send_log
-
     log_notices: list[str] = []
-    buyer_notices: list[tuple[int, str]] = []  # (owner_user_id, متن)
+    user_notices: list[tuple[int, str]] = []  # (owner_user_id, متن)
 
     async with async_session_factory() as session:
         sales = await trade_repo.list_in_transit(session)
         now = _utcnow()
         for sale in sales:
+            # بررسی توقیف در تنگه
+            if getattr(sale, "strait_status", None) == "HELD_AT_STRAIT":
+                held_since = _aware(getattr(sale, "held_since", None))
+                if held_since and (now - held_since).total_seconds() >= STRAIT_HOLD_TIMEOUT_HOURS * 3600:
+                    # منقضی شدن مهلت ۲۴ ساعته -> بازگشت خودکار به فروشنده
+                    sale.strait_status = "RETURNED"
+                    sale.status = TradeStatus.REJECTED.value
+                    await reserves_repo.ensure_reserve(session, sale.seller_country, sale.resource)
+                    await reserves_repo.add_amount(
+                        session, sale.seller_country, sale.resource, sale.amount
+                    )
+
+                    s_def = geo.get_strait_def(sale.held_at_strait_id) if sale.held_at_strait_id else None
+                    strait_name_fa = s_def["name_fa"] if s_def else "تنگه"
+
+                    seller = await countries_repo.get_country(session, sale.seller_country)
+                    buyer = await countries_repo.get_country(session, sale.buyer_country)
+                    try:
+                        rtype = ResourceType(sale.resource)
+                        rname = RESOURCE_FA[rtype]
+                        unit = RESOURCE_UNIT_FA[rtype]
+                    except (ValueError, KeyError):
+                        rname, unit = sale.resource, ""
+
+                    timeout_msg = (
+                        f"⏳ <b>پایان مهلت تصمیم‌گیری در {strait_name_fa}</b>\n\n"
+                        f"کشتی حامل {fa_number(sale.amount)} {unit} {rname} پس از ۲۴ ساعت توقیف در تنگه، "
+                        f"به علت عدم اقدام کشور کنترل‌کننده، آزاد شد و محموله به کشور مبدأ "
+                        f"({seller.flag if seller else ''} {seller.name_fa if seller else ''}) عودت یافت."
+                    )
+                    if seller and seller.owner_user_id:
+                        user_notices.append((seller.owner_user_id, timeout_msg))
+                    if buyer and buyer.owner_user_id:
+                        user_notices.append((buyer.owner_user_id, timeout_msg))
+                    log_notices.append(f"🌊⚓ <b>پایان توقیف در {strait_name_fa}:</b>\n{timeout_msg}")
+                continue
+
+            if getattr(sale, "strait_status", None) in ("DESTROYED", "CONFISCATED", "RETURNED"):
+                continue
+
             eta = _aware(sale.ship_eta)
             if eta is None or eta > now:
                 continue
@@ -240,15 +280,15 @@ async def process_shipments(bot: Bot) -> None:
                 f"منبع: {fa_number(sale.amount)} {unit} {rname}"
             )
             if buyer and buyer.owner_user_id:
-                buyer_notices.append((
+                user_notices.append((
                     buyer.owner_user_id,
                     f"📦 محموله‌ی شما رسید: {fa_number(sale.amount)} {unit} {rname} "
                     f"به ذخایر کشورتان اضافه شد.",
                 ))
         await session.commit()
 
-    # اطلاع به خریدار (پیوی) و گروه لاگ پس از commit (نه کانال WTO)
-    for owner_id, text in buyer_notices:
+    # اطلاع به کاربران (پیوی) و گروه لاگ پس از commit (نه کانال WTO)
+    for owner_id, text in user_notices:
         try:
             await bot.send_message(owner_id, text)
         except Exception:  # noqa: BLE001 — خطای ارسال نباید scheduler را متوقف کند

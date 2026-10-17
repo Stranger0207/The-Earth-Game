@@ -26,8 +26,10 @@ from ..database.models import (
     Auction,
     AuctionBid,
     BankLoan,
+    BlockedCargo,
     ClaimRequest,
     Contract,
+
     ContractSignatory,
     Cooldown,
     Country,
@@ -61,6 +63,8 @@ from ..database.models import (
     MilitaryBase,
     MilitaryRole,
     SecurityRole,
+    StraitBlockRule,
+    StraitConfig,
     NuclearFacility,
     NuclearInspection,
     NuclearProgram,
@@ -163,6 +167,10 @@ async def reset_season(session: AsyncSession) -> dict[str, int]:
     await session.execute(delete(EconomicProject))
     await session.execute(delete(MilitaryRole))
     await session.execute(delete(SecurityRole))
+    # --- آپدیت ۳ و ۱۱: اموال بلوکه‌شده و تنظیمات تنگه‌ها ---
+    await session.execute(delete(BlockedCargo))
+    await session.execute(delete(StraitBlockRule))
+    await session.execute(delete(StraitConfig))
 
     # --- ۲) آزادسازی مالکیت همه‌ی کشورها و رفع تعلیق کاربران ---
     await session.execute(

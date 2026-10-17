@@ -178,6 +178,47 @@ class TradeStatus(str, enum.Enum):
     IN_TRANSIT = "in_transit"  # محموله در راه (WTO)
     DELIVERED = "delivered"    # تحویل‌شده
     REJECTED = "rejected"      # ردشده
+    HELD_AT_STRAIT = "held_at_strait"  # متوقف در تنگه (در انتظار دستور کنترل‌کننده)
+    DESTROYED = "destroyed"    # منهدم‌شده در حمله
+    CONFISCATED = "confiscated"  # مصادره‌شده توسط کنترل‌کننده تنگه
+    RETURNED = "returned"      # بازگردانده‌شده به مبدأ
+
+
+class TransportMode(str, enum.Enum):
+    """روش حمل‌ونقل محموله‌ها (آپدیت ۳ و ۱۱)."""
+
+    AIR = "AIR"     # هوایی
+    SEA = "SEA"     # دریایی
+    LAND = "LAND"   # ترانزیت زمینی
+
+
+TRANSPORT_MODE_FA: dict[TransportMode, str] = {
+    TransportMode.AIR: "✈️ حمل هوایی",
+    TransportMode.SEA: "🚢 حمل دریایی",
+    TransportMode.LAND: "🚛 ترانزیت زمینی",
+}
+
+
+class FeePayer(str, enum.Enum):
+    """پرداخت‌کننده عوارض حمل‌ونقل."""
+
+    SELLER = "SELLER"  # فروشنده
+    BUYER = "BUYER"    # خریدار
+
+
+FEE_PAYER_FA: dict[FeePayer, str] = {
+    FeePayer.SELLER: "فروشنده (ارسال‌کننده)",
+    FeePayer.BUYER: "خریدار (دریافت‌کننده)",
+}
+
+
+class StraitBlockScope(str, enum.Enum):
+    """دامنه مسدودسازی تنگه."""
+
+    NONE = "NONE"      # باز
+    ALL = "ALL"        # مسدود برای همه کشورها
+    CUSTOM = "CUSTOM"  # مسدود برای کشورهای خاص
+
 
 
 class AttackStatus(str, enum.Enum):

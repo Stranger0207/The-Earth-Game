@@ -7,12 +7,14 @@
 
 from __future__ import annotations
 
+import heapq
 import json
 import logging
 import math
 from collections import deque
 from functools import lru_cache
 from pathlib import Path
+
 
 logger = logging.getLogger(__name__)
 
@@ -268,3 +270,254 @@ def describe_position(a_en: str, b_en: str) -> str:
     label = labels.get(tier, tier)
     sea = "دارای آب مشترک" if shares_sea(a_en, b_en) else "بدون آب مشترک"
     return f"{label} — {km:,.0f} کیلومتر — {sea}"
+
+
+# ============================================================
+#  ژئوپلیتیک تنگه‌های استراتژیک جهان و گراف دریایی (آپدیت ۳ و ۱۱)
+# ============================================================
+
+STRAITS_DEFINITIONS: dict[str, dict] = {
+    "hormuz": {
+        "id": "hormuz",
+        "name_fa": "تنگه هرمز",
+        "name_en": "Strait of Hormuz",
+        "controller": "Iran",
+        "connects": ("persian_gulf", "gulf_of_oman"),
+        "description": "شاهراه انرژی جهان، اتصال خلیج فارس به دریای عمان و اقیانوس هند",
+    },
+    "bering": {
+        "id": "bering",
+        "name_fa": "تنگه برینگ",
+        "name_en": "Bering Strait",
+        "controller": "USA",
+        "connects": ("pacific", "arctic"),
+        "description": "گذرگاه استراتژیک اقیانوس آرام شمالی و قطب شمال",
+    },
+    "dover": {
+        "id": "dover",
+        "name_fa": "تنگه دوور (مانش)",
+        "name_en": "Strait of Dover",
+        "controller": "Britain",
+        "connects": ("atlantic", "north_sea"),
+        "description": "کانال مانش، مسیر اتصال دریای شمال و اروپای شمالی به اقیانوس اطلس",
+    },
+    "bosphorus": {
+        "id": "bosphorus",
+        "name_fa": "تنگه بسفر",
+        "name_en": "Bosphorus Strait",
+        "controller": "Turkey",
+        "connects": ("black_sea", "mediterranean"),
+        "description": "گذرگاه حیاتی دریای سیاه به دریای مدیترانه",
+    },
+    "dardanelles": {
+        "id": "dardanelles",
+        "name_fa": "تنگه داردانل",
+        "name_en": "Dardanelles Strait",
+        "controller": "Turkey",
+        "connects": ("black_sea", "mediterranean"),
+        "description": "تنگه مکمل بسفر در کنترل ترکیه جهت اتصال به اژه و مدیترانه",
+    },
+    "gibraltar": {
+        "id": "gibraltar",
+        "name_fa": "تنگه جبل‌الطارق",
+        "name_en": "Strait of Gibraltar",
+        "controller": "Spain",
+        "connects": ("mediterranean", "atlantic"),
+        "description": "تنها معبر طبیعی اتصال دریای مدیترانه به اقیانوس اطلس",
+    },
+    "laperouse": {
+        "id": "laperouse",
+        "name_fa": "تنگه لاپروش (سویا)",
+        "name_en": "La Perouse Strait",
+        "controller": "Japan",
+        "connects": ("sea_of_japan", "pacific"),
+        "description": "مسیر دریای ژاپن و اختسک به اقیانوس آرام شمالی",
+    },
+    "tsushima": {
+        "id": "tsushima",
+        "name_fa": "تنگه تسوشیما",
+        "name_en": "Tsushima Strait",
+        "controller": "SouthKorea",
+        "connects": ("east_china_sea", "sea_of_japan"),
+        "description": "معبر استراتژیک دریای چین شرقی به دریای ژاپن",
+    },
+    "bab_el_mandeb": {
+        "id": "bab_el_mandeb",
+        "name_fa": "تنگه باب‌المندب",
+        "name_en": "Bab el-Mandeb Strait",
+        "controller": "Yemen",
+        "connects": ("red_sea", "arabian_sea"),
+        "description": "ورودی جنوبی دریای سرخ و شاهراه اتصال آسیا به اروپا",
+    },
+    "kerch": {
+        "id": "kerch",
+        "name_fa": "تنگه کرچ",
+        "name_en": "Kerch Strait",
+        "controller": "Russia",
+        "connects": ("black_sea", "azov_sea"),
+        "description": "مسیر اتصال دریای آزوف به دریای سیاه",
+    },
+    "messina": {
+        "id": "messina",
+        "name_fa": "تنگه مسینا",
+        "name_en": "Strait of Messina",
+        "controller": "Italy",
+        "connects": ("mediterranean_west", "mediterranean_east"),
+        "description": "گذرگاه مابین سیسیل و شبه‌جزیره ایتالیا در مرکز مدیترانه",
+    },
+    "suez": {
+        "id": "suez",
+        "name_fa": "کانال سوئز",
+        "name_en": "Suez Canal",
+        "controller": "Egypt",
+        "connects": ("red_sea", "mediterranean"),
+        "description": "آبراه تاریخی اتصال آسیا و خاورمیانه به اروپا",
+    },
+    "taiwan_strait": {
+        "id": "taiwan_strait",
+        "name_fa": "تنگه تایوان",
+        "name_en": "Taiwan Strait",
+        "controller": "Taiwan",
+        "connects": ("south_china_sea", "east_china_sea"),
+        "description": "معبر پرتردد اتصال دریای چین جنوبی به دریای چین شرقی و اقیانوس آرام",
+    },
+    "oresund": {
+        "id": "oresund",
+        "name_fa": "تنگه سوند (دانمارک/سوئد)",
+        "name_en": "Oresund Strait",
+        "controller": "Sweden",
+        "connects": ("baltic_sea", "north_sea"),
+        "description": "ورودی انحصاری دریای بالتیک به دریای شمال و اقیانوس اطلس",
+    },
+}
+
+# یال‌های اتصال دریاها: (مبدأ، مقصد، شناسه تنگه یا None در آب‌های آزاد، وزن مسافتی)
+_MARITIME_EDGES: list[tuple[str, str, str | None, float]] = [
+    ("persian_gulf", "gulf_of_oman", "hormuz", 1.0),
+    ("gulf_of_oman", "arabian_sea", None, 1.0),
+    ("arabian_sea", "indian_ocean", None, 1.0),
+    ("bay_of_bengal", "indian_ocean", None, 1.0),
+    ("red_sea", "arabian_sea", "bab_el_mandeb", 1.0),
+    ("red_sea", "mediterranean", "suez", 1.0),
+    ("black_sea", "mediterranean", "bosphorus", 1.0),
+    ("mediterranean", "atlantic", "gibraltar", 1.0),
+    ("atlantic", "north_sea", "dover", 1.0),
+    ("north_sea", "baltic_sea", "oresund", 1.0),
+    ("atlantic", "gulf_of_mexico", None, 1.0),
+    ("atlantic", "arctic", None, 2.0),
+    ("pacific", "arctic", "bering", 2.0),
+    ("pacific", "sea_of_japan", "laperouse", 1.0),
+    ("east_china_sea", "sea_of_japan", "tsushima", 1.0),
+    ("south_china_sea", "east_china_sea", "taiwan_strait", 1.0),
+    ("pacific", "south_china_sea", None, 1.0),
+    ("pacific", "indian_ocean", None, 2.0),
+    # مسیر طولانی دور دماغه امیدنیک آفریقا (وزن مسافتی بالا تا مسیر سوئز اولویت باشد)
+    ("atlantic", "indian_ocean", None, 10.0),
+]
+
+
+@lru_cache(maxsize=1)
+def _build_maritime_graph() -> dict[str, list[tuple[str, str | None, float]]]:
+    """ساخت گراف مجاورت دریاها و تنگه‌ها."""
+    adj: dict[str, list[tuple[str, str | None, float]]] = {}
+    for u, v, strait, weight in _MARITIME_EDGES:
+        adj.setdefault(u, []).append((v, strait, weight))
+        adj.setdefault(v, []).append((u, strait, weight))
+    return adj
+
+
+def get_strait_def(strait_id: str) -> dict | None:
+    """مشخصات تعریف‌شده یک تنگه با شناسه انگلیسی."""
+    return STRAITS_DEFINITIONS.get(strait_id)
+
+
+def list_all_strait_defs() -> list[dict]:
+    """لیست مشخصات تمام تنگه‌های استراتژیک بازی."""
+    return list(STRAITS_DEFINITIONS.values())
+
+
+def get_straits_for_country(country_name_en: str) -> list[dict]:
+    """لیست تنگه‌هایی که تحت کنترل یک کشور خاص هستند."""
+    return [
+        s for s in STRAITS_DEFINITIONS.values()
+        if s["controller"] == country_name_en
+    ]
+
+
+def can_use_sea_transport(origin_en: str, dest_en: str) -> bool:
+    """
+    آیا امکان حمل‌ونقل دریایی بین دو کشور وجود دارد؟
+    شرط: هر دو کشور باید دسترسی به دریاهای باز اقیانوسی داشته باشند.
+    کشورهای محصور در خشکی یا کشوری که فقط به دریای خزر دسترسی دارد نمی‌توانند با اقیانوس مبادله دریایی کنند.
+    """
+    geo_orig = get_geo(origin_en)
+    geo_dest = get_geo(dest_en)
+    if not geo_orig or not geo_dest:
+        return False
+
+    seas_orig = set(geo_orig.get("seas", []))
+    seas_dest = set(geo_dest.get("seas", []))
+
+    if not seas_orig or not seas_dest:
+        return False
+
+    # اگر هر دو فقط در خزر باشند امکان تردد محدود داخلی هست
+    if seas_orig == {"caspian_sea"} and seas_dest == {"caspian_sea"}:
+        return True
+    # اگر یکی فقط خزر باشد و دیگری دریاهای دیگر، راه آبی باز نیست
+    if seas_orig == {"caspian_sea"} or seas_dest == {"caspian_sea"}:
+        return False
+
+    return True
+
+
+def get_route_straits(origin_en: str, dest_en: str) -> list[str]:
+    """
+    استخراج لیست تنگه‌هایی که کشتی در مسیر دریایی بین دو کشور باید از آنها عبور کند.
+    اگر دو کشور آب مشترک داشته باشند، کشتی از همان آب مشترک بدون تنگه عبور می‌کند (لیست خالی).
+    """
+    if not can_use_sea_transport(origin_en, dest_en):
+        return []
+
+    geo_orig = get_geo(origin_en)
+    geo_dest = get_geo(dest_en)
+    if not geo_orig or not geo_dest:
+        return []
+
+    # دریاهای باز (به استثنای خزر برای مسیرهای بین‌المللی)
+    seas_orig = [s for s in geo_orig.get("seas", []) if s != "caspian_sea"]
+    seas_dest = [s for s in geo_dest.get("seas", []) if s != "caspian_sea"]
+
+    # آب مشترک مستقیم
+    if set(seas_orig) & set(seas_dest):
+        return []
+
+    graph = _build_maritime_graph()
+
+    # یافتن کوتاه‌ترین مسیر میان هر جفت دریای مبدأ و مقصد با دایکسترا
+    best_straits: list[str] = []
+    min_cost = float("inf")
+
+    for s_start in seas_orig:
+        for s_end in seas_dest:
+            pq: list[tuple[float, str, list[str]]] = [(0.0, s_start, [])]
+            visited: dict[str, float] = {}
+
+            while pq:
+                cost, curr, straits = heapq.heappop(pq)
+                if curr == s_end:
+                    if cost < min_cost:
+                        min_cost = cost
+                        best_straits = straits
+                    break
+
+                if curr in visited and visited[curr] <= cost:
+                    continue
+                visited[curr] = cost
+
+                for nxt, strait_id, weight in graph.get(curr, []):
+                    new_straits = straits + ([strait_id] if strait_id else [])
+                    heapq.heappush(pq, (cost + weight, nxt, new_straits))
+
+    return best_straits
+

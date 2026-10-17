@@ -31,6 +31,8 @@ class SaleForm(StatesGroup):
     entering_amount = State()
     choosing_buyer = State()
     entering_price = State()
+    choosing_transport_mode = State()  # انتخاب شیوه حمل‌ونقل (دریایی/هوایی/زمینی)
+    choosing_fee_payer = State()       # انتخاب پرداخت‌کننده عوارض (فروشنده/خریدار)
     confirming = State()
 
 
@@ -81,6 +83,16 @@ class MilitarySaleForm(StatesGroup):
     entering_count = State()     # تعداد
     entering_price = State()     # قیمت
     choosing_buyer = State()     # کشور خریدار
+    choosing_fee_payer = State() # پرداخت‌کننده عوارض هوایی (فروشنده/خریدار)
+
+
+class StraitForm(StatesGroup):
+    """فرم تنظیمات تنگه‌ها و عوارض (آپدیت ۳ و ۱۱)."""
+
+    entering_default_toll = State()     # وارد کردن عوارض پایه تنگه
+    selecting_custom_country = State()  # انتخاب کشور برای قانون اختصاصی
+    entering_custom_toll = State()      # وارد کردن عوارض اختصاصی کشور
+
 
 
 class AdvisorForm(StatesGroup):

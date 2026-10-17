@@ -89,7 +89,19 @@ _COLUMN_MIGRATIONS = [
     ("users", "is_owner", "BOOLEAN NOT NULL DEFAULT FALSE"),
     ("users", "suspended_until", "TIMESTAMP WITH TIME ZONE"),
     ("users", "suspension_reason", "VARCHAR(256)"),
+    # آپدیت ۳ و ۱۱ — شیوه‌های حمل‌ونقل، عوارض لجستیک و تنگه‌ها
+    ("resource_sales", "transport_mode", "VARCHAR(8) NOT NULL DEFAULT 'SEA'"),
+    ("resource_sales", "fee_payer", "VARCHAR(8) NOT NULL DEFAULT 'SELLER'"),
+    ("resource_sales", "transport_fee", "DOUBLE PRECISION NOT NULL DEFAULT 0"),
+    ("resource_sales", "strait_toll_fee", "DOUBLE PRECISION NOT NULL DEFAULT 0"),
+    ("resource_sales", "strait_status", "VARCHAR(24) NOT NULL DEFAULT 'NONE'"),
+    ("resource_sales", "held_at_strait_id", "VARCHAR(32)"),
+    ("resource_sales", "held_since", "TIMESTAMP WITH TIME ZONE"),
+    ("military_sales", "transport_mode", "VARCHAR(8) NOT NULL DEFAULT 'AIR'"),
+    ("military_sales", "fee_payer", "VARCHAR(8) NOT NULL DEFAULT 'SELLER'"),
+    ("military_sales", "transport_fee", "DOUBLE PRECISION NOT NULL DEFAULT 8000000.0"),
 ]
+
 
 
 _OBSOLETE_TABLES = [

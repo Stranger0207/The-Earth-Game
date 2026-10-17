@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..config import get_settings
 from ..constants import (
+    AIR_TRANSPORT_FEE,
     BUILD_LIMIT_WINDOW_HOURS,
     MIL_FACTORY_BUILD_LIMIT,
     MIL_FACTORY_BUILD_RESOURCES,
@@ -33,16 +34,20 @@ from ..database.repositories import military_factory as milfac_repo
 from ..database.repositories import military_sale as milsale_repo
 from ..database.repositories import reserves as reserves_repo
 from ..enums import (
+    FEE_PAYER_FA,
     MIL_FACTORY_CATEGORY,
     MIL_FACTORY_FA,
     RESOURCE_FA,
     RESOURCE_UNIT_FA,
+    FeePayer,
     MilitaryFactoryType,
     ResourceType,
     TradeStatus,
 )
 from ..keyboards.common import confirm_cancel_kb, countries_kb
 from ..keyboards.covert import escort_offer_kb
+from ..keyboards.economy import fee_payer_kb
+
 from ..keyboards.military import (
     military_factory_menu_kb,
     military_factory_types_kb,
@@ -732,6 +737,57 @@ async def cb_sell_buyer(call: CallbackQuery, state: FSMContext, session: AsyncSe
         )
         return
 
+    await state.update_data(sell_buyer_id=buyer_id)
+    await state.set_state(MilitarySaleForm.choosing_fee_payer)
+    await safe_edit(
+        call,
+        f"💳 <b>تعیین پرداخت‌کننده عوارض حمل هوایی</b>\n\n"
+        f"تجهیزات نظامی منحصراً از طریق <b>✈️ حمل هوایی</b> با عوارض ثابت <b>{fa_money(AIR_TRANSPORT_FEE)}</b> ارسال می‌شوند.\n\n"
+        "پرداخت عوارض لجستیک بر عهده‌ی کدام طرف باشد؟",
+        reply_markup=fee_payer_kb(back_data="msback:buyer", prefix="milsell_payer"),
+    )
+
+
+@router.callback_query(StateFilter(MilitarySaleForm), F.data == "msback:buyer")
+async def cb_milsell_back_buyer(
+    call: CallbackQuery, state: FSMContext, session: AsyncSession, db_user: User
+) -> None:
+    """بازگشت به انتخاب کشور خریدار در فروش نظامی."""
+    await call.answer()
+    country = await get_player_country(session, db_user)
+    if not country:
+        await safe_edit(call, NO_COUNTRY_TEXT)
+        return
+    await state.set_state(MilitarySaleForm.choosing_buyer)
+    countries = await countries_repo.list_countries(session)
+    others = [c for c in countries if c.id != country.id]
+    await safe_edit(
+        call,
+        "کشور خریدار را انتخاب کنید:",
+        reply_markup=countries_kb(others, prefix="milsell_buyer", columns=2, back_data="msback:price"),
+    )
+
+
+@router.callback_query(MilitarySaleForm.choosing_fee_payer, F.data.startswith("milsell_payer:"))
+async def cb_milsell_payer(
+    call: CallbackQuery, state: FSMContext, session: AsyncSession, db_user: User
+) -> None:
+    """ثبت نهایی پیشنهاد فروش نظامی با شیوه هوایی و عوارض تعیین‌شده."""
+    await call.answer()
+    payer = call.data.split(":")[1]
+    data = await state.get_data()
+    country = await get_player_country(session, db_user)
+    buyer_id = data["sell_buyer_id"]
+    buyer = await countries_repo.get_country(session, buyer_id)
+    pick = data["sell_pick"]
+    count = int(data["sell_count"])
+    price = float(data["sell_price"])
+
+    if not country or not buyer:
+        await safe_edit(call, NO_COUNTRY_TEXT)
+        await state.clear()
+        return
+
     sale = MilitarySale(
         seller_country=country.id,
         buyer_country=buyer_id,
@@ -739,19 +795,32 @@ async def cb_sell_buyer(call: CallbackQuery, state: FSMContext, session: AsyncSe
         branch=pick.get("branch", ""),
         name=pick["name"],
         unit=pick["unit"],
-        count=int(count),
+        count=count,
         price=price,
+        transport_mode="AIR",
+        fee_payer=payer,
+        transport_fee=AIR_TRANSPORT_FEE,
         status=TradeStatus.PENDING,
     )
     await milsale_repo.add_sale(session, sale)
     await session.flush()
+    await state.clear()
 
-    await safe_edit(call,
-        f"📨 پیشنهاد فروش نظامی برای {buyer.flag} {buyer.name_fa} ارسال شد:\n"
-        f"{fa_number(count)} {pick['unit']} {pick['name']} به مبلغ {fa_money(price)}\n\n"
-        "پس از تأیید خریدار، محموله توسط WTO ارسال می‌شود."
+    payer_fa = FEE_PAYER_FA[FeePayer(payer)]
+    await safe_edit(
+        call,
+        f"📨 <b>پیشنهاد فروش نظامی برای {buyer.flag} {buyer.name_fa} ارسال شد:</b>\n\n"
+        f"🪖 <b>تجهیزات:</b> {fa_number(count)} {pick['unit']} {pick['name']}\n"
+        f"💰 <b>قیمت کالا:</b> {fa_money(price)}\n"
+        f"✈️ <b>شیوه ارسال:</b> حمل هوایی\n"
+        f"💵 <b>عوارض هوایی:</b> {fa_money(AIR_TRANSPORT_FEE)}\n"
+        f"💳 <b>پرداخت‌کننده عوارض:</b> {payer_fa}\n\n"
+        "پس از تأیید خریدار، محموله توسط WTO ارسال می‌شود.",
+        reply_markup=military_menu_kb(),
     )
+
     if buyer.owner_user_id:
+        buyer_total = price + (AIR_TRANSPORT_FEE if payer == "BUYER" else 0.0)
         kb = InlineKeyboardMarkup(inline_keyboard=[[
             InlineKeyboardButton(text="✅ خرید", callback_data=f"milsale_ok:{sale.id}", style=STYLE_OK),
             InlineKeyboardButton(text="❌ رد", callback_data=f"milsale_no:{sale.id}", style=STYLE_NO),
@@ -759,10 +828,14 @@ async def cb_sell_buyer(call: CallbackQuery, state: FSMContext, session: AsyncSe
         try:
             await bot.send_message(
                 buyer.owner_user_id,
-                f"🛒 <b>پیشنهاد خرید تجهیزات نظامی</b>\n\n"
+                f"🛒 <b>پیش‌فاکتور خرید تجهیزات نظامی</b>\n\n"
                 f"فروشنده: {country.flag} {country.name_fa}\n"
                 f"تجهیزات: {fa_number(count)} {pick['unit']} {pick['name']}\n"
-                f"قیمت: {fa_money(price)}",
+                f"قیمت کالا: {fa_money(price)}\n"
+                f"شیوه ارسال: ✈️ حمل هوایی\n"
+                f"عوارض هوایی: {fa_money(AIR_TRANSPORT_FEE)}\n"
+                f"پرداخت‌کننده عوارض: {payer_fa}\n\n"
+                f"💳 <b>مبلغ نهایی کسر از شما:</b> {fa_money(buyer_total)}",
                 reply_markup=kb,
             )
         except Exception:  # noqa: BLE001
@@ -790,14 +863,32 @@ async def cb_milsale_ok(call: CallbackQuery, session: AsyncSession, db_user: Use
     if asset is None or asset.count < sale.count:
         await call.answer("موجودی فروشنده کافی نیست.", show_alert=True)
         return
-    if buyer.budget < sale.price:
-        await call.answer("بودجه‌ی شما کافی نیست.", show_alert=True)
-        return
 
-    # انتقال مالی و کسر تجهیزات از فروشنده (افزودن به خریدار هنگام رسیدن محموله)
-    buyer.budget -= sale.price
-    seller.budget += sale.price
+    t_fee = float(getattr(sale, "transport_fee", AIR_TRANSPORT_FEE) or AIR_TRANSPORT_FEE)
+    fee_payer = getattr(sale, "fee_payer", "SELLER") or "SELLER"
+
+    if fee_payer == "BUYER":
+        required_buyer = sale.price + t_fee
+        if buyer.budget < required_buyer:
+            await call.answer(
+                f"بودجه‌ی شما کافی نیست. مبلغ کالا {sale.price:,.0f} دلار و عوارض هوایی {t_fee:,.0f} دلار است.",
+                show_alert=True,
+            )
+            return
+        buyer.budget -= required_buyer
+        seller.budget += sale.price
+    else:
+        if buyer.budget < sale.price:
+            await call.answer("بودجه‌ی شما کافی نیست.", show_alert=True)
+            return
+        if (seller.budget + sale.price) < t_fee:
+            await call.answer("بودجه‌ی فروشنده برای پرداخت عوارض هوایی کافی نیست.", show_alert=True)
+            return
+        buyer.budget -= sale.price
+        seller.budget += (sale.price - t_fee)
+
     asset.count -= sale.count
+
 
     # تخمین زمان رسیدن محموله توسط AI
     eta_data = await evaluators.estimate_shipping_time(

@@ -208,14 +208,18 @@ async def transfer_sale(
     resource: str,
     amount: float,
     price: float,
+    transport_fee: float = 0.0,
+    fee_payer: str = "SELLER",
+    strait_tolls: dict[str, float] | None = None,
 ) -> dict:
     """
     اجرای مالی فروش: کسر منبع از فروشنده، کسر پول از خریدار، افزودن پول به فروشنده.
+    کسر عوارض پایه حمل‌ونقل و عوارض تنگه‌ها از طرف تعیین‌شده (فروشنده یا خریدار).
+    واریز مستقیم عوارض عبور از هر تنگه به خزانه‌ی کشور کنترل‌کننده تنگه.
     در صورت وجود تعرفه‌ی آمریکا روی فروشنده، درصدی از مبلغ کسر و به خزانه‌ی آمریکا واریز می‌شود.
-    دیکشنری حاوی اطلاعات تعرفه (مبلغ عوارض و خالص دریافتی فروشنده) برمی‌گرداند.
-    (افزودن منبع به خریدار پس از رسیدن محموله توسط زمان‌بند انجام می‌شود.)
     """
     from ..database.repositories import tariff as tariff_repo  # جلوگیری از import حلقوی
+    from .geo_service import STRAITS_DEFINITIONS
 
     seller = await countries_repo.get_country(session, seller_id)
     buyer = await countries_repo.get_country(session, buyer_id)
@@ -224,11 +228,37 @@ async def transfer_sale(
 
     if not await reserves_repo.has_enough(session, seller_id, resource, amount):
         raise EconomyError("موجودی منبع فروشنده کافی نیست.")
-    if buyer.budget < price:
-        raise EconomyError("بودجه‌ی خریدار کافی نیست.")
 
+    total_strait_tolls = sum(strait_tolls.values()) if strait_tolls else 0.0
+    total_fees = float(transport_fee) + float(total_strait_tolls)
+
+    # کنترل بودجه و کسر بر اساس طرف پرداخت‌کننده
+    if fee_payer == "BUYER":
+        required_buyer = price + total_fees
+        if buyer.budget < required_buyer:
+            raise EconomyError(
+                f"بودجه‌ی خریدار کافی نیست. مبلغ کالا {price:,.0f} دلار و عوارض لجستیک "
+                f"{total_fees:,.0f} دلار است (مجموع: {required_buyer:,.0f} دلار)."
+            )
+        buyer.budget -= required_buyer
+    else:
+        if buyer.budget < price:
+            raise EconomyError("بودجه‌ی خریدار برای پرداخت مبلغ کالا کافی نیست.")
+        buyer.budget -= price
+        if (seller.budget + price) < total_fees:
+            raise EconomyError("بودجه‌ی فروشنده برای پوشش هزینه‌ی عوارض لجستیک کافی نیست.")
+
+    # کسر موجودی منبع از فروشنده
     await reserves_repo.add_amount(session, seller_id, resource, -amount)
-    buyer.budget -= price
+
+    # واریز عوارض تنگه‌ها به خزانه‌ی کشورهای کنترل‌کننده
+    if strait_tolls:
+        for sid, toll_amt in strait_tolls.items():
+            if toll_amt > 0 and sid in STRAITS_DEFINITIONS:
+                ctrl_name = STRAITS_DEFINITIONS[sid]["controller"]
+                ctrl_c = await countries_repo.get_country_by_name(session, ctrl_name)
+                if ctrl_c:
+                    ctrl_c.budget += toll_amt
 
     # --- اعمال تعرفه‌ی آمریکا روی فروشنده (v1.5) ---
     duty = 0.0
@@ -240,14 +270,26 @@ async def transfer_sale(
             usa.budget += duty
             usa.international_duties += duty
 
-    # فروشنده فقط مبلغ باقی‌مانده پس از کسر تعرفه را دریافت می‌کند
-    seller.budget += price - duty
+    # محاسبه خالص دریافتی فروشنده
+    if fee_payer == "BUYER":
+        net_to_seller = price - duty
+    else:
+        net_to_seller = price - duty - total_fees
+
+    seller.budget += net_to_seller
 
     # --- اثر اقتصادی تجارت بر تورم دو طرف (v1.5) ---
-    # فروشنده: عرضه‌ی داخلی کم، تقاضا بالا → تورم بالا؛ ولی درآمد ارزی اقتصاد را کمی تقویت می‌کند
     seller.inflation = max(0.0, seller.inflation + SALE_SELLER_INFLATION_DELTA)
     seller.economic_power = min(100.0, seller.economic_power + SALE_SELLER_ECON_POWER_GAIN)
-    # خریدار: عرضه‌ی داخلی بالا → تورم پایین
     buyer.inflation = max(0.0, buyer.inflation + SALE_BUYER_INFLATION_DELTA)
 
-    return {"duty": duty, "net_to_seller": price - duty, "tariff_percent": tariff.percent if tariff else 0}
+    return {
+        "duty": duty,
+        "net_to_seller": net_to_seller,
+        "tariff_percent": tariff.percent if tariff else 0,
+        "total_fees": total_fees,
+        "transport_fee": transport_fee,
+        "strait_tolls": total_strait_tolls,
+        "fee_payer": fee_payer,
+    }
+

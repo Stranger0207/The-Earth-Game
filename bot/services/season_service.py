@@ -56,6 +56,7 @@ from ..database.models import (
     Law,
     Protest,
     VisaRequirement,
+    VisaWaiver,
     Investment,
     JointBuildRequest,
     Letter,
@@ -143,6 +144,7 @@ async def reset_season(session: AsyncSession) -> dict[str, int]:
     await session.execute(delete(Law))
     await session.execute(delete(Protest))
     await session.execute(delete(VisaRequirement))
+    await session.execute(delete(VisaWaiver))
     await session.execute(delete(Investment))
     await session.execute(delete(JointBuildRequest))
     await session.execute(delete(Letter))

@@ -14,7 +14,7 @@ from ..constants import (
     TAX_MAX_RATE,
     TAX_MIN_RATE,
 )
-from ..database.models import User
+from ..database.models import Country, Law, User
 from ..database.repositories import countries as countries_repo
 from ..database.repositories import governance as gov_repo
 from ..enums import (
@@ -31,6 +31,8 @@ from ..enums import (
 )
 from ..keyboards.common import countries_kb
 from ..keyboards.governance import (
+    admin_law_panel_kb,
+    admin_law_result_kb,
     governance_menu_kb,
     government_system_kb,
     government_type_kb,
@@ -53,7 +55,7 @@ from ..services.governance_service import (
 )
 from ..enums import AdminGroupType
 from ..services.news_service import send_log, send_to_admin_group
-from ..states import GovernanceForm, LawForm
+from ..states import AdminLawResultForm, GovernanceForm, LawForm
 from ..utils.numbers import fa_money, fa_number, parse_amount
 from ..utils.screens import safe_edit
 from ..utils.ui import STYLE_MAIN, STYLE_NO, STYLE_OK, header
@@ -846,51 +848,290 @@ async def msg_law_body(
         reply_markup=parliament_menu_kb(),
     )
 
-    # ارسال به لاگ برای رأی‌گیری
-    from aiogram.utils.keyboard import InlineKeyboardBuilder
-    builder = InlineKeyboardBuilder()
-    builder.button(text="✅ تصویب", callback_data=f"gov_admin:law_ok:{law.id}", style=STYLE_OK)
-    builder.button(text="❌ رد", callback_data=f"gov_admin:law_no:{law.id}", style=STYLE_NO)
-    builder.adjust(2)
-
+    # ارسال به گروه تحریم و لایحه با پنل مدیریتی جدید
+    law_msg_text = _format_admin_law_msg(country, law)
     await send_to_admin_group(
         bot,
         AdminGroupType.SANCTION_BILL,
-        f"🏛 <b>لایحه‌ی جدید در مجلس</b>\n"
-        f"کشور: {country.flag} {country.name_fa}\n"
-        f"عنوان: {title}\n\n"
-        f"📝 متن:\n{body[:500]}",
-        reply_markup=builder.as_markup(),
+        law_msg_text,
+        reply_markup=admin_law_panel_kb(law.id),
     )
 
 
-@router.callback_query(F.data.startswith("gov_admin:law_ok:"))
-async def cb_admin_law_ok(call: CallbackQuery, session: AsyncSession) -> None:
-    """ادمین لایحه را تصویب می‌کند."""
-    await call.answer("لایحه تصویب شد ✅")
+def _format_admin_law_msg(country: Country, law: Law) -> str:
+    """فرمت پیام لایحه در گروه ادمین همراه با پیش‌نمایش زنده اثرات ثبت‌شده."""
+    stab_sign = "+" if law.stability_effect >= 0 else ""
+    sat_sign = "+" if law.satisfaction_effect >= 0 else ""
+    return (
+        f"🏛 <b>لایحه‌ی جدید در مجلس</b>\n"
+        f"کشور: {country.flag} {country.name_fa}\n"
+        f"عنوان: <b>{law.title}</b>\n\n"
+        f"📝 <b>متن لایحه:</b>\n{law.body[:600]}\n\n"
+        f"📌 <b>نتیجه ثبت‌شده فعلی:</b> {stab_sign}{law.stability_effect:.1f}٪ ثبات داخلی | "
+        f"{sat_sign}{law.satisfaction_effect:.1f}٪ رضایت عمومی"
+    )
+
+
+@router.callback_query(F.data.startswith("gov_admin:law_main:"))
+async def cb_admin_law_main(call: CallbackQuery, session: AsyncSession) -> None:
+    """بازگشت به پنل اصلی لایحه در گروه ادمین."""
+    await call.answer()
     lid = int(call.data.split(":")[-1])
-    law = await gov_repo.vote_law(session, lid, approved=True, vote_result="اکثریت آرای مجلس: موافق")
+    law = await gov_repo.get_law_by_id(session, lid)
+    if not law:
+        await call.answer("لایحه یافت نشد.", show_alert=True)
+        return
+    country = await countries_repo.get_country(session, law.country_id)
+    if not country:
+        return
+    await safe_edit(call, _format_admin_law_msg(country, law), reply_markup=admin_law_panel_kb(law.id))
+
+
+@router.callback_query(F.data.startswith("gov_admin:law_res:"))
+async def cb_admin_law_result_menu(call: CallbackQuery, session: AsyncSession) -> None:
+    """باز کردن منوی تعیین/ویرایش اثرات لایحه روی ثبات و رضایت."""
+    await call.answer()
+    lid = int(call.data.split(":")[-1])
+    law = await gov_repo.get_law_by_id(session, lid)
+    if not law:
+        await call.answer("لایحه یافت نشد.", show_alert=True)
+        return
+    country = await countries_repo.get_country(session, law.country_id)
+    if not country:
+        return
+
+    text = (
+        _format_admin_law_msg(country, law)
+        + "\n\n⚙️ <b>تنظیم اثرات لایحه:</b>\n"
+        "برای تغییر اثرات، دکمه‌های آماده زیر را بزنید یا گزینه عدد دلخواه را انتخاب کنید:"
+    )
+    await safe_edit(
+        call,
+        text,
+        reply_markup=admin_law_result_kb(law.id, law.stability_effect, law.satisfaction_effect),
+    )
+
+
+@router.callback_query(F.data.startswith("gov_admin:stab:"))
+async def cb_admin_set_stability(call: CallbackQuery, session: AsyncSession) -> None:
+    """تنظیم سریع ثبات داخلی لایحه."""
+    parts = call.data.split(":")
+    lid = int(parts[2])
+    val = float(parts[3])
+
+    law = await gov_repo.update_law_effects(session, lid, stability_effect=val)
+    if not law:
+        await call.answer("لایحه یافت نشد.", show_alert=True)
+        return
+    await session.commit()
+    await call.answer(f"ثبات روی {val:+.1f}٪ تنظیم شد")
+
+    country = await countries_repo.get_country(session, law.country_id)
+    if country:
+        text = (
+            _format_admin_law_msg(country, law)
+            + "\n\n⚙️ <b>تنظیم اثرات لایحه:</b>\n"
+            "برای تغییر اثرات، دکمه‌های آماده زیر را بزنید یا گزینه عدد دلخواه را انتخاب کنید:"
+        )
+        await safe_edit(
+            call,
+            text,
+            reply_markup=admin_law_result_kb(law.id, law.stability_effect, law.satisfaction_effect),
+        )
+
+
+@router.callback_query(F.data.startswith("gov_admin:sat:"))
+async def cb_admin_set_satisfaction(call: CallbackQuery, session: AsyncSession) -> None:
+    """تنظیم سریع رضایت عمومی لایحه."""
+    parts = call.data.split(":")
+    lid = int(parts[2])
+    val = float(parts[3])
+
+    law = await gov_repo.update_law_effects(session, lid, satisfaction_effect=val)
+    if not law:
+        await call.answer("لایحه یافت نشد.", show_alert=True)
+        return
+    await session.commit()
+    await call.answer(f"رضایت روی {val:+.1f}٪ تنظیم شد")
+
+    country = await countries_repo.get_country(session, law.country_id)
+    if country:
+        text = (
+            _format_admin_law_msg(country, law)
+            + "\n\n⚙️ <b>تنظیم اثرات لایحه:</b>\n"
+            "برای تغییر اثرات، دکمه‌های آماده زیر را بزنید یا گزینه عدد دلخواه را انتخاب کنید:"
+        )
+        await safe_edit(
+            call,
+            text,
+            reply_markup=admin_law_result_kb(law.id, law.stability_effect, law.satisfaction_effect),
+        )
+
+
+@router.callback_query(F.data.startswith("gov_admin:cstab:"))
+async def cb_admin_custom_stability(call: CallbackQuery, state: FSMContext) -> None:
+    """شروع فرم ورود دستی عدد ثبات داخلی."""
+    lid = int(call.data.split(":")[-1])
+    await state.set_state(AdminLawResultForm.entering_custom_stability)
+    await state.update_data(law_id=lid, chat_id=call.message.chat.id, message_id=call.message.message_id)
+    await call.answer()
+    await call.message.reply(
+        f"✏️ لطفاً درصد تغییر <b>ثبات داخلی</b> را برای لایحه #{lid} ارسال کنید (مثلاً <code>+7.5</code> یا <code>-4</code>):"
+    )
+
+
+@router.message(StateFilter(AdminLawResultForm.entering_custom_stability))
+async def msg_admin_custom_stability(msg: Message, state: FSMContext, session: AsyncSession) -> None:
+    """دریافت عدد دستی ثبات و اعمال."""
+    raw = (msg.text or "").replace("٪", "").replace("%", "").replace("+", "").strip()
+    try:
+        val = float(raw)
+        if "-" in (msg.text or ""):
+            val = -abs(val)
+    except ValueError:
+        await msg.reply("⚠️ لطفاً یک عدد معتبر ارسال کنید (مثلاً <code>+5</code> یا <code>-3</code>):")
+        return
+
+    data = await state.get_data()
+    lid = data.get("law_id")
+    chat_id = data.get("chat_id")
+    orig_msg_id = data.get("message_id")
+    await state.clear()
+
+    law = await gov_repo.update_law_effects(session, lid, stability_effect=val)
+    if not law:
+        await msg.reply("❌ لایحه یافت نشد.")
+        return
     await session.commit()
 
-    if law:
-        # اطلاع به مالک کشور
-        c = await countries_repo.get_country(session, law.country_id)
-        if c and c.owner_user_id:
-            try:
-                await bot.send_message(
-                    c.owner_user_id,
-                    f"✅ لایحه‌ی «{law.title}» در مجلس <b>تصویب</b> شد.\n"
-                    f"رأی: {law.vote_result}",
-                )
-            except Exception:
-                pass
+    country = await countries_repo.get_country(session, law.country_id)
+    await msg.reply(f"✅ اثر بر ثبات داخلی با موفقیت روی <b>{val:+.1f}٪</b> تنظیم شد.")
+
+    if country and chat_id and orig_msg_id:
+        try:
+            text = (
+                _format_admin_law_msg(country, law)
+                + "\n\n⚙️ <b>تنظیم اثرات لایحه:</b>\n"
+                "برای تغییر اثرات، دکمه‌های آماده زیر را بزنید یا گزینه عدد دلخواه را انتخاب کنید:"
+            )
+            await bot.edit_message_text(
+                chat_id=chat_id,
+                message_id=orig_msg_id,
+                text=text,
+                reply_markup=admin_law_result_kb(law.id, law.stability_effect, law.satisfaction_effect),
+            )
+        except Exception:
+            pass
+
+
+@router.callback_query(F.data.startswith("gov_admin:csat:"))
+async def cb_admin_custom_satisfaction(call: CallbackQuery, state: FSMContext) -> None:
+    """شروع فرم ورود دستی عدد رضایت عمومی."""
+    lid = int(call.data.split(":")[-1])
+    await state.set_state(AdminLawResultForm.entering_custom_satisfaction)
+    await state.update_data(law_id=lid, chat_id=call.message.chat.id, message_id=call.message.message_id)
+    await call.answer()
+    await call.message.reply(
+        f"✏️ لطفاً درصد تغییر <b>رضایت عمومی</b> را برای لایحه #{lid} ارسال کنید (مثلاً <code>+8</code> یا <code>-5</code>):"
+    )
+
+
+@router.message(StateFilter(AdminLawResultForm.entering_custom_satisfaction))
+async def msg_admin_custom_satisfaction(msg: Message, state: FSMContext, session: AsyncSession) -> None:
+    """دریافت عدد دستی رضایت و اعمال."""
+    raw = (msg.text or "").replace("٪", "").replace("%", "").replace("+", "").strip()
+    try:
+        val = float(raw)
+        if "-" in (msg.text or ""):
+            val = -abs(val)
+    except ValueError:
+        await msg.reply("⚠️ لطفاً یک عدد معتبر ارسال کنید (مثلاً <code>+5</code> یا <code>-3</code>):")
+        return
+
+    data = await state.get_data()
+    lid = data.get("law_id")
+    chat_id = data.get("chat_id")
+    orig_msg_id = data.get("message_id")
+    await state.clear()
+
+    law = await gov_repo.update_law_effects(session, lid, satisfaction_effect=val)
+    if not law:
+        await msg.reply("❌ لایحه یافت نشد.")
+        return
+    await session.commit()
+
+    country = await countries_repo.get_country(session, law.country_id)
+    await msg.reply(f"✅ اثر بر رضایت عمومی با موفقیت روی <b>{val:+.1f}٪</b> تنظیم شد.")
+
+    if country and chat_id and orig_msg_id:
+        try:
+            text = (
+                _format_admin_law_msg(country, law)
+                + "\n\n⚙️ <b>تنظیم اثرات لایحه:</b>\n"
+                "برای تغییر اثرات، دکمه‌های آماده زیر را بزنید یا گزینه عدد دلخواه را انتخاب کنید:"
+            )
+            await bot.edit_message_text(
+                chat_id=chat_id,
+                message_id=orig_msg_id,
+                text=text,
+                reply_markup=admin_law_result_kb(law.id, law.stability_effect, law.satisfaction_effect),
+            )
+        except Exception:
+            pass
+
+
+@router.callback_query(F.data.startswith("gov_admin:law_apply:"))
+async def cb_admin_law_apply(call: CallbackQuery, session: AsyncSession) -> None:
+    """ادمین لایحه را تصویب و نهایی می‌کند و اثرات روی کشور اعمال می‌شود."""
+    await call.answer("لایحه اعمال و بسته شد ✅")
+    lid = int(call.data.split(":")[-1])
+
+    law, country, stab_delta, sat_delta = await gov_repo.apply_and_close_law(session, lid)
+    if not law or not country:
+        await call.answer("خطا در یافتن لایحه یا کشور.", show_alert=True)
+        return
+    await session.commit()
+
+    # ویرایش پیام در گروه ادمین و بستن دکمه‌ها
+    stab_sign = "+" if stab_delta >= 0 else ""
+    sat_sign = "+" if sat_delta >= 0 else ""
+    admin_name = call.from_user.full_name
 
     try:
         await call.message.edit_text(
-            call.message.text + "\n\n✅ <b>تصویب شد</b>",
+            f"{call.message.text}\n\n"
+            f"✅ <b>لایحه رسماً تصویب، اعمال و بسته شد.</b>\n"
+            f"• تغییر ثبات داخلی: <b>{stab_sign}{stab_delta:.1f}٪</b> (میزان فعلی: {country.stability:.1f}٪)\n"
+            f"• تغییر رضایت عمومی: <b>{sat_sign}{sat_delta:.1f}٪</b> (میزان فعلی: {country.public_satisfaction:.1f}٪)\n"
+            f"• مجری تصویب: {admin_name}",
+            reply_markup=None,
         )
     except Exception:
         pass
+
+    # ارسال گزارش تصویب لایحه به پیوی بازیکن کشور
+    if country.owner_user_id:
+        try:
+            await bot.send_message(
+                country.owner_user_id,
+                f"🏛 <b>لایحه‌ی «{law.title}» در مجلس تصویب و اجرایی شد!</b>\n\n"
+                f"نمایندگان مجلس شورای ملی لایحه‌ی پیشنهادی شما را مصوب نموده و نتایج آن رسماً در کشور اعمال گردید:\n"
+                f"📈 تغییر ثبات داخلی: <b>{stab_sign}{stab_delta:.1f}٪</b>\n"
+                f"😊 تغییر رضایت عمومی: <b>{sat_sign}{sat_delta:.1f}٪</b>\n\n"
+                f"📊 وضعیت جدید کشور: ثبات داخلی {country.stability:.1f}٪ | رضایت عمومی {country.public_satisfaction:.1f}٪",
+            )
+        except Exception:
+            pass
+
+    # ثبت لاگ در گروه لاگ اصلی
+    await send_log(
+        bot,
+        f"🏛 <b>تصویب و اعمال نهایی لایحه</b>\n"
+        f"کشور: {country.flag} {country.name_fa}\n"
+        f"لایحه: {law.title}\n"
+        f"اثرات اعمال‌شده: {stab_sign}{stab_delta:.1f}٪ ثبات | {sat_sign}{sat_delta:.1f}٪ رضایت\n"
+        f"ادمین: {admin_name}",
+    )
 
 
 @router.callback_query(F.data.startswith("gov_admin:law_no:"))
@@ -913,12 +1154,21 @@ async def cb_admin_law_no(call: CallbackQuery, session: AsyncSession) -> None:
             except Exception:
                 pass
 
-    try:
-        await call.message.edit_text(
-            call.message.text + "\n\n❌ <b>رد شد</b>",
+        try:
+            await call.message.edit_text(
+                call.message.text + "\n\n❌ <b>لایحه توسط مجلس رد شد.</b>",
+                reply_markup=None,
+            )
+        except Exception:
+            pass
+
+        await send_log(
+            bot,
+            f"🏛 <b>رد لایحه در مجلس</b>\n"
+            f"کشور: {c.flag if c else ''} {c.name_fa if c else ''}\n"
+            f"لایحه: {law.title}\n"
+            f"ادمین: {call.from_user.full_name}",
         )
-    except Exception:
-        pass
 
 
 @router.callback_query(F.data == "gov:my_laws")

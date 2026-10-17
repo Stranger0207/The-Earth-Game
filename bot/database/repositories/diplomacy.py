@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from sqlalchemy import or_, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ...enums import DiplomacyStatus
@@ -17,6 +17,7 @@ from ..models import (
     PhoneCall,
     PhoneCallMessage,
     Sanction,
+    VisaWaiver,
 )
 
 
@@ -526,3 +527,91 @@ async def group_member_country_ids(
     participants = await list_group_participants(session, meeting.id)
     ids += [p.country_id for p in participants if p.response == DiplomacyStatus.ACTIVE]
     return ids
+
+
+# ------------------------- لغو روادید (Visa Waiver) -------------------------
+
+
+async def add_visa_waiver(
+    session: AsyncSession, country_id: int, target_country_id: int
+) -> VisaWaiver:
+    """ثبت توافق لغو ویزا (کشور country_id روادید را برای شهروندان target_country_id لغو می‌کند)."""
+    vw = VisaWaiver(country_id=country_id, target_country_id=target_country_id)
+    session.add(vw)
+    await session.flush()
+    return vw
+
+
+async def remove_visa_waiver(
+    session: AsyncSession, country_id: int, target_country_id: int
+) -> bool:
+    """ابطال لغو ویزا (برقراری مجدد روادید). True اگر رکوردی حذف شد."""
+    q = delete(VisaWaiver).where(
+        VisaWaiver.country_id == country_id,
+        VisaWaiver.target_country_id == target_country_id,
+    )
+    res = await session.execute(q)
+    await session.flush()
+    return (res.rowcount or 0) > 0
+
+
+async def has_visa_waiver(
+    session: AsyncSession, country_id: int, target_country_id: int
+) -> bool:
+    """آیا کشور country_id ویزا را برای target_country_id لغو کرده است؟"""
+    q = (
+        select(func.count())
+        .select_from(VisaWaiver)
+        .where(
+            VisaWaiver.country_id == country_id,
+            VisaWaiver.target_country_id == target_country_id,
+        )
+    )
+    return ((await session.execute(q)).scalar() or 0) > 0
+
+
+async def is_shipping_visa_waived(
+    session: AsyncSession, origin_country_id: int, dest_country_id: int
+) -> bool:
+    """
+    بررسی اینکه آیا تخفیف عوارض حمل‌ونقل ناشی از لغو ویزا شامل این مسیر می‌شود یا خیر:
+    طبق قانون بازی: اگر کشور مقصد (یا هر دو کشور) ویزا را با کشور مقابل لغو کرده باشند.
+    """
+    q = (
+        select(func.count())
+        .select_from(VisaWaiver)
+        .where(
+            or_(
+                # مقصد برای مبدأ ویزا را لغو کرده باشد
+                (VisaWaiver.country_id == dest_country_id) & (VisaWaiver.target_country_id == origin_country_id),
+                # یا مبدأ برای مقصد ویزا را لغو کرده باشد
+                (VisaWaiver.country_id == origin_country_id) & (VisaWaiver.target_country_id == dest_country_id),
+            )
+        )
+    )
+    return ((await session.execute(q)).scalar() or 0) > 0
+
+
+async def list_granted_visa_waivers(
+    session: AsyncSession, country_id: int
+) -> list[VisaWaiver]:
+    """فهرست ویزاهایی که این کشور برای دیگران لغو کرده است."""
+    q = (
+        select(VisaWaiver)
+        .where(VisaWaiver.country_id == country_id)
+        .order_by(VisaWaiver.created_at.desc())
+    )
+    return list((await session.execute(q)).scalars().all())
+
+
+async def list_received_visa_waivers(
+    session: AsyncSession, country_id: int
+) -> list[VisaWaiver]:
+    """فهرست کشورهایی که برای این کشور لغو روادید اعمال کرده‌اند."""
+    q = (
+        select(VisaWaiver)
+        .where(VisaWaiver.target_country_id == country_id)
+        .order_by(VisaWaiver.created_at.desc())
+    )
+    return list((await session.execute(q)).scalars().all())
+

@@ -126,3 +126,71 @@ def parliament_menu_kb() -> InlineKeyboardMarkup:
     builder.button(text="🔙 بازگشت", callback_data="gov:legislation", style=STYLE_MAIN)
     builder.adjust(1, 1, 1)
     return builder.as_markup()
+
+
+def admin_law_panel_kb(law_id: int) -> InlineKeyboardMarkup:
+    """
+    پنل مدیریتی لایحه در گروه تحریم و لایحه:
+    ۱- تعیین/ویرایش نتیجه لایحه
+    ۲- بستن و اعمال نهایی لایحه
+    ۳- رد کردن لایحه
+    """
+    builder = InlineKeyboardBuilder()
+    builder.button(
+        text="📊 تعیین/ویرایش نتیجه لایحه",
+        callback_data=f"gov_admin:law_res:{law_id}",
+        style=STYLE_MAIN,
+    )
+    builder.button(
+        text="✅ بستن و اعمال نهایی لایحه",
+        callback_data=f"gov_admin:law_apply:{law_id}",
+        style=STYLE_OK,
+    )
+    builder.button(
+        text="❌ رد کردن لایحه",
+        callback_data=f"gov_admin:law_no:{law_id}",
+        style=STYLE_NO,
+    )
+    builder.adjust(1, 2)
+    return builder.as_markup()
+
+
+def admin_law_result_kb(law_id: int, cur_stab: float, cur_sat: float) -> InlineKeyboardMarkup:
+    """
+    کیبورد تنظیم اثرات لایحه روی ثبات و رضایت عمومی.
+    """
+    builder = InlineKeyboardBuilder()
+
+    # ردیف تنظیم ثبات (Presets)
+    builder.button(text="ثبات +۲٪", callback_data=f"gov_admin:stab:{law_id}:2", style=STYLE_MAIN)
+    builder.button(text="ثبات +۵٪", callback_data=f"gov_admin:stab:{law_id}:5", style=STYLE_MAIN)
+    builder.button(text="ثبات +۱۰٪", callback_data=f"gov_admin:stab:{law_id}:10", style=STYLE_MAIN)
+    builder.button(text="ثبات +۱۵٪", callback_data=f"gov_admin:stab:{law_id}:15", style=STYLE_MAIN)
+
+    builder.button(text="ثبات -۵٪", callback_data=f"gov_admin:stab:{law_id}:-5", style=STYLE_NO)
+    builder.button(text="✏️ عدد دلخواه ثبات", callback_data=f"gov_admin:cstab:{law_id}", style=STYLE_MAIN)
+
+    # ردیف تنظیم رضایت (Presets)
+    builder.button(text="رضایت +۲٪", callback_data=f"gov_admin:sat:{law_id}:2", style=STYLE_MAIN)
+    builder.button(text="رضایت +۵٪", callback_data=f"gov_admin:sat:{law_id}:5", style=STYLE_MAIN)
+    builder.button(text="رضایت +۱۰٪", callback_data=f"gov_admin:sat:{law_id}:10", style=STYLE_MAIN)
+    builder.button(text="رضایت +۱۵٪", callback_data=f"gov_admin:sat:{law_id}:15", style=STYLE_MAIN)
+
+    builder.button(text="رضایت -۵٪", callback_data=f"gov_admin:sat:{law_id}:-5", style=STYLE_NO)
+    builder.button(text="✏️ عدد دلخواه رضایت", callback_data=f"gov_admin:csat:{law_id}", style=STYLE_MAIN)
+
+    # دکمه‌های ناوبری و اقدام
+    builder.button(
+        text="🔙 بازگشت به پنل لایحه",
+        callback_data=f"gov_admin:law_main:{law_id}",
+        style=STYLE_MAIN,
+    )
+    builder.button(
+        text="✅ بستن و اعمال نهایی",
+        callback_data=f"gov_admin:law_apply:{law_id}",
+        style=STYLE_OK,
+    )
+
+    builder.adjust(4, 2, 4, 2, 2)
+    return builder.as_markup()
+

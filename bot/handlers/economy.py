@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..constants import (
     AIR_TRANSPORT_FEE,
+    AIR_TRANSPORT_FEE_NO_VISA,
     BUILD_LIMIT_WINDOW_HOURS,
     FACILITY_COST_USD,
     FACILITY_TOTAL_LIMIT_NON_VIP,
@@ -19,11 +20,13 @@ from ..constants import (
     LAND_TRANSPORT_FEE,
     RESOURCE_SALE_COOLDOWN_HOURS,
     SEA_TRANSPORT_FEE,
+    SEA_TRANSPORT_FEE_NO_VISA,
     build_limit_group_for,
 )
 from ..database.models import Facility, ResourceSale, User
 from ..database.repositories import cooldowns as cd_repo
 from ..database.repositories import countries as countries_repo
+from ..database.repositories import diplomacy as dip_repo
 from ..database.repositories import facilities as fac_repo
 from ..database.repositories import reserves as reserves_repo
 from ..database.repositories import straits as straits_repo
@@ -778,9 +781,14 @@ async def cb_sell_transport_mode(
         await state.clear()
         return
 
+    has_waiver = await dip_repo.is_shipping_visa_waived(session, country.id, buyer.id)
+    air_fee = AIR_TRANSPORT_FEE_NO_VISA if has_waiver else AIR_TRANSPORT_FEE
+    sea_fee = SEA_TRANSPORT_FEE_NO_VISA if has_waiver else SEA_TRANSPORT_FEE
+    waiver_tag = " 🛂 (تخفیف لغو ویزا اعمال شد!)" if has_waiver else ""
+
     fee_details = ""
     if mode == TransportMode.AIR:
-        fee_details = f"• عوارض پایه هوایی: {fa_money(AIR_TRANSPORT_FEE)}"
+        fee_details = f"• عوارض پایه هوایی: {fa_money(air_fee)}{waiver_tag}"
     elif mode == TransportMode.LAND:
         fee_details = f"• عوارض پایه ترانزیت زمینی: {fa_money(LAND_TRANSPORT_FEE)}"
     else:
@@ -788,7 +796,7 @@ async def cb_sell_transport_mode(
         strait_names = [geo.get_strait_def(sid)["name_fa"] for sid in strait_ids if geo.get_strait_def(sid)]
         straits_str = "، ".join(strait_names) if strait_names else "بدون عبور از تنگه"
         fee_details = (
-            f"• عوارض پایه دریایی: {fa_money(SEA_TRANSPORT_FEE)}\n"
+            f"• عوارض پایه دریایی: {fa_money(sea_fee)}{waiver_tag}\n"
             f"• تنگه‌های مسیر دریایی: {straits_str}"
         )
 
@@ -868,12 +876,13 @@ async def cb_sell_fee_payer(
     strait_toll_fee = 0.0
     strait_ids: list[str] = []
 
+    has_waiver = await dip_repo.is_shipping_visa_waived(session, country.id, buyer.id)
     if mode == TransportMode.AIR:
-        transport_fee = AIR_TRANSPORT_FEE
+        transport_fee = AIR_TRANSPORT_FEE_NO_VISA if has_waiver else AIR_TRANSPORT_FEE
     elif mode == TransportMode.LAND:
         transport_fee = LAND_TRANSPORT_FEE
     else:
-        transport_fee = SEA_TRANSPORT_FEE
+        transport_fee = SEA_TRANSPORT_FEE_NO_VISA if has_waiver else SEA_TRANSPORT_FEE
         strait_ids = geo.get_route_straits(country.name_en, buyer.name_en)
         payer_cid = country.id if payer == "SELLER" else buyer.id
         tolls_map = await straits_repo.calculate_route_tolls(session, strait_ids, payer_cid)
@@ -902,6 +911,7 @@ async def cb_sell_fee_payer(
     rname = RESOURCE_FA[ResourceType(resource)]
     payer_fa = FEE_PAYER_FA[FeePayer(payer)]
     mode_fa = TRANSPORT_MODE_FA[mode]
+    waiver_note = " 🛂 (تخفیف لغو روادید اعمال شد!)" if has_waiver else ""
 
     await safe_edit(
         call,
@@ -909,7 +919,7 @@ async def cb_sell_fee_payer(
         f"📦 <b>محموله:</b> {fa_number(amount)} {unit} {rname}\n"
         f"💰 <b>قیمت کالا:</b> {fa_money(price)}\n"
         f"🚚 <b>شیوه ارسال:</b> {mode_fa}\n"
-        f"💵 <b>عوارض لجستیک و تنگه‌ها:</b> {fa_money(total_logistics)}\n"
+        f"💵 <b>عوارض لجستیک و تنگه‌ها:</b> {fa_money(total_logistics)}{waiver_note}\n"
         f"💳 <b>پرداخت‌کننده عوارض:</b> {payer_fa}\n\n"
         "پس از تأیید خریدار، محموله ارسال خواهد شد.",
     )
@@ -939,7 +949,7 @@ async def cb_sell_fee_payer(
                 f"منبع: {fa_number(amount)} {unit} {rname}\n"
                 f"قیمت کالا: {fa_money(price)}\n"
                 f"شیوه ارسال: {mode_fa}\n"
-                f"عوارض لجستیک: {fa_money(total_logistics)}\n"
+                f"عوارض لجستیک: {fa_money(total_logistics)}{waiver_note}\n"
                 f"پرداخت‌کننده عوارض: {payer_fa}{straits_note}\n\n"
                 f"💳 <b>مبلغ نهایی کسر از شما:</b> {fa_money(buyer_total)}",
                 reply_markup=kb,

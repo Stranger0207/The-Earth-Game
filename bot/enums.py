@@ -387,6 +387,7 @@ class LawStatus(str, enum.Enum):
     IN_PARLIAMENT = "in_parliament"  # در حال بررسی مجلس
     APPROVED = "approved"          # تصویب‌شده
     REJECTED = "rejected"          # ردشده
+    APPLIED = "applied"            # بسته و اعمال‌شده
 
 
 LAW_STATUS_FA: dict[LawStatus, str] = {
@@ -394,6 +395,7 @@ LAW_STATUS_FA: dict[LawStatus, str] = {
     LawStatus.IN_PARLIAMENT: "🏛 در مجلس",
     LawStatus.APPROVED: "✅ تصویب‌شده",
     LawStatus.REJECTED: "❌ ردشده",
+    LawStatus.APPLIED: "✅ بسته و اعمال‌شده",
 }
 
 

@@ -22,6 +22,7 @@ from .forms import (
     JointFacilityForm,
     LetterForm,
     LawForm,
+    AdminLawResultForm,
     MaintenanceForm,
     MailForm,
     MeetingForm,
@@ -49,6 +50,7 @@ from .satellite import SatelliteForm
 __all__ = [
     "AdvisorForm",
     "AllianceForm",
+    "AdminLawResultForm",
     "AnnounceForm",
     "AuctionBidForm",
     "AuctionCreateForm",

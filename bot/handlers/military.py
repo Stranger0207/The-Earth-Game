@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..config import get_settings
 from ..constants import (
     AIR_TRANSPORT_FEE,
+    AIR_TRANSPORT_FEE_NO_VISA,
     BUILD_LIMIT_WINDOW_HOURS,
     MIL_FACTORY_BUILD_LIMIT,
     MIL_FACTORY_BUILD_RESOURCES,
@@ -28,6 +29,7 @@ from ..constants import (
 )
 from ..database.models import MilitaryFactory, MilitarySale, User
 from ..database.repositories import countries as countries_repo
+from ..database.repositories import diplomacy as dip_repo
 from ..database.repositories import facilities as fac_repo
 from ..database.repositories import military as mil_repo
 from ..database.repositories import military_factory as milfac_repo
@@ -753,12 +755,16 @@ async def cb_sell_buyer(call: CallbackQuery, state: FSMContext, session: AsyncSe
         await state.clear()
         return
 
+    has_waiver = await dip_repo.is_shipping_visa_waived(session, country.id, buyer_id)
+    fee = AIR_TRANSPORT_FEE_NO_VISA if has_waiver else AIR_TRANSPORT_FEE
+    waiver_note = " <i>(🛂 تخفیف ۵۰٪ لغو روادید اعمال شد!)</i>" if has_waiver else ""
+
     await state.update_data(sell_buyer_id=buyer_id)
     await state.set_state(MilitarySaleForm.choosing_fee_payer)
     await safe_edit(
         call,
         f"💳 <b>تعیین پرداخت‌کننده عوارض حمل هوایی</b>\n\n"
-        f"تجهیزات نظامی منحصراً از طریق <b>✈️ حمل هوایی</b> با عوارض ثابت <b>{fa_money(AIR_TRANSPORT_FEE)}</b> ارسال می‌شوند.\n\n"
+        f"تجهیزات نظامی منحصراً از طریق <b>✈️ حمل هوایی</b> با عوارض ثابت <b>{fa_money(fee)}</b>{waiver_note} ارسال می‌شوند.\n\n"
         "پرداخت عوارض لجستیک بر عهده‌ی کدام طرف باشد؟",
         reply_markup=fee_payer_kb(back_data="msback:buyer", prefix="milsell_payer"),
     )
@@ -807,6 +813,10 @@ async def cb_milsell_payer(
     count = int(count_raw)
     price = float(price_raw)
 
+    has_waiver = await dip_repo.is_shipping_visa_waived(session, country.id, buyer_id)
+    transport_fee = AIR_TRANSPORT_FEE_NO_VISA if has_waiver else AIR_TRANSPORT_FEE
+    waiver_note = " <i>(🛂 تخفیف ۵۰٪ لغو روادید)</i>" if has_waiver else ""
+
     sale = MilitarySale(
         seller_country=country.id,
         buyer_country=buyer_id,
@@ -818,7 +828,7 @@ async def cb_milsell_payer(
         price=price,
         transport_mode="AIR",
         fee_payer=payer,
-        transport_fee=AIR_TRANSPORT_FEE,
+        transport_fee=transport_fee,
         status=TradeStatus.PENDING,
     )
     await milsale_repo.add_sale(session, sale)
@@ -832,14 +842,14 @@ async def cb_milsell_payer(
         f"🪖 <b>تجهیزات:</b> {fa_number(count)} {pick['unit']} {pick['name']}\n"
         f"💰 <b>قیمت کالا:</b> {fa_money(price)}\n"
         f"✈️ <b>شیوه ارسال:</b> حمل هوایی\n"
-        f"💵 <b>عوارض هوایی:</b> {fa_money(AIR_TRANSPORT_FEE)}\n"
+        f"💵 <b>عوارض هوایی:</b> {fa_money(transport_fee)}{waiver_note}\n"
         f"💳 <b>پرداخت‌کننده عوارض:</b> {payer_fa}\n\n"
         "پس از تأیید خریدار، محموله توسط WTO ارسال می‌شود.",
         reply_markup=military_menu_kb(),
     )
 
     if buyer.owner_user_id:
-        buyer_total = price + (AIR_TRANSPORT_FEE if payer == "BUYER" else 0.0)
+        buyer_total = price + (transport_fee if payer == "BUYER" else 0.0)
         kb = InlineKeyboardMarkup(inline_keyboard=[[
             InlineKeyboardButton(text="✅ خرید", callback_data=f"milsale_ok:{sale.id}", style=STYLE_OK),
             InlineKeyboardButton(text="❌ رد", callback_data=f"milsale_no:{sale.id}", style=STYLE_NO),
@@ -852,7 +862,7 @@ async def cb_milsell_payer(
                 f"تجهیزات: {fa_number(count)} {pick['unit']} {pick['name']}\n"
                 f"قیمت کالا: {fa_money(price)}\n"
                 f"شیوه ارسال: ✈️ حمل هوایی\n"
-                f"عوارض هوایی: {fa_money(AIR_TRANSPORT_FEE)}\n"
+                f"عوارض هوایی: {fa_money(transport_fee)}{waiver_note}\n"
                 f"پرداخت‌کننده عوارض: {payer_fa}\n\n"
                 f"💳 <b>مبلغ نهایی کسر از شما:</b> {fa_money(buyer_total)}",
                 reply_markup=kb,

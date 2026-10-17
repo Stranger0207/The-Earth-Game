@@ -161,6 +161,65 @@ async def vote_law(
     return law
 
 
+async def update_law_effects(
+    session: AsyncSession,
+    law_id: int,
+    stability_effect: float | None = None,
+    satisfaction_effect: float | None = None,
+) -> Law | None:
+    """تنظیم یا ویرایش مقادیر اثرات لایحه (ثبات داخلی و رضایت عمومی)."""
+    law = await session.get(Law, law_id)
+    if law is None:
+        return None
+    if stability_effect is not None:
+        law.stability_effect = float(stability_effect)
+    if satisfaction_effect is not None:
+        law.satisfaction_effect = float(satisfaction_effect)
+    await session.flush()
+    return law
+
+
+async def apply_and_close_law(
+    session: AsyncSession,
+    law_id: int,
+) -> tuple[Law | None, Country | None, float, float]:
+    """
+    اعمال نهایی و بستن لایحه:
+    اثرات تعیین‌شده روی ثبات و رضایت کشور ثبت‌کننده اعمال شده و وضعیت لایحه applied می‌شود.
+    خروجی: (law, country, applied_stab_delta, applied_sat_delta)
+    """
+    from ..models.country import Country
+    from ...enums import LawStatus
+
+    law = await session.get(Law, law_id)
+    if law is None:
+        return None, None, 0.0, 0.0
+
+    country = await session.get(Country, law.country_id)
+    if country is None:
+        return law, None, 0.0, 0.0
+
+    law.status = LawStatus.APPLIED.value
+    law.voted_at = _utcnow()
+    law.vote_result = (
+        f"تصویب و اعمال نهایی: "
+        f"{'+' if law.stability_effect >= 0 else ''}{law.stability_effect:.1f}٪ ثبات | "
+        f"{'+' if law.satisfaction_effect >= 0 else ''}{law.satisfaction_effect:.1f}٪ رضایت"
+    )
+
+    # اعمال روی کشور با رعایت کف ۰ و سقف ۱۰۰
+    cur_stab = float(country.stability or 50.0)
+    new_stab = max(0.0, min(100.0, cur_stab + law.stability_effect))
+    country.stability = new_stab
+
+    cur_sat = float(country.public_satisfaction or 50.0)
+    new_sat = max(0.0, min(100.0, cur_sat + law.satisfaction_effect))
+    country.public_satisfaction = new_sat
+
+    await session.flush()
+    return law, country, law.stability_effect, law.satisfaction_effect
+
+
 # ============================================================
 #  ویزا
 # ============================================================

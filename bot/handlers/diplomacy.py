@@ -30,6 +30,9 @@ from ..constants import (
     PHONE_CALL_COOLDOWN_MINUTES,
     PHONE_CALL_DURATION_MINUTES,
     SPEECH_COOLDOWN_MINUTES,
+    VISA_WAIVER_ADMIN_COST,
+    VISA_WAIVER_SATISFACTION_PENALTY,
+    VISA_WAIVER_STABILITY_PENALTY,
 )
 from ..database.models import (
     Contract,
@@ -40,10 +43,12 @@ from ..database.models import (
     Sanction,
     Speech,
     User,
+    VisaWaiver,
 )
 from ..database.repositories import cooldowns as cd_repo
 from ..database.repositories import countries as countries_repo
 from ..database.repositories import diplomacy as dip_repo
+from ..database.repositories import governance as gov_repo
 from ..enums import AdminGroupType, SANCTION_FA, DiplomacyStatus, NewsCategory, SanctionType
 from ..keyboards.common import countries_kb
 from ..keyboards.diplomacy import (
@@ -1903,6 +1908,344 @@ async def cb_contract_cancel_confirm(call: CallbackQuery, session: AsyncSession,
             InlineKeyboardButton(text="🔙 منوی دیپلماسی", callback_data="menu:diplomacy", style=STYLE_MAIN),
         ]]),
     )
+
+
+# ============================================================
+#  🛂 لغو روادید (Visa Waiver) در دیدار حضوری و مدیریت مرزها
+# ============================================================
+
+async def _get_active_meeting_partners(session: AsyncSession, country_id: int) -> tuple[bool, str, list[int]]:
+    """
+    بررسی اینکه آیا کشور در یک دیدار حضوری فعال است و واجد شرایط لغو روادید می‌باشد یا خیر.
+    خروجی: (is_valid, error_reason, list_of_partner_country_ids)
+    """
+    # ۱) بررسی دیدار دوجانبه
+    meeting = await dip_repo.get_active_meeting_for_country(session, country_id)
+    if meeting is not None:
+        if _aware(meeting.travel_eta) and _aware(meeting.travel_eta) > _utcnow():
+            return False, "✈️ هنوز سفر به پایان نرسیده است. لطفاً تا رسیدن به مقصد و آغاز رسمی جلسه صبر کنید.", []
+        partner_id = (
+            meeting.host_country if meeting.traveler_country == country_id else meeting.traveler_country
+        )
+        return True, "", [partner_id]
+
+    # ۲) بررسی دیدار چندجانبه
+    group = await dip_repo.get_active_group_meeting_for_country(session, country_id)
+    if group is not None:
+        member_ids = await dip_repo.group_member_country_ids(session, group)
+        partners = [cid for cid in member_ids if cid != country_id]
+        if not partners:
+            return False, "⚠️ کشور دیگری در این نشست حاضر نیست.", []
+        return True, "", partners
+
+    return False, "⚠️ لغو روادید (Visa Waiver) منحصراً در جریان دیدار حضوری فعال (دوجانبه یا چندجانبه) امکان‌پذیر است.", []
+
+
+@router.message(Command("visa_waiver", "waiver"))
+async def cmd_visa_waiver(message: Message, session: AsyncSession, db_user: User) -> None:
+    """دستور لغو ویزا در جریان دیدار حضوری فعال."""
+    country = await get_player_country(session, db_user)
+    if country is None:
+        await message.answer(NO_COUNTRY_TEXT)
+        return
+
+    ok, reason, partners = await _get_active_meeting_partners(session, country.id)
+    if not ok:
+        await message.answer(reason)
+        return
+
+    if len(partners) == 1:
+        await _show_visa_waiver_confirm(message, session, country, partners[0], is_callback=False)
+    else:
+        # نشست چندجانبه: انتخاب طرف
+        builder = InlineKeyboardBuilder()
+        for pid in partners:
+            pc = await countries_repo.get_country(session, pid)
+            if pc:
+                builder.button(text=f"{pc.flag} {pc.name_fa}", callback_data=f"vw_pick:{pc.id}", style=STYLE_MAIN)
+        builder.button(text="❌ انصراف", callback_data="vw_cancel", style=STYLE_NO)
+        builder.adjust(2)
+        await message.answer("🛂 با کدام یک از کشورهای حاضر در نشست مایل به لغو روادید هستید؟", reply_markup=builder.as_markup())
+
+
+@router.callback_query(F.data == "dip:visa_waiver_start")
+async def cb_visa_waiver_start(call: CallbackQuery, session: AsyncSession, db_user: User) -> None:
+    """کلیک روی دکمه لغو ویزا در پنل نشست حضوری."""
+    await call.answer()
+    country = await get_player_country(session, db_user)
+    if country is None:
+        await safe_edit(call, NO_COUNTRY_TEXT)
+        return
+
+    ok, reason, partners = await _get_active_meeting_partners(session, country.id)
+    if not ok:
+        await call.message.reply(reason)
+        return
+
+    if len(partners) == 1:
+        await _show_visa_waiver_confirm(call, session, country, partners[0], is_callback=True)
+    else:
+        builder = InlineKeyboardBuilder()
+        for pid in partners:
+            pc = await countries_repo.get_country(session, pid)
+            if pc:
+                builder.button(text=f"{pc.flag} {pc.name_fa}", callback_data=f"vw_pick:{pc.id}", style=STYLE_MAIN)
+        builder.button(text="❌ انصراف", callback_data="vw_cancel", style=STYLE_NO)
+        builder.adjust(2)
+        await call.message.reply("🛂 با کدام یک از کشورهای حاضر در نشست مایل به لغو روادید هستید؟", reply_markup=builder.as_markup())
+
+
+@router.callback_query(F.data.startswith("vw_pick:"))
+async def cb_visa_waiver_pick(call: CallbackQuery, session: AsyncSession, db_user: User) -> None:
+    """انتخاب کشور مقصد لغو روادید در نشست چندجانبه."""
+    await call.answer()
+    country = await get_player_country(session, db_user)
+    if country is None:
+        return
+    target_id = int(call.data.split(":")[1])
+    await _show_visa_waiver_confirm(call, session, country, target_id, is_callback=True)
+
+
+async def _show_visa_waiver_confirm(
+    event: Message | CallbackQuery, session: AsyncSession, country: Country, target_id: int, is_callback: bool
+) -> None:
+    """نمایش پیش‌نمایش، اخطار جریمه و درخواست تأیید دومرحله‌ای لغو ویزا."""
+    target = await countries_repo.get_country(session, target_id)
+    if not target:
+        if is_callback:
+            await event.answer("کشور نامعتبر است.", show_alert=True)
+        return
+
+    already = await dip_repo.has_visa_waiver(session, country.id, target.id)
+    if already:
+        text = f"ℹ️ شما قبلاً روادید (ویزا) را برای شهروندان و خدمه کشور {target.flag} {target.name_fa} لغو کرده‌اید و مرزهای شما به روی این کشور باز است."
+        if is_callback:
+            await event.message.reply(text)
+        else:
+            await event.answer(text)
+        return
+
+    text = (
+        f"⚠️ <b>تأییدیه لغو روادید (Visa Waiver) با {target.flag} {target.name_fa}</b>\n\n"
+        f"با لغو روادید، اتباع، ملوانان و خلبانان تجاری {target.name_fa} بدون مانع اداری وارد کشور شما می‌شوند.\n\n"
+        f"✨ <b>مزایای تجاری:</b>\n"
+        f"• اعمال <b>۵۰٪ تخفیف عوارض حمل‌ونقل</b> هوایی ({fa_money(AIR_TRANSPORT_FEE_NO_VISA)}) و دریایی ({fa_money(SEA_TRANSPORT_FEE_NO_VISA)})\n\n"
+        f"🛑 <b>تبعات و هزینه‌های باز کردن مرزها برای کشور شما:</b>\n"
+        f"• کسر <b>{fa_number(VISA_WAIVER_STABILITY_PENALTY, 1)}٪ از ثبات داخلی</b> (نگرانی‌های امنیتی و بازرسی)\n"
+        f"• کسر <b>{fa_number(VISA_WAIVER_SATISFACTION_PENALTY, 1)}٪ از رضایت عمومی</b> (چالش‌های مهاجرتی و هویتی)\n"
+        f"• کسر <b>{fa_money(VISA_WAIVER_ADMIN_COST)}</b> از بودجه کشور (تجهیز گمرک و ساماندهی خطوط مرزی)\n\n"
+        f"آیا با لغو ویزا و اعمال این تبعات موافقید؟"
+    )
+
+    builder = InlineKeyboardBuilder()
+    builder.button(text="✅ بله، لغو روادید اعمال شود", callback_data=f"vw_confirm:{target.id}", style=STYLE_OK)
+    builder.button(text="❌ انصراف", callback_data="vw_cancel", style=STYLE_NO)
+    builder.adjust(1)
+
+    if is_callback:
+        await event.message.reply(text, reply_markup=builder.as_markup())
+    else:
+        await event.answer(text, reply_markup=builder.as_markup())
+
+
+@router.callback_query(F.data == "vw_cancel")
+async def cb_visa_waiver_cancel(call: CallbackQuery) -> None:
+    """انصراف از لغو ویزا."""
+    await call.answer("انصراف داده شد.")
+    try:
+        await call.message.delete()
+    except Exception:
+        pass
+
+
+@router.callback_query(F.data.startswith("vw_confirm:"))
+async def cb_visa_waiver_confirm(call: CallbackQuery, session: AsyncSession, db_user: User) -> None:
+    """تأیید نهایی لغو ویزا و کسر جریمه."""
+    country = await get_player_country(session, db_user)
+    if country is None:
+        await call.answer(NO_COUNTRY_TEXT, show_alert=True)
+        return
+
+    target_id = int(call.data.split(":")[1])
+    target = await countries_repo.get_country(session, target_id)
+    if not target:
+        await call.answer("کشور هدف یافت نشد.", show_alert=True)
+        return
+
+    ok, reason, partners = await _get_active_meeting_partners(session, country.id)
+    if not ok or target.id not in partners:
+        await call.answer("دیدار حضوری به پایان رسیده یا معتبر نیست.", show_alert=True)
+        return
+
+    already = await dip_repo.has_visa_waiver(session, country.id, target.id)
+    if already:
+        await call.answer("این توافق قبلاً ثبت شده است.", show_alert=True)
+        return
+
+    # بررسی بودجه
+    cur_budget = float(country.budget or 0.0)
+    if cur_budget < VISA_WAIVER_ADMIN_COST:
+        await call.answer("بودجه کافی برای تأمین هزینه‌های اداری لغو ویزا (۴ میلیون دلار) ندارید.", show_alert=True)
+        return
+
+    # اعمال جرایم و کسر هزینه
+    country.budget = cur_budget - VISA_WAIVER_ADMIN_COST
+    country.stability = max(0.0, float(country.stability or 50.0) - VISA_WAIVER_STABILITY_PENALTY)
+    country.public_satisfaction = max(0.0, float(country.public_satisfaction or 50.0) - VISA_WAIVER_SATISFACTION_PENALTY)
+
+    # ثبت لغو روادید
+    await dip_repo.add_visa_waiver(session, country.id, target.id)
+    # رفع هرگونه ویزای اجباری پیشین
+    await gov_repo.remove_visa(session, country.id, target.id)
+    await session.commit()
+
+    await call.answer("توافق لغو روادید با موفقیت منعقد شد ✅")
+
+    try:
+        await call.message.edit_text(
+            f"✅ <b>توافق لغو روادید (Visa Waiver) با {target.flag} {target.name_fa} رسماً اجرایی شد.</b>\n\n"
+            f"• عوارض پایه ارسال محموله‌های هوایی و دریایی بین طرفین ۵۰٪ کاهش یافت.\n"
+            f"• هزینه‌های اداری ({fa_money(VISA_WAIVER_ADMIN_COST)}) و تغییرات ثبات و رضایت بر کشور شما اعمال شد.",
+            reply_markup=None,
+        )
+    except Exception:
+        pass
+
+    # ارسال اعلان به پیوی طرف مقابل
+    if target.owner_user_id:
+        try:
+            await bot.send_message(
+                target.owner_user_id,
+                f"🛂 <b>اطلاعیه دیپلماتیک: لغو روادید (Visa Waiver)</b>\n\n"
+                f"کشور {country.flag} {country.name_fa} در جریان دیدار حضوری، روادید ورود را برای اتباع، بازرگانان و خدمه ترابری کشور شما لغو کرد!\n"
+                f"✈️🚢 از این پس ارسال محموله‌های صادراتی و تسلیحاتی به این کشور شامل <b>۵۰٪ تخفیف عوارض حمل‌ونقل</b> خواهد بود.",
+            )
+        except Exception:
+            pass
+
+    # خبر در کانال دیپلماسی
+    news_text = (
+        f"توافق لغو روادید (Visa Waiver) بین مقامات {country.flag} {country.name_fa} و "
+        f"{target.flag} {target.name_fa} در جریان دیدار حضوری به امضا رسید. "
+        f"این توافق موجب تسهیل تردد تجاری و کاهش ۵۰ درصدی عوارض ترانزیت کالا میان دو کشور گردید."
+    )
+    await publish_news(bot, NewsCategory.DIPLOMACY, news_text)
+
+    # ثبت لاگ
+    await send_log(
+        bot,
+        f"🛂 <b>انعقاد توافق لغو روادید در دیدار حضوری</b>\n"
+        f"کشور لغوکننده: {country.flag} {country.name_fa}\n"
+        f"کشور بهره‌مند: {target.flag} {target.name_fa}\n"
+        f"هزینه کسرشده: {fa_money(VISA_WAIVER_ADMIN_COST)} | ثبات: -{VISA_WAIVER_STABILITY_PENALTY}٪ | رضایت: -{VISA_WAIVER_SATISFACTION_PENALTY}٪",
+    )
+
+
+@router.callback_query(F.data == "dip:visa_waivers")
+async def cb_visa_waivers_menu(call: CallbackQuery, session: AsyncSession, db_user: User) -> None:
+    """مشاهده لیست توافقات لغو روادید و مدیریت ابطال آن."""
+    await call.answer()
+    country = await get_player_country(session, db_user)
+    if country is None:
+        await safe_edit(call, NO_COUNTRY_TEXT)
+        return
+
+    granted = await dip_repo.list_granted_visa_waivers(session, country.id)
+    received = await dip_repo.list_received_visa_waivers(session, country.id)
+
+    lines = [
+        header("توافقات لغو روادید (Visa Waiver)", "🛂"),
+        "",
+        "<i>با لغو روادید، ۵۰٪ تخفیف عوارض حمل‌ونقل پایه هوایی و دریایی اعمال می‌شود.</i>",
+        "",
+        "<b>🌍 کشورهایی که شما ویزای آن‌ها را لغو کرده‌اید (مرز باز است):</b>",
+    ]
+
+    builder = InlineKeyboardBuilder()
+
+    if not granted:
+        lines.append("  • موردی وجود ندارد.")
+    else:
+        for vw in granted:
+            tgt = await countries_repo.get_country(session, vw.target_country_id)
+            if tgt:
+                lines.append(f"  • {tgt.flag} {tgt.name_fa} (۵۰٪ تخفیف عوارض لجستیک)")
+                builder.button(
+                    text=f"🚫 برقراری مجدد ویزا با {tgt.name_fa}",
+                    callback_data=f"vw_revoke:{tgt.id}",
+                    style=STYLE_NO,
+                )
+
+    lines.append("")
+    lines.append("<b>📥 کشورهایی که ویزای کشور شما را لغو کرده‌اند:</b>")
+    if not received:
+        lines.append("  • موردی وجود ندارد.")
+    else:
+        for vw in received:
+            src = await countries_repo.get_country(session, vw.country_id)
+            if src:
+                lines.append(f"  • {src.flag} {src.name_fa} (تردد و ارسال محموله با ۵۰٪ تخفیف عوارض)")
+
+    lines.append("")
+    lines.append("💡 <i>لغو روادید جدید فقط در جریان دیدارهای حضوری فعال قابل انعقاد است.</i>")
+
+    builder.adjust(1)
+    builder.row(InlineKeyboardButton(text="🔙 بازگشت به دیپلماسی", callback_data="menu:diplomacy", style=STYLE_MAIN))
+
+    await safe_edit(call, "\n".join(lines), reply_markup=builder.as_markup())
+
+
+@router.callback_query(F.data.startswith("vw_revoke:"))
+async def cb_visa_waiver_revoke(call: CallbackQuery, session: AsyncSession, db_user: User) -> None:
+    """ابطال لغو روادید و بازگرداندن ویزای اجباری."""
+    country = await get_player_country(session, db_user)
+    if country is None:
+        await call.answer(NO_COUNTRY_TEXT, show_alert=True)
+        return
+
+    target_id = int(call.data.split(":")[1])
+    target = await countries_repo.get_country(session, target_id)
+    if not target:
+        await call.answer("کشور نامعتبر است.", show_alert=True)
+        return
+
+    removed = await dip_repo.remove_visa_waiver(session, country.id, target.id)
+    if not removed:
+        await call.answer("توافق لغو روادید یافت نشد.", show_alert=True)
+        return
+    await session.commit()
+
+    await call.answer(f"لغو روادید با {target.name_fa} باطل شد و ویزا مجدداً برقرار گردید ✅")
+
+    # اطلاع به پیوی هدف
+    if target.owner_user_id:
+        try:
+            await bot.send_message(
+                target.owner_user_id,
+                f"🛂 <b>اطلاعیه دیپلماتیک</b>\n\n"
+                f"کشور {country.flag} {country.name_fa} توافق لغو روادید با کشور شما را باطل نمود.\n"
+                f"از این پس عوارض لجستیک و حمل‌ونقل محموله‌ها با این کشور به حالت عادی و بدون تخفیف بازگشت.",
+            )
+        except Exception:
+            pass
+
+    # خبر در کانال دیپلماسی
+    news_text = (
+        f"کشور {country.flag} {country.name_fa} توافق لغو روادید با {target.flag} {target.name_fa} را "
+        f"یک‌طرفه باطل نمود. شرایط ترانزیتی و روادید میان دو کشور به حالت استاندارد بازگشت."
+    )
+    await publish_news(bot, NewsCategory.DIPLOMACY, news_text)
+
+    # ثبت لاگ
+    await send_log(
+        bot,
+        f"🛂 <b>ابطال لغو روادید (برقراری مجدد ویزا)</b>\n"
+        f"کشور: {country.flag} {country.name_fa}\n"
+        f"هدف: {target.flag} {target.name_fa}",
+    )
+
+    # به‌روزرسانی منو
+    await cb_visa_waivers_menu(call, session, db_user)
 
 
 # ============================================================

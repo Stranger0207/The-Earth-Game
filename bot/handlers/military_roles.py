@@ -721,7 +721,7 @@ async def cb_admin_casualty_side(call: CallbackQuery, session: AsyncSession) -> 
 async def cb_admin_casualty_branch(
     call: CallbackQuery, state: FSMContext, session: AsyncSession
 ) -> None:
-    """انتخاب قلم تجهیزات از شاخه انتخاب‌شده."""
+    """انتخاب قلم تجهیزات از شاخه انتخاب‌شده همراه با صفحه‌بندی."""
     if not settings.is_admin(call.from_user.id):
         await call.answer("مجاز نیستید.", show_alert=True)
         return
@@ -729,46 +729,92 @@ async def cb_admin_casualty_branch(
     await call.answer()
     parts = call.data.split(":")
     role_id, side, key = int(parts[1]), parts[2], parts[3]
+    page = int(parts[4]) if len(parts) > 4 else 0
 
     role = await mil_ops_repo.get_military_role(session, role_id)
     if not role or key not in DEPLOY_BRANCHES:
         return
 
     cid = role.attacker_country_id if side == "attacker" else role.target_country_id
-    _fa, _stem, branches = DEPLOY_BRANCHES[key]
+    fa_name, _stem, branches = DEPLOY_BRANCHES[key]
     assets = await mil_repo.list_assets(session, cid)
     matching = [a for a in assets if a.branch in branches and a.count > 0]
 
     if not matching:
         await safe_edit(
             call,
-            "⚠️ این کشور در این شاخه تجهیزاتی با موجودی بیشتر از صفر ندارد.",
+            f"⚠️ این کشور در شاخه «{fa_name}» تجهیزاتی با موجودی بیشتر از صفر ندارد.",
             reply_markup=InlineKeyboardMarkup(
                 inline_keyboard=[
-                    [InlineKeyboardButton(text="🔙 بازگشت", callback_data=f"mil_cas_side:{role_id}:{side}", style=STYLE_MAIN)],
+                    [InlineKeyboardButton(text="🔙 بازگشت به شاخه‌ها", callback_data=f"mil_cas_side:{role_id}:{side}", style=STYLE_MAIN)],
                 ]
             ),
         )
         return
 
+    # ذخیره فهرست کل تجهیزات در کانتکست جهت دسترسی اندیس‌ها
     await state.update_data(cas_assets=[a.name for a in matching])
+
+    # صفحه‌بندی ۸ موردی
+    page_size = 8
+    total_items = len(matching)
+    total_pages = max(1, (total_items + page_size - 1) // page_size)
+    if page >= total_pages:
+        page = max(0, total_pages - 1)
+    start_idx = page * page_size
+    chunk = matching[start_idx : start_idx + page_size]
+
     builder = InlineKeyboardBuilder()
-    for idx, a in enumerate(matching):
+    for offset, a in enumerate(chunk):
+        real_idx = start_idx + offset
         builder.button(
             text=f"{a.name} ({fa_number(a.count)})",
-            callback_data=f"mil_cas_ast:{role_id}:{side}:{idx}",
+            callback_data=f"mil_cas_ast:{role_id}:{side}:{key}:{page}:{real_idx}",
             style=STYLE_NO,
         )
-    builder.button(
-        text="🔙 بازگشت",
-        callback_data=f"mil_cas_side:{role_id}:{side}",
-        style=STYLE_MAIN,
-    )
     builder.adjust(1)
 
+    # دکمه‌های ناوبری صفحه‌بندی
+    nav_btns: list[InlineKeyboardButton] = []
+    if page > 0:
+        nav_btns.append(
+            InlineKeyboardButton(
+                text="◀️ قبلی",
+                callback_data=f"mil_cas_br:{role_id}:{side}:{key}:{page - 1}",
+                style=STYLE_MAIN,
+            )
+        )
+    if total_pages > 1:
+        nav_btns.append(
+            InlineKeyboardButton(
+                text=f"📄 {fa_number(page + 1)}/{fa_number(total_pages)}",
+                callback_data="mil_noop",
+            )
+        )
+    if start_idx + page_size < total_items:
+        nav_btns.append(
+            InlineKeyboardButton(
+                text="بعدی ▶️",
+                callback_data=f"mil_cas_br:{role_id}:{side}:{key}:{page + 1}",
+                style=STYLE_MAIN,
+            )
+        )
+    if nav_btns:
+        builder.row(*nav_btns)
+
+    builder.row(
+        InlineKeyboardButton(
+            text="🔙 بازگشت به انتخاب شاخه",
+            callback_data=f"mil_cas_side:{role_id}:{side}",
+            style=STYLE_MAIN,
+        )
+    )
+
+    side_fa = "مهاجم" if side == "attacker" else "مدافع"
     await safe_edit(
         call,
-        "💥 کدام قلم تجهیزات دچار تلفات شده است؟",
+        f"💥 ثبت تلفات در شاخه <b>{fa_name}</b> ({side_fa}):\n"
+        "کدام قلم تجهیزات دچار تلفات یا خسارت شده است؟",
         reply_markup=builder.as_markup(),
     )
 
@@ -777,14 +823,19 @@ async def cb_admin_casualty_branch(
 async def cb_admin_casualty_asset(
     call: CallbackQuery, state: FSMContext, session: AsyncSession
 ) -> None:
-    """دریافت نام قلم و انتقال به وضعیت دریافت عدد تلفات."""
+    """دریافت نام قلم و انتقال به وضعیت دریافت عدد تلفات همراه با حفظ کانتکست بازگشت دقیق."""
     if not settings.is_admin(call.from_user.id):
         await call.answer("مجاز نیستید.", show_alert=True)
         return
 
     await call.answer()
     parts = call.data.split(":")
-    role_id, side, idx = int(parts[1]), parts[2], int(parts[3])
+    if len(parts) >= 6:
+        role_id, side, key, page, idx = int(parts[1]), parts[2], parts[3], int(parts[4]), int(parts[5])
+    else:
+        role_id, side, idx = int(parts[1]), parts[2], int(parts[3])
+        key = "ground"
+        page = 0
 
     data = await state.get_data()
     assets = data.get("cas_assets", [])
@@ -797,6 +848,8 @@ async def cb_admin_casualty_asset(
     await state.update_data(
         role_id=role_id,
         side=side,
+        branch_key=key,
+        page=page,
         asset_name=asset_name,
         chat_id=call.message.chat.id,
         message_id=call.message.message_id,
@@ -807,7 +860,11 @@ async def cb_admin_casualty_asset(
         f"🔢 لطفاً <b>تعداد تلفات «{asset_name}»</b> را وارد کنید (مستقیماً از موجودی کسر می‌شود):",
         reply_markup=InlineKeyboardMarkup(
             inline_keyboard=[
-                [InlineKeyboardButton(text="🔙 لغو", callback_data=f"mil_grp_cas:{role_id}", style=STYLE_MAIN)],
+                [InlineKeyboardButton(
+                    text="🔙 انصراف و بازگشت به همین شاخه",
+                    callback_data=f"mil_cas_br:{role_id}:{side}:{key}:{page}",
+                    style=STYLE_MAIN,
+                )],
             ]
         ),
     )
@@ -817,7 +874,7 @@ async def cb_admin_casualty_asset(
 async def msg_admin_casualty_count(
     message: Message, state: FSMContext, session: AsyncSession
 ) -> None:
-    """کسر تلفات از دیتابیس با reduce_count و ثبت در تاریخچه عملیات."""
+    """کسر تلفات از دیتابیس با reduce_count و ارائه دکمه‌های بازگشت مستقیم به همان شاخه و صفحه."""
     raw = (message.text or "").strip()
     try:
         count = int(raw)
@@ -830,9 +887,9 @@ async def msg_admin_casualty_count(
     data = await state.get_data()
     role_id = data.get("role_id")
     side = data.get("side")
+    branch_key = data.get("branch_key", "ground")
+    page = data.get("page", 0)
     asset_name = data.get("asset_name")
-    group_chat_id = data.get("chat_id")
-    group_msg_id = data.get("message_id")
 
     role = await mil_ops_repo.get_military_role(session, role_id)
     if not role:
@@ -853,13 +910,41 @@ async def msg_admin_casualty_count(
     await state.clear()
 
     side_fa = "مهاجم" if side == "attacker" else "مدافع"
+    other_side = "target" if side == "attacker" else "attacker"
+    other_side_fa = "مدافع" if other_side == "target" else "مهاجم"
+    branch_fa = DEPLOY_BRANCHES.get(branch_key, ("نظامی", "", []))[0]
     admin_name = message.from_user.full_name
+
+    # کیبورد ناوبری هوشمند پس از ثبت تلفات
+    builder = InlineKeyboardBuilder()
+    builder.button(
+        text=f"🔙 بازگشت به لیست تجهیزات همین بخش ({branch_fa})",
+        callback_data=f"mil_cas_br:{role_id}:{side}:{branch_key}:{page}",
+        style=STYLE_MAIN,
+    )
+    builder.button(
+        text="🔄 تغییر شاخه نظامی",
+        callback_data=f"mil_cas_side:{role_id}:{side}",
+        style=STYLE_MAIN,
+    )
+    builder.button(
+        text=f"🔀 تغییر کشور (به {other_side_fa})",
+        callback_data=f"mil_cas_side:{role_id}:{other_side}",
+        style=STYLE_MAIN,
+    )
+    builder.button(
+        text="🏁 بازگشت به پنل اصلی رول نظامی",
+        callback_data=f"mil_grp_p:{role_id}:1",
+        style=STYLE_OK,
+    )
+    builder.adjust(1)
 
     await message.reply(
         f"✅ <b>ثبت تلفات عملیاتی موفق:</b>\n"
         f"طرف: {country.flag} {country.name_fa} ({side_fa})\n"
         f"قلم: <b>{asset_name}</b> | تعداد تلفات: <b>{fa_number(count)}</b>\n"
-        f"موجودی باقی‌مانده در کشور: <b>{fa_number(remaining)}</b> واحد."
+        f"موجودی باقی‌مانده در کشور: <b>{fa_number(remaining)}</b> واحد.",
+        reply_markup=builder.as_markup(),
     )
 
     # ثبت در لاگ

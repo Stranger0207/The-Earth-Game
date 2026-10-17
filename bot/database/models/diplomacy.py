@@ -284,3 +284,31 @@ class ContractSignatory(Base):
     def __repr__(self) -> str:
         return f"<ContractSignatory contract={self.contract_id} country={self.country_id} signed={self.signed}>"
 
+
+class VisaWaiver(Base):
+    """
+    لغو روادید (ویزا) میان دو کشور در جریان دیدار حضوری.
+    country_id: کشور اعطا کننده لغو ویزا (مرزهایش را باز کرده)
+    target_country_id: کشور بهره‌مند از لغو ویزا
+    """
+
+    __tablename__ = "visa_waivers"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    country_id: Mapped[int] = mapped_column(
+        ForeignKey("countries.id"), nullable=False, index=True
+    )
+    target_country_id: Mapped[int] = mapped_column(
+        ForeignKey("countries.id"), nullable=False, index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+
+    __table_args__ = (
+        UniqueConstraint("country_id", "target_country_id", name="uq_visa_waiver"),
+    )
+
+    def __repr__(self) -> str:
+        return f"<VisaWaiver {self.country_id}->{self.target_country_id}>"
+

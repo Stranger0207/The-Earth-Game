@@ -71,6 +71,10 @@ class Law(Base):
     voted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     vote_result: Mapped[str | None] = mapped_column(Text, nullable=True)  # مثلاً «۱۵۲ موافق، ۸۸ مخالف»
 
+    # نتایج و اثرات تصویب لایحه (آپدیت جدید)
+    stability_effect: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    satisfaction_effect: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+
     def __repr__(self) -> str:
         return f"<Law {self.id} country={self.country_id} status={self.status}>"
 

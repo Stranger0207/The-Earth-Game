@@ -223,6 +223,13 @@ class LawForm(StatesGroup):
     entering_body = State()         # متن لایحه
 
 
+class AdminLawResultForm(StatesGroup):
+    """فرم تعیین دستی اثرات لایحه توسط ادمین در گروه تحریم و لایحه."""
+
+    entering_custom_stability = State()
+    entering_custom_satisfaction = State()
+
+
 class LoanTakeForm(StatesGroup):
     """فرم اخذ وام بانکی (v2.2)."""
 

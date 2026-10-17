@@ -19,8 +19,9 @@ def diplomacy_menu_kb() -> InlineKeyboardMarkup:
     builder.button(text="🚫 تحریم", callback_data="dip:sanction", style=STYLE_NO)
     builder.button(text="🤝 اتحاد", callback_data="dip:alliance", style=STYLE_MAIN)
     builder.button(text="🐦 توییتر (X)", callback_data="dip:twitter", style=STYLE_MAIN)
+    builder.button(text="🛂 لغو روادید", callback_data="dip:visa_waivers", style=STYLE_MAIN)
     builder.button(text="🔙 بازگشت", callback_data="menu:main", style=STYLE_MAIN)
-    builder.adjust(2, 2, 2, 2, 1)
+    builder.adjust(2, 2, 2, 2, 1, 1)
     return builder.as_markup()
 
 
@@ -32,9 +33,11 @@ def end_call_kb() -> InlineKeyboardMarkup:
 
 
 def end_meeting_kb() -> InlineKeyboardMarkup:
-    """دکمه‌ی پایان نشست (دیدار دوجانبه/چندجانبه) — v1.8."""
+    """دکمه‌های نشست (دیدار دوجانبه/چندجانبه) همراه با دکمه لغو ویزا."""
     builder = InlineKeyboardBuilder()
+    builder.button(text="🛂 لغو ویزا با طرف مقابل", callback_data="dip:visa_waiver_start", style=STYLE_MAIN)
     builder.button(text="🔚 پایان نشست", callback_data="meeting:end", style=STYLE_NO)
+    builder.adjust(1, 1)
     return builder.as_markup()
 
 

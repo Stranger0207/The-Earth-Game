@@ -100,6 +100,9 @@ _COLUMN_MIGRATIONS = [
     ("military_sales", "transport_mode", "VARCHAR(8) NOT NULL DEFAULT 'AIR'"),
     ("military_sales", "fee_payer", "VARCHAR(8) NOT NULL DEFAULT 'SELLER'"),
     ("military_sales", "transport_fee", "DOUBLE PRECISION NOT NULL DEFAULT 8000000.0"),
+    # نتایج و اثرات لایحه
+    ("laws", "stability_effect", "DOUBLE PRECISION NOT NULL DEFAULT 0.0"),
+    ("laws", "satisfaction_effect", "DOUBLE PRECISION NOT NULL DEFAULT 0.0"),
 ]
 
 

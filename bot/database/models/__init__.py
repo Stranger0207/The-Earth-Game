@@ -22,6 +22,7 @@ from .diplomacy import (
     PhoneCallMessage,
     Sanction,
     Speech,
+    VisaWaiver,
 )
 from .econ_sat_receipt import EconSatReceipt
 from .economic_project import EconomicProject
@@ -109,4 +110,5 @@ __all__ = [
     "TwitterProfile",
     "User",
     "VisaRequirement",
+    "VisaWaiver",
 ]

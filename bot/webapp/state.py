@@ -263,6 +263,14 @@ async def get_radar_state(
                 anchorage_coords = geo.get_strait_coords(held_strait_id)
 
         is_conflict = strait_status in ("DESTROYED", "CONFISCATED")
+        has_warning_halo = bool(
+            not is_conflict
+            and (
+                warning_count > 0
+                or strait_status == "HELD_AT_STRAIT"
+                or standoff_action in ("STANDOFF", "HOLD", "RUNNING")
+            )
+        )
 
         if is_conflict and anchorage_coords:
             waypoints = [anchorage_coords, anchorage_coords]
@@ -340,6 +348,7 @@ async def get_radar_state(
             "held_at_strait_id": held_strait_id,
             "anchorage_coords": anchorage_coords,
             "is_conflict": is_conflict,
+            "has_warning_halo": has_warning_halo,
             "content": cargo_desc,
             "is_confidential": is_confidential,
             "has_escort": bool(sale.escort_power and sale.escort_power > 0),

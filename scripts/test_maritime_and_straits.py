@@ -57,6 +57,7 @@ from bot.database.repositories import reserves as reserves_repo
 from bot.database.repositories import straits as straits_repo
 from bot.database.repositories import trade as trade_repo
 from bot.enums import (
+    AdminGroupType,
     FeePayer,
     ResourceType,
     StraitBlockScope,
@@ -897,6 +898,97 @@ async def main():
         check("محموله درگیری قابل رهگیری نیست", conflict_shipment["can_intercept"] is False)
         check("مختصات درگیری در مدخل تنگه تنظیم شده است", len(conflict_shipment["waypoints"]) >= 1)
         check("لیست کریدورهای دریایی در خروجی رادار ارسال می‌شود", "maritime_network" in state_data and len(state_data["maritime_network"]) > 0)
+
+        # -------------------------------------------------------------
+        # [بخش ۱۱] تست هاله اخطار کشتی در نقشه و تایید ادمین برای بستن تنگه در گروه رول نظامی
+        # -------------------------------------------------------------
+        print("\n[بخش ۱۱] تست هاله اخطار کشتی و تایید ادمین برای بستن تنگه در گروه رول نظامی:")
+
+        # ۱) تست هاله اخطار (has_warning_halo) در رادار
+        sale_sailing = ResourceSale(
+            id=70,
+            seller_country=uae_c.id,
+            buyer_country=india_c.id,
+            resource=ResourceType.STEEL.value,
+            amount=100.0,
+            price=1_000_000.0,
+            transport_mode="SEA",
+            status=TradeStatus.IN_TRANSIT.value,
+            strait_status="APPROACHING",
+            standoff_action="SAILING",
+            warning_count=0,
+            ship_eta=_utcnow() + timedelta(hours=2),
+        )
+        sale_alerted = ResourceSale(
+            id=71,
+            seller_country=uae_c.id,
+            buyer_country=india_c.id,
+            resource=ResourceType.STEEL.value,
+            amount=100.0,
+            price=1_000_000.0,
+            transport_mode="SEA",
+            status=TradeStatus.IN_TRANSIT.value,
+            strait_status="HELD_AT_STRAIT",
+            standoff_action="STANDOFF",
+            warning_count=1,
+            held_at_strait_id="hormuz",
+            held_since=_utcnow(),
+        )
+        session.add_all([sale_sailing, sale_alerted])
+        await session.commit()
+
+        state_halo = await webapp_state.get_radar_state(session, viewer_user_id=102)
+        s70 = next(s for s in state_halo["shipments"] if s["id"] == 70)
+        s71 = next(s for s in state_halo["shipments"] if s["id"] == 71)
+
+        check("کشتی عادی و بدون اخطار فاقد هاله اخطار است", s70.get("has_warning_halo") is False)
+        check("کشتی دارای اخطار/رویارویی دارای هاله اخطار (has_warning_halo=True) است", s71.get("has_warning_halo") is True)
+
+        # ۲) تست ارسال درخواست بستن تنگه به گروه رول نظامی
+        mock_send_admin = AsyncMock()
+        with patch("bot.services.strait_service.send_to_admin_group", mock_send_admin):
+            await strait_service.submit_strait_block_request(
+                fake_bot, session, "hormuz", iran_c, u1, target_country=None
+            )
+        check("درخواست بستن تنگه به گروه رول نظامی (ROLE_ATTACK) ارسال شد", mock_send_admin.called)
+        group_type_arg = mock_send_admin.call_args[0][1]
+        check("پیام به گروه ۴ (ROLE_ATTACK) هدایت شد", group_type_arg == AdminGroupType.ROLE_ATTACK)
+        msg_text = mock_send_admin.call_args[0][2]
+        check("متن درخواست شامل عنوان مسدودسازی و نام تنگه است", "تنگه" in msg_text and "هرمز" in msg_text)
+        reply_kb = mock_send_admin.call_args.kwargs.get("reply_markup")
+        check("کیبورد شامل دکمه تایید و رد است", reply_kb is not None and len(reply_kb.inline_keyboard[0]) == 2)
+
+        # ۳) تست تایید مسدودسازی توسط ادمین در گروه رول نظامی
+        admin_u = User(telegram_id=111, username="mil_admin", first_name="Admin")
+        session.add(admin_u)
+        await session.commit()
+
+        # بازگرداندن وضعیت تنگه به حالت باز قبل از تست تایید
+        await straits_repo.update_strait_config(session, "hormuz", is_blocked=False, block_scope=StraitBlockScope.NONE.value)
+
+        res_appr = await strait_service.approve_strait_block_request(
+            fake_bot, session, "hormuz", None, admin_u, u1.telegram_id
+        )
+        check("تایید مسدودسازی سراسری با موفقیت اعمال شد", res_appr["status"] == "blocked_all")
+
+        cfg_h = await straits_repo.get_strait_config(session, "hormuz")
+        check("وضعیت تنگه هرمز در دیتابیس به مسدود کامل (ALL) تغییر یافت", cfg_h.is_blocked is True and cfg_h.block_scope == StraitBlockScope.ALL.value)
+
+        # ۴) تست رد درخواست مسدودسازی
+        res_rej = await strait_service.reject_strait_block_request(
+            fake_bot, session, "hormuz", None, admin_u, u1.telegram_id
+        )
+        check("رد درخواست مسدودسازی با موفقیت انجام شد", res_rej["status"] == "rejected")
+
+        # ۵) تست تایید مسدودسازی گزینشی برای یک کشور خاص (مثلاً آلمان)
+        germany_c = await countries_repo.get_country_by_name(session, "Germany")
+        gid = germany_c.id if germany_c else 2
+        res_custom_appr = await strait_service.approve_strait_block_request(
+            fake_bot, session, "hormuz", gid, admin_u, u1.telegram_id
+        )
+        check("مسدودسازی گزینشی برای کشور هدف با موفقیت تایید شد", res_custom_appr["status"] == "blocked_custom")
+        rule_g = await straits_repo.get_block_rule(session, "hormuz", gid)
+        check("قانون مسدودسازی آلمان در تنگه هرمز فعال گردید", rule_g is not None and rule_g.is_blocked is True)
 
     # پایان تست‌ها و گزارش نهایی
     # -------------------------------------------------------------

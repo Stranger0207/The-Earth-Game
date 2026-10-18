@@ -36,6 +36,7 @@ from ..loader import bot
 from ..services import geo_service as geo
 from ..services import strait_service
 from ..services.news_service import publish_news, send_log
+from ..config import get_settings
 from ..states.forms import StraitForm
 from ..utils.numbers import fa_money, fa_number, parse_amount
 from ..utils.screens import safe_edit
@@ -43,6 +44,7 @@ from ..utils.ui import STYLE_MAIN, STYLE_NO, STYLE_OK
 from .deps import NO_COUNTRY_TEXT, assert_feature, get_player_country
 
 logger = logging.getLogger(__name__)
+settings = get_settings()
 
 router = Router(name="straits")
 
@@ -138,11 +140,11 @@ async def cb_strait_detail(
 async def cb_strait_block_all(
     call: CallbackQuery, session: AsyncSession, db_user: User
 ) -> None:
-    """بستن کامل تنگه به روی تمام کشتی‌ها."""
-    await call.answer()
+    """درخواست بستن کامل تنگه به روی تمام کشتی‌ها (نیازمند تأیید ادمین در گروه رول نظامی)."""
     strait_id = call.data.split(":")[1]
     country = await get_player_country(session, db_user)
     if not country:
+        await call.answer()
         return
 
     cfg = await straits_repo.get_strait_config(session, strait_id)
@@ -150,31 +152,18 @@ async def cb_strait_block_all(
         await call.answer("دسترسی غیرمجاز است.", show_alert=True)
         return
 
-    await straits_repo.update_strait_config(
-        session, strait_id, is_blocked=True, block_scope=StraitBlockScope.ALL.value
+    if cfg.is_blocked and cfg.block_scope == StraitBlockScope.ALL.value:
+        await call.answer("این آبراه هم‌اکنون به طور کامل مسدود است.", show_alert=True)
+        return
+
+    await strait_service.submit_strait_block_request(
+        bot, session, strait_id, country, db_user, target_country=None
     )
 
-    # واکنش جهش نرخ نفت و گاز به مسدودسازی تنگه (آپدیت شماره ۴)
-    try:
-        from ..services import market_service
-        await market_service.on_strait_status_changed(session, strait_id, is_closed=True)
-    except Exception:
-        pass
-
-    news_text = (
-        f"🚨 <b>مسدودسازی فوری آبراه بین‌المللی {cfg.name_fa}!</b>\n\n"
-        f"دولت {country.flag} {country.name_fa} رسماً اعلام کرد که تنگه استراتژیک <b>{cfg.name_fa}</b> "
-        "به روی تمامی کشتی‌های تجاری و باری جهان تا اطلاع ثانوی به طور کامل مسدود گردید!\n"
-        "مرزبانی دریایی به هرگونه شناور عبوری بدون مجوز اخطار خواهد داد."
+    await call.answer(
+        "⏳ درخواست مسدودسازی کامل تنگه به گروه رول نظامی ارسال شد و پس از بررسی و تأیید ادمین اعمال خواهد شد.",
+        show_alert=True,
     )
-    await publish_news(bot, "military", news_text)
-    await send_log(
-        bot,
-        f"🚫 <b>بستن سراسری تنگه</b>\nتنگه: {cfg.name_fa}\nکشور: {country.flag} {country.name_fa}",
-    )
-
-    await call.answer("تنگه به روی تمام کشورها مسدود شد 🔴", show_alert=True)
-    await cb_strait_detail(call, session, db_user)
 
 
 @router.callback_query(F.data.startswith("strait_unblock:"))
@@ -361,8 +350,7 @@ async def cb_strait_country_rule(
 async def cb_strait_toggle_block(
     call: CallbackQuery, session: AsyncSession, db_user: User
 ) -> None:
-    """تاگل کردن مسدودسازی یک کشور خاص."""
-    await call.answer()
+    """تاگل کردن مسدودسازی یک کشور خاص (بستن نیازمند تأیید ادمین در گروه رول نظامی)."""
     parts = call.data.split(":")
     strait_id = parts[1]
     target_cid = int(parts[2])
@@ -372,26 +360,85 @@ async def cb_strait_toggle_block(
     target_c = await countries_repo.get_country(session, target_cid)
     cfg = await straits_repo.get_strait_config(session, strait_id)
     if not country or not target_c or not cfg:
+        await call.answer()
         return
 
-    await straits_repo.set_block_rule(session, strait_id, target_cid, is_blocked=blocked)
-    # اگر حداقل یک کشور مسدود است، اسکوپ را به CUSTOM تغییر می‌دهیم
-    await straits_repo.update_strait_config(session, strait_id, is_blocked=True, block_scope=StraitBlockScope.CUSTOM.value)
+    if cfg.controller_country_name != country.name_en:
+        await call.answer("دسترسی غیرمجاز است.", show_alert=True)
+        return
 
-    action_word = "مسدود شد 🔴" if blocked else "مجاز شد 🟢"
-    await call.answer(f"تردد {target_c.name_fa} {action_word}", show_alert=True)
+    # در صورت رفع مسدودیت (unblock): بلافاصله انجام می‌شود
+    if not blocked:
+        await straits_repo.set_block_rule(session, strait_id, target_cid, is_blocked=False)
+        await call.answer(f"تردد {target_c.name_fa} مجاز شد 🟢", show_alert=True)
+        await send_log(
+            bot,
+            f"🟢 <b>رفع مسدودسازی کشور در تنگه</b>\n"
+            f"تنگه: {cfg.name_fa}\n"
+            f"کشور هدف: {target_c.flag} {target_c.name_fa}\n"
+            f"توسط: {country.flag} {country.name_fa}",
+        )
+        call.data = f"strait_crule:{strait_id}:{target_cid}"
+        await cb_strait_country_rule(call, session, db_user)
+        return
 
-    await send_log(
-        bot,
-        f"🚫 <b>تغییر وضعیت مسدودسازی کشور</b>\n"
-        f"تنگه: {cfg.name_fa}\n"
-        f"کشور هدف: {target_c.flag} {target_c.name_fa}\n"
-        f"وضعیت جدید: {'مسدود' if blocked else 'مجاز'}\n"
-        f"توسط: {country.flag} {country.name_fa}",
+    # در صورت مسدود کردن: ارسال به گروه رول نظامی جهت تأیید ادمین
+    await strait_service.submit_strait_block_request(
+        bot, session, strait_id, country, db_user, target_country=target_c
+    )
+    await call.answer(
+        f"⏳ درخواست مسدودسازی تردد {target_c.name_fa} به گروه رول نظامی ارسال شد و پس از بررسی و تأیید ادمین اعمال خواهد شد.",
+        show_alert=True,
     )
 
-    call.data = f"strait_crule:{strait_id}:{target_cid}"
-    await cb_strait_country_rule(call, session, db_user)
+
+@router.callback_query(F.data.startswith("adm_strait_blk:"))
+async def cb_admin_strait_block_decision(
+    call: CallbackQuery, session: AsyncSession, db_user: User
+) -> None:
+    """رسیدگی ادمین به درخواست مسدودسازی تنگه در گروه رول نظامی."""
+    if not settings.is_admin(call.from_user.id):
+        await call.answer("⛔ دسترسی غیرمجاز! فقط مدیران بازی می‌توانند این عملیات را تأیید یا رد کنند.", show_alert=True)
+        return
+
+    parts = call.data.split(":")
+    # adm_strait_blk:action:strait_id:target_spec:requester_id
+    action = parts[1]        # approve / reject
+    strait_id = parts[2]
+    target_spec = parts[3]  # "all" or country_id (int)
+    requester_id = int(parts[4])
+
+    target_cid = None if target_spec == "all" else int(target_spec)
+    admin_mention = f"@{call.from_user.username}" if call.from_user.username else (call.from_user.first_name or str(call.from_user.id))
+
+    if action == "reject":
+        await strait_service.reject_strait_block_request(
+            bot, session, strait_id, target_cid, db_user, requester_id
+        )
+        await call.answer("درخواست مسدودسازی رد شد.", show_alert=True)
+        if call.message:
+            try:
+                await call.message.edit_text(
+                    call.message.html_text + f"\n\n❌ <b>رد شد</b> توسط ادمین {admin_mention}",
+                    reply_markup=None,
+                )
+            except Exception:
+                pass
+        return
+
+    # approve
+    await strait_service.approve_strait_block_request(
+        bot, session, strait_id, target_cid, db_user, requester_id
+    )
+    await call.answer("مسدودسازی تنگه با موفقیت تأیید و اعمال شد 🔴", show_alert=True)
+    if call.message:
+        try:
+            await call.message.edit_text(
+                call.message.html_text + f"\n\n✅ <b>تأیید و مسدود شد</b> توسط ادمین {admin_mention}",
+                reply_markup=None,
+            )
+        except Exception:
+            pass
 
 
 @router.callback_query(F.data.startswith("strait_set_ctoll:"))

@@ -8,15 +8,17 @@ import logging
 from datetime import datetime, timedelta, timezone
 
 from aiogram import Bot
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..constants import STRAIT_TOLL_MAX
-from ..database.models import Country, ResourceSale
+from ..database.models import Country, ResourceSale, User
 from ..database.repositories import countries as countries_repo
 from ..database.repositories import reserves as reserves_repo
 from ..database.repositories import straits as straits_repo
 from ..database.repositories import trade as trade_repo
 from ..enums import (
+    AdminGroupType,
     NewsCategory,
     RESOURCE_FA,
     RESOURCE_UNIT_FA,
@@ -35,8 +37,9 @@ from ..services.geo_service import (
     get_strait_def,
     get_strait_transit_progress,
 )
-from ..services.news_service import publish_news, send_log
+from ..services.news_service import publish_news, send_log, send_to_admin_group
 from ..utils.numbers import fa_number
+from ..utils.ui import STYLE_NO, STYLE_OK
 
 logger = logging.getLogger(__name__)
 
@@ -818,3 +821,179 @@ async def return_blocked_cargo_to_source(
     )
 
     return {"status": "returned", "resource_fa": rname, "amount": amount, "unit": unit}
+
+
+# ============================================================
+#  سیستم درخواست و تأیید مسدودسازی تنگه در گروه رول نظامی
+# ============================================================
+
+async def submit_strait_block_request(
+    bot: Bot,
+    session: AsyncSession,
+    strait_id: str,
+    country: Country,
+    db_user: User,
+    target_country: Country | None = None,
+) -> Message | None:
+    """
+    ارسال درخواست مسدودسازی تنگه به گروه رول نظامی (-1004424329237) جهت بررسی و تأیید ادمین.
+    """
+    cfg = await straits_repo.get_strait_config(session, strait_id)
+    if not cfg:
+        raise StraitError("تنگه مورد نظر در پایگاه داده یافت نشد.")
+
+    s_def = get_strait_def(strait_id)
+    strait_name_fa = s_def["name_fa"] if s_def else cfg.name_fa
+
+    requester_name = f"@{db_user.username}" if db_user.username else (db_user.first_name or str(db_user.telegram_id))
+    target_spec = str(target_country.id) if target_country else "all"
+
+    if target_country:
+        scope_text = f"🚫 مسدودسازی تردد شناورهای متعلق به {target_country.flag} {target_country.name_fa}"
+    else:
+        scope_text = "🚫 مسدودسازی سراسری و کامل (تمام کشورهای جهان)"
+
+    text = (
+        "🚨 <b>درخواست مسدودسازی آبراه بین‌المللی (نیازمند تأیید نظامی)</b>\n\n"
+        f"🏴 <b>تنگه استراتژیک:</b> {strait_name_fa} (<code>{strait_id}</code>)\n"
+        f"👑 <b>کشور کنترل‌کننده:</b> {country.flag} {country.name_fa}\n"
+        f"👤 <b>فرمانده / رهبر:</b> {requester_name} (<code>{db_user.telegram_id}</code>)\n"
+        f"🎯 <b>نوع انسداد درخواستی:</b> {scope_text}\n\n"
+        "⚠️ <i>مسدودسازی تنگه عملیاتی حساس است و فقط با تأیید ادمین در گروه رول نظامی اعمال می‌گردد.</i>"
+    )
+
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="✅ تأیید مسدودسازی",
+                    callback_data=f"adm_strait_blk:approve:{strait_id}:{target_spec}:{db_user.telegram_id}",
+                    style=STYLE_OK,
+                ),
+                InlineKeyboardButton(
+                    text="❌ رد درخواست",
+                    callback_data=f"adm_strait_blk:reject:{strait_id}:{target_spec}:{db_user.telegram_id}",
+                    style=STYLE_NO,
+                ),
+            ]
+        ]
+    )
+
+    return await send_to_admin_group(bot, AdminGroupType.ROLE_ATTACK, text, reply_markup=kb)
+
+
+async def approve_strait_block_request(
+    bot: Bot,
+    session: AsyncSession,
+    strait_id: str,
+    target_country_id: int | None,
+    admin_user: User,
+    requester_telegram_id: int,
+) -> dict:
+    """تأیید درخواست مسدودسازی تنگه توسط ادمین در گروه رول نظامی."""
+    cfg = await straits_repo.get_strait_config(session, strait_id)
+    if not cfg:
+        raise StraitError("تنگه مورد نظر در پایگاه داده یافت نشد.")
+
+    s_def = get_strait_def(strait_id)
+    strait_name_fa = s_def["name_fa"] if s_def else cfg.name_fa
+
+    ctrl_country = await countries_repo.get_country_by_name(session, cfg.controller_country_name)
+    ctrl_label = f"{ctrl_country.flag} {ctrl_country.name_fa}" if ctrl_country else cfg.controller_country_name
+    admin_mention = f"@{admin_user.username}" if admin_user.username else (admin_user.first_name or str(admin_user.telegram_id))
+
+    if target_country_id is None:
+        # مسدودسازی سراسری
+        await straits_repo.update_strait_config(
+            session, strait_id, is_blocked=True, block_scope=StraitBlockScope.ALL.value
+        )
+        try:
+            from . import market_service
+            await market_service.on_strait_status_changed(session, strait_id, is_closed=True)
+        except Exception:
+            pass
+
+        news_text = (
+            f"🚨 <b>مسدودسازی فوری آبراه بین‌المللی {strait_name_fa}!</b>\n\n"
+            f"دولت {ctrl_label} با هماهنگی و تأیید ستاد فرماندهی رسماً اعلام کرد که تنگه استراتژیک <b>{strait_name_fa}</b> "
+            "به روی تمامی کشتی‌های تجاری و باری جهان تا اطلاع ثانوی به طور کامل مسدود گردید!\n"
+            "مرزبانی دریایی به هرگونه شناور عبوری بدون مجوز اخطار خواهد داد."
+        )
+        await publish_news(bot, NewsCategory.MILITARY, news_text)
+        await send_log(
+            bot,
+            f"🚫 <b>تأیید مسدودسازی سراسری تنگه در گروه رول نظامی</b>\n"
+            f"تنگه: {strait_name_fa}\n"
+            f"کنترل‌کننده: {ctrl_label}\n"
+            f"تأییدکننده: {admin_mention}",
+        )
+        try:
+            await bot.send_message(
+                requester_telegram_id,
+                f"✅ <b>درخواست مسدودسازی سراسری تنگه {strait_name_fa} توسط ادمین در گروه رول نظامی تأیید و آبراه مسدود گردید.</b>",
+            )
+        except Exception:
+            pass
+        return {"status": "blocked_all", "strait_id": strait_id}
+    else:
+        # مسدودسازی برای کشور خاص
+        target_c = await countries_repo.get_country(session, target_country_id)
+        target_label = f"{target_c.flag} {target_c.name_fa}" if target_c else f"کشور #{target_country_id}"
+
+        await straits_repo.set_block_rule(session, strait_id, target_country_id, is_blocked=True)
+        await straits_repo.update_strait_config(
+            session, strait_id, is_blocked=True, block_scope=StraitBlockScope.CUSTOM.value
+        )
+        await send_log(
+            bot,
+            f"🚫 <b>تأیید مسدودسازی کشور در تنگه در گروه رول نظامی</b>\n"
+            f"تنگه: {strait_name_fa}\n"
+            f"کشور هدف: {target_label}\n"
+            f"کنترل‌کننده: {ctrl_label}\n"
+            f"تأییدکننده: {admin_mention}",
+        )
+        news_text = (
+            f"⚠️ <b>تحریم دریایی و مسدودسازی عبور در تنگه {strait_name_fa}</b>\n\n"
+            f"به دستور دولت {ctrl_label} و با تأیید ستاد فرماندهی، عبور تمامی شناورهای متعلق به {target_label} "
+            f"از آبراه بین‌المللی <b>{strait_name_fa}</b> ممنوع اعلام شد."
+        )
+        await publish_news(bot, NewsCategory.MILITARY, news_text)
+        try:
+            await bot.send_message(
+                requester_telegram_id,
+                f"✅ <b>درخواست مسدودسازی تردد {target_label} در تنگه {strait_name_fa} توسط ادمین در گروه رول نظامی تأیید و اعمال گردید.</b>",
+            )
+        except Exception:
+            pass
+        return {"status": "blocked_custom", "strait_id": strait_id, "target_country_id": target_country_id}
+
+
+async def reject_strait_block_request(
+    bot: Bot,
+    session: AsyncSession,
+    strait_id: str,
+    target_country_id: int | None,
+    admin_user: User,
+    requester_telegram_id: int,
+) -> dict:
+    """رد درخواست مسدودسازی تنگه توسط ادمین در گروه رول نظامی."""
+    cfg = await straits_repo.get_strait_config(session, strait_id)
+    s_def = get_strait_def(strait_id)
+    strait_name_fa = s_def["name_fa"] if s_def else (cfg.name_fa if cfg else strait_id)
+    admin_mention = f"@{admin_user.username}" if admin_user.username else (admin_user.first_name or str(admin_user.telegram_id))
+
+    await send_log(
+        bot,
+        f"❌ <b>رد درخواست مسدودسازی تنگه در گروه رول نظامی</b>\n"
+        f"تنگه: {strait_name_fa}\n"
+        f"ردکننده: {admin_mention}",
+    )
+    try:
+        await bot.send_message(
+            requester_telegram_id,
+            f"❌ <b>درخواست شما برای مسدودسازی تنگه {strait_name_fa} توسط ادمین در گروه رول نظامی رد شد.</b>",
+        )
+    except Exception:
+        pass
+    return {"status": "rejected", "strait_id": strait_id}
+

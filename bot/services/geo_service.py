@@ -405,36 +405,173 @@ STRAITS_DEFINITIONS: dict[str, dict] = {
     },
 }
 
-# یال‌های اتصال دریاها: (مبدأ، مقصد، شناسه تنگه یا None در آب‌های آزاد، وزن مسافتی)
-_MARITIME_EDGES: list[tuple[str, str, str | None, float]] = [
-    ("persian_gulf", "gulf_of_oman", "hormuz", 1.0),
-    ("gulf_of_oman", "arabian_sea", None, 1.0),
-    ("arabian_sea", "indian_ocean", None, 1.0),
-    ("bay_of_bengal", "indian_ocean", None, 1.0),
-    ("red_sea", "arabian_sea", "bab_el_mandeb", 1.0),
-    ("red_sea", "mediterranean", "suez", 1.0),
-    ("black_sea", "mediterranean", "bosphorus", 1.0),
-    ("mediterranean", "atlantic", "gibraltar", 1.0),
-    ("atlantic", "north_sea", "dover", 1.0),
-    ("north_sea", "baltic_sea", "oresund", 1.0),
-    ("atlantic", "gulf_of_mexico", None, 1.0),
-    ("atlantic", "arctic", None, 2.0),
-    ("pacific", "arctic", "bering", 2.0),
-    ("pacific", "sea_of_japan", "laperouse", 1.0),
-    ("east_china_sea", "sea_of_japan", "tsushima", 1.0),
-    ("south_china_sea", "east_china_sea", "taiwan_strait", 1.0),
-    ("pacific", "south_china_sea", None, 1.0),
-    ("pacific", "indian_ocean", None, 2.0),
-    # مسیر طولانی دور دماغه امیدنیک آفریقا (وزن مسافتی بالا تا مسیر سوئز اولویت باشد)
-    ("atlantic", "indian_ocean", None, 10.0),
+# یال‌های ارتباطی کریدورهای دریایی و تنگه‌های جهان: (مبدأ، مقصد، شناسه تنگه یا None، وزن مسافتی)
+_MARITIME_CORRIDOR_COORDS: dict[str, list[float]] = {
+    # آمریکای شمالی و جنوبی (حوضه اطلس)
+    "us_east": [37.0, -75.5],             # خروجی خلیج چساپیک و بنادر اطلس آمریکا (نورفک/نیویورک)
+    "mid_atlantic": [36.0, -40.0],         # میانه اقیانوس اطلس شمالی
+    "north_atlantic": [48.0, -25.0],       # مسیر اطلس شمالی به بریتانیا و کانال مانش
+    "azores_gate": [36.0, -18.0],          # معبر جنوب مجمع‌الجزایر آزور به سمت جبل‌الطارق
+    "brazil_coast": [-23.0, -42.0],        # کریدور ساحلی اطلس جنوبی (ریودوژانیرو/سنتوس)
+    "equator_atlantic": [0.0, -25.0],      # اقیانوس اطلس استوایی
+
+    # اروپای غربی، دریای شمال و بالتیک
+    "portugal_coast": [40.0, -10.0],       # اقیانوس اطلس روبه‌روی پرتغال و لیسبون
+    "bay_of_biscay": [45.0, -7.0],         # خلیج بیسکای (فرانسه/شمال اسپانیا)
+    "english_channel_west": [49.5, -4.5],  # مدخل غربی کانال مانش
+    "dover": [51.13, 1.45],                # تنگه دوور
+    "north_sea_mid": [54.5, 4.5],          # مرکز دریای شمال (آلمان/بریتانیا)
+    "oresund": [55.75, 12.70],             # تنگه اورسوند (دانمارک/سوئد)
+    "baltic_mid": [56.5, 19.0],            # مرکز دریای بالتیک (سوئد/لهستان/روسیه)
+
+    # مدیترانه و دریای سیاه
+    "gibraltar": [35.98, -5.60],           # تنگه جبل‌الطارق
+    "west_med": [36.5, 0.0],               # غرب مدیترانه (جنوب اسپانیا)
+    "central_med": [35.5, 15.0],           # مرکز مدیترانه (جنوب سیسیل/مالت)
+    "messina": [38.24, 15.63],             # تنگه مسینا
+    "east_med": [34.5, 25.0],              # شرق مدیترانه (جنوب کرت/یونان)
+    "suez_north": [31.5, 32.3],            # مدخل شمالی کانال سوئز (بندر سعید)
+    "suez": [29.97, 32.56],                # کانال سوئز
+    "bosphorus": [41.11, 29.07],           # تنگه بسفر
+    "dardanelles": [40.20, 26.40],         # تنگه داردانل
+    "black_sea_mid": [43.5, 34.0],         # مرکز دریای سیاه (ترکیه/روسیه/اوکراین)
+    "kerch": [45.31, 36.52],               # تنگه کرچ
+
+    # دریای سرخ، خلیج فارس و اقیانوس هند
+    "red_sea_mid": [21.0, 38.0],           # مرکز دریای سرخ
+    "bab_el_mandeb": [12.58, 43.33],       # تنگه باب‌المندب
+    "gulf_of_aden": [12.5, 48.0],          # خلیج عدن
+    "persian_gulf_mid": [27.0, 51.5],      # مرکز خلیج فارس (ایران/قطر/عربستان)
+    "hormuz": [26.56, 56.25],              # تنگه هرمز
+    "gulf_of_oman": [24.5, 59.0],          # دریای عمان
+    "arabian_sea_mid": [12.0, 60.0],       # مرکز دریای عربی
+    "sri_lanka_south": [5.5, 80.5],        # گذرگاه دریایی جنوب سری‌لانکا/هند
+
+    # آسیای شرقی و اقیانوس آرام غربی
+    "malacca_north": [5.5, 95.5],          # ورودی دریای آندامان به تنگه مالاکا
+    "singapore": [1.3, 103.8],             # تنگه مالاکا و سنگاپور
+    "south_china_sea_mid": [10.0, 112.0],  # مرکز دریای چین جنوبی
+    "south_china_sea_north": [18.0, 115.0], # شمال دریای چین جنوبی
+    "taiwan_strait": [24.0, 119.5],        # تنگه تایوان
+    "shanghai_gate": [31.2, 122.5],        # آب‌های دریای چین شرقی روبه‌روی شانگهای
+    "bohai_gate": [38.5, 119.5],           # خلیج بوهای و مدخل دریایی تیانجین/پکن
+    "tsushima": [34.40, 129.50],           # تنگه تسوشیما (کره/ژاپن)
+    "sea_of_japan_mid": [38.0, 134.0],     # مرکز دریای ژاپن
+    "laperouse": [45.70, 142.00],          # تنگه لاپروش (ژاپن/روسیه)
+    "bering": [65.80, -168.90],            # تنگه برینگ
+}
+
+_MARITIME_CORRIDOR_EDGES: list[tuple[str, str, str | None, float]] = [
+    # شبکه اقیانوس اطلس و قاره آمریکا
+    ("us_east", "mid_atlantic", None, 1.0),
+    ("mid_atlantic", "azores_gate", None, 1.0),
+    ("mid_atlantic", "north_atlantic", None, 1.0),
+    ("north_atlantic", "english_channel_west", None, 1.0),
+    ("azores_gate", "gibraltar", "gibraltar", 1.0),
+    ("azores_gate", "portugal_coast", None, 1.0),
+    ("brazil_coast", "equator_atlantic", None, 1.0),
+    ("equator_atlantic", "azores_gate", None, 1.5),
+
+    # اروپای غربی، دریای شمال و بالتیک
+    ("portugal_coast", "gibraltar", "gibraltar", 1.0),
+    ("portugal_coast", "bay_of_biscay", None, 1.0),
+    ("bay_of_biscay", "english_channel_west", None, 1.0),
+    ("english_channel_west", "dover", "dover", 1.0),
+    ("dover", "north_sea_mid", None, 1.0),
+    ("north_sea_mid", "oresund", "oresund", 1.0),
+    ("oresund", "baltic_mid", None, 1.0),
+
+    # دریای مدیترانه
+    ("gibraltar", "west_med", None, 1.0),
+    ("west_med", "central_med", None, 1.0),
+    ("central_med", "east_med", None, 1.0),
+    ("central_med", "messina", "messina", 1.0),
+    ("messina", "west_med", None, 1.0),
+    ("east_med", "suez_north", None, 1.0),
+    ("suez_north", "suez", "suez", 1.0),
+
+    # دریای سیاه
+    ("black_sea_mid", "bosphorus", "bosphorus", 1.0),
+    ("bosphorus", "dardanelles", "dardanelles", 1.0),
+    ("dardanelles", "east_med", None, 1.0),
+    ("black_sea_mid", "kerch", "kerch", 1.0),
+
+    # دریای سرخ و باب‌المندب
+    ("suez", "red_sea_mid", None, 1.0),
+    ("red_sea_mid", "bab_el_mandeb", "bab_el_mandeb", 1.0),
+    ("bab_el_mandeb", "gulf_of_aden", None, 1.0),
+    ("gulf_of_aden", "arabian_sea_mid", None, 1.0),
+
+    # خلیج فارس
+    ("persian_gulf_mid", "hormuz", "hormuz", 1.0),
+    ("hormuz", "gulf_of_oman", None, 1.0),
+    ("gulf_of_oman", "arabian_sea_mid", None, 1.0),
+
+    # اقیانوس هند به آسیای شرقی
+    ("arabian_sea_mid", "sri_lanka_south", None, 1.0),
+    ("sri_lanka_south", "malacca_north", None, 1.0),
+    ("malacca_north", "singapore", None, 1.0),
+    ("singapore", "south_china_sea_mid", None, 1.0),
+    ("south_china_sea_mid", "south_china_sea_north", None, 1.0),
+    ("south_china_sea_north", "taiwan_strait", "taiwan_strait", 1.0),
+    ("taiwan_strait", "shanghai_gate", None, 1.0),
+    ("shanghai_gate", "bohai_gate", None, 1.0),
+
+    # ژاپن و شبه‌جزیره کره
+    ("shanghai_gate", "tsushima", "tsushima", 1.0),
+    ("tsushima", "sea_of_japan_mid", None, 1.0),
+    ("sea_of_japan_mid", "laperouse", "laperouse", 1.0),
 ]
+
+# نگاشت کشورهای ساحلی به گره‌های ورودی/خروجی شبکه دریایی
+_COUNTRY_MARITIME_GATEWAYS: dict[str, list[str]] = {
+    "China": ["bohai_gate", "shanghai_gate"],
+    "Japan": ["sea_of_japan_mid", "shanghai_gate"],
+    "SouthKorea": ["tsushima", "shanghai_gate"],
+    "NorthKorea": ["sea_of_japan_mid"],
+    "Australia": ["singapore", "sri_lanka_south"],
+    "India": ["sri_lanka_south", "arabian_sea_mid"],
+    "Iran": ["persian_gulf_mid"],
+    "Pakistan": ["arabian_sea_mid", "gulf_of_oman"],
+    "Oman": ["gulf_of_oman", "arabian_sea_mid"],
+    "SaudiArabia": ["persian_gulf_mid", "red_sea_mid"],
+    "Azerbaijan": [],
+    "Qatar": ["persian_gulf_mid"],
+    "UAE": ["persian_gulf_mid"],
+    "Syria": ["east_med"],
+    "Iraq": ["persian_gulf_mid"],
+    "Egypt": ["suez_north", "red_sea_mid"],
+    "Yemen": ["bab_el_mandeb", "gulf_of_aden"],
+    "Russia": ["black_sea_mid", "baltic_mid"],
+    "Britain": ["english_channel_west", "north_sea_mid"],
+    "France": ["bay_of_biscay", "west_med", "english_channel_west"],
+    "Germany": ["north_sea_mid", "oresund"],
+    "Israel": ["east_med", "suez_north"],
+    "Turkey": ["dardanelles", "bosphorus", "east_med"],
+    "Italy": ["central_med"],
+    "Spain": ["gibraltar", "portugal_coast", "west_med"],
+    "Poland": ["baltic_mid"],
+    "Ukraine": ["black_sea_mid"],
+    "Sweden": ["oresund", "baltic_mid"],
+    "Switzerland": [],
+    "Greece": ["east_med"],
+    "USA": ["us_east"],
+    "Brazil": ["brazil_coast"],
+    "Mexico": ["us_east"],
+    "Canada": ["us_east"],
+    "Argentina": ["brazil_coast"],
+    "Colombia": ["us_east"],
+    "Norway": ["north_sea_mid"],
+    "Afghanistan": [],
+    "Taiwan": ["taiwan_strait"],
+}
 
 
 @lru_cache(maxsize=1)
 def _build_maritime_graph() -> dict[str, list[tuple[str, str | None, float]]]:
-    """ساخت گراف مجاورت دریاها و تنگه‌ها."""
+    """ساخت گراف مجاورت کریدورهای دریایی و تنگه‌ها."""
     adj: dict[str, list[tuple[str, str | None, float]]] = {}
-    for u, v, strait, weight in _MARITIME_EDGES:
+    for u, v, strait, weight in _MARITIME_CORRIDOR_EDGES:
         adj.setdefault(u, []).append((v, strait, weight))
         adj.setdefault(v, []).append((u, strait, weight))
     return adj
@@ -485,43 +622,42 @@ def can_use_sea_transport(origin_en: str, dest_en: str) -> bool:
     return True
 
 
-def get_route_straits(origin_en: str, dest_en: str) -> list[str]:
+def _find_maritime_corridor_route(
+    origin_en: str, dest_en: str
+) -> tuple[list[str], list[str]]:
     """
-    استخراج لیست تنگه‌هایی که کشتی در مسیر دریایی بین دو کشور باید از آنها عبور کند.
-    اگر دو کشور آب مشترک داشته باشند، کشتی از همان آب مشترک بدون تنگه عبور می‌کند (لیست خالی).
+    مسیریابی بهینه روی گراف کریدورهای آبی جهان با الگوریتم دایکسترا.
+    خروجی: (فهرست شناسه گره‌های مسیر دریایی، فهرست تنگه‌های استراتژیک عبوری)
     """
-    if not can_use_sea_transport(origin_en, dest_en):
-        return []
+    if not can_use_sea_transport(origin_en, dest_en) or origin_en == dest_en:
+        return [], []
 
-    geo_orig = get_geo(origin_en)
-    geo_dest = get_geo(dest_en)
-    if not geo_orig or not geo_dest:
-        return []
-
-    # دریاهای باز (به استثنای خزر برای مسیرهای بین‌المللی)
-    seas_orig = [s for s in geo_orig.get("seas", []) if s != "caspian_sea"]
-    seas_dest = [s for s in geo_dest.get("seas", []) if s != "caspian_sea"]
-
-    # آب مشترک مستقیم
-    if set(seas_orig) & set(seas_dest):
-        return []
+    starts = _COUNTRY_MARITIME_GATEWAYS.get(origin_en, [])
+    ends = _COUNTRY_MARITIME_GATEWAYS.get(dest_en, [])
+    if not starts or not ends:
+        return [], []
 
     graph = _build_maritime_graph()
-
-    # یافتن کوتاه‌ترین مسیر میان هر جفت دریای مبدأ و مقصد با دایکسترا
+    best_path: list[str] = []
     best_straits: list[str] = []
     min_cost = float("inf")
 
-    for s_start in seas_orig:
-        for s_end in seas_dest:
-            pq: list[tuple[float, str, list[str]]] = [(0.0, s_start, [])]
+    for s_start in starts:
+        for s_end in ends:
+            if s_start == s_end:
+                return [s_start], []
+
+            pq: list[tuple[float, str, list[str], list[str]]] = [
+                (0.0, s_start, [s_start], [])
+            ]
             visited: dict[str, float] = {}
 
             while pq:
-                cost, curr, straits = heapq.heappop(pq)
+                cost, curr, path, straits = heapq.heappop(pq)
                 if curr == s_end:
                     if cost < min_cost:
                         min_cost = cost
+                        best_path = path
                         best_straits = straits
                     break
 
@@ -531,9 +667,21 @@ def get_route_straits(origin_en: str, dest_en: str) -> list[str]:
 
                 for nxt, strait_id, weight in graph.get(curr, []):
                     new_straits = straits + ([strait_id] if strait_id else [])
-                    heapq.heappush(pq, (cost + weight, nxt, new_straits))
+                    heapq.heappush(pq, (cost + weight, nxt, path + [nxt], new_straits))
 
-    return best_straits
+    return best_path, best_straits
+
+
+def get_route_straits(origin_en: str, dest_en: str) -> list[str]:
+    """
+    استخراج لیست تنگه‌هایی که کشتی در مسیر دریایی بین دو کشور باید از آنها عبور کند.
+    اگر دو کشور در یک حوضچه آبی مشترک بدون تنگه باشند، لیست خالی برمی‌گردد.
+    """
+    if not can_use_sea_transport(origin_en, dest_en) or origin_en == dest_en:
+        return []
+
+    _, straits = _find_maritime_corridor_route(origin_en, dest_en)
+    return straits
 
 
 def get_strait_coords(strait_id: str) -> list[float] | None:
@@ -547,27 +695,32 @@ def get_strait_coords(strait_id: str) -> list[float] | None:
 def get_maritime_waypoints(origin_en: str, dest_en: str) -> list[list[float]]:
     """
     تولید نقاط مسیر دریایی (Waypoints) بین دو کشور:
-    مختصات پایتخت/بندر مبدأ ⬅️ عبور از مختصات تنگه‌های استراتژیک مسیر ⬅️ پایتخت/بندر مقصد.
-    اگر مسیر تنگه‌ای نداشته باشد یا حمل‌ونقل دریایی مقدور نباشد، خط مستقیم دو پایتخت بازگردانده می‌شود.
+    مختصات پایتخت/بندر مبدأ ⬅️ گذرگاه‌های دریایی و تنگه‌های استراتژیک مسیر ⬅️ پایتخت/بندر مقصد.
+    تمامی نقاط بین‌راهی از کریدورهای آبی باز عبور می‌کنند تا خط مستقیم از روی خشکی‌ها نگذرد.
     """
     geo_orig = get_geo(origin_en)
     geo_dest = get_geo(dest_en)
     orig_coords: list[float] = geo_orig.get("coords", [0.0, 0.0]) if geo_orig else [0.0, 0.0]
     dest_coords: list[float] = geo_dest.get("coords", [0.0, 0.0]) if geo_dest else [0.0, 0.0]
 
-    if not can_use_sea_transport(origin_en, dest_en):
+    if not can_use_sea_transport(origin_en, dest_en) or origin_en == dest_en:
         return [orig_coords, dest_coords]
 
-    straits = get_route_straits(origin_en, dest_en)
-    if not straits:
+    path_nodes, _ = _find_maritime_corridor_route(origin_en, dest_en)
+    if not path_nodes:
         return [orig_coords, dest_coords]
 
     points: list[list[float]] = [orig_coords]
-    for sid in straits:
-        c = get_strait_coords(sid)
+    for node in path_nodes:
+        c = _MARITIME_CORRIDOR_COORDS.get(node)
         if c:
+            if points and points[-1] == c:
+                continue
             points.append(c)
-    points.append(dest_coords)
+
+    if points[-1] != dest_coords:
+        points.append(dest_coords)
+
     return points
 
 

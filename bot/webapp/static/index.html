@@ -723,7 +723,9 @@
             waypoints: s.waypoints,
             startedAt: s.started_at ? new Date(s.started_at).getTime() : 0,
             endsAt: s.eta ? new Date(s.eta).getTime() : 0,
-            type: isSea ? 'sea' : 'air'
+            type: isSea ? 'sea' : 'air',
+            status: s.status,
+            heldAtStraitId: s.held_at_strait_id
           });
         });
       }
@@ -737,6 +739,13 @@
       const now = Date.now() + serverTimeDelta;
 
       activeMovingEntities.forEach(ent => {
+        if (ent.status === 'HELD_AT_STRAIT' && ent.heldAtStraitId && radarData?.straits) {
+          const st = radarData.straits.find(x => x.id === ent.heldAtStraitId);
+          if (st && st.coords) {
+            ent.marker.setLatLng(st.coords);
+            return;
+          }
+        }
         if (!ent.startedAt || !ent.endsAt || ent.endsAt <= ent.startedAt) return;
         const total = ent.endsAt - ent.startedAt;
         const elapsed = now - ent.startedAt;

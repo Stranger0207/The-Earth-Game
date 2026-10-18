@@ -52,6 +52,7 @@ from bot.database.models import (
     StraitConfig,
     User,
 )
+from bot.database.repositories import countries as countries_repo
 from bot.database.repositories import reserves as reserves_repo
 from bot.database.repositories import straits as straits_repo
 from bot.database.repositories import trade as trade_repo
@@ -585,6 +586,124 @@ async def main():
         check("جدول BlockedCargo به طور کامل پاک شد", len(res_cargos.scalars().all()) == 0)
         check("جدول StraitBlockRule به طور کامل پاک شد", len(res_rules.scalars().all()) == 0)
         check("جدول StraitConfig به طور کامل پاک شد", len(res_configs.scalars().all()) == 0)
+
+    # -------------------------------------------------------------
+    # ۸. تست سیستم رویارویی تنگه‌ها، اخطار سه‌گانه و تصمیمات تاکتیکی
+    # -------------------------------------------------------------
+    print("\n[بخش ۸] تست سیستم رویارویی تنگه‌ها، اخطار سه‌گانه و کنش‌های تاکتیکی:")
+
+    async with session_factory() as session:
+        # ۱) تست محاسبات هندسی پیشرفت تنگه و زمان دریانوردی
+        qa_waypoints = geo.get_maritime_waypoints("Qatar", "India")
+        check("تعداد وی‌پوینت‌های قطر به هند بیش از ۳ نقطه است", len(qa_waypoints) >= 3)
+
+        prog_h = geo.get_strait_transit_progress(qa_waypoints, "hormuz")
+        check("پیشرفت تنگه هرمز در مسیر قطر به هند شناسایی شد", prog_h is not None)
+        if prog_h:
+            check("درصد دهانه ورودی کمتر از درصد مرکز است", prog_h["approach_ratio"] <= prog_h["center_ratio"])
+            check("درصد مرکز کمتر یا مساوی درصد خروجی است", prog_h["center_ratio"] <= prog_h["exit_ratio"])
+            check("مختصات دهانه ورودی لنگرگاه معتبر است", len(prog_h["approach_coords"]) == 2)
+
+        transit_min = geo.calculate_maritime_transit_minutes("Qatar", "India")
+        check("زمان ناوبری قطر به هند حداقل ۶۰ دقیقه است", transit_min >= 60)
+
+        # ۲) درج کشورهای تست و محموله
+        qatar_c = await countries_repo.get_country_by_name(session, "Qatar")
+        india_c = await countries_repo.get_country_by_name(session, "India")
+        iran_c = await countries_repo.get_country_by_name(session, "Iran")
+
+        sale_standoff = ResourceSale(
+            id=50,
+            seller_country=qatar_c.id if qatar_c else 3,
+            buyer_country=india_c.id if india_c else 2,
+            resource=ResourceType.GAS.value,
+            amount=5000,
+            price=20_000_000,
+            status=TradeStatus.IN_TRANSIT.value,
+            transport_mode="SEA",
+            strait_status="APPROACHING",
+            standoff_action="SAILING",
+            warning_count=0,
+            ship_eta=_utcnow() + timedelta(minutes=transit_min),
+        )
+        session.add(sale_standoff)
+        await session.commit()
+
+        # ۳) تست فعال‌سازی رویارویی در دهانه تنگه (trigger_strait_standoff)
+        await strait_service.trigger_strait_standoff(fake_bot, session, sale_standoff, "hormuz")
+        check("وضعیت پس از ورود به حریم دهانه HELD_AT_STRAIT شد", sale_standoff.strait_status == "HELD_AT_STRAIT")
+        check("کنش رویارویی روی STANDOFF قرار گرفت", sale_standoff.standoff_action == "STANDOFF")
+        check("زمان باقیمانده سفر قبل از توقف ذخیره شد", sale_standoff.remaining_seconds is not None and sale_standoff.remaining_seconds > 0)
+        check("حین استندآف زمان رسیدن صفر/متوقف شد", sale_standoff.ship_eta is None)
+
+        # ۴) تست توالی اخطارهای سه‌گانه حاکم تنگه
+        warn1 = await strait_service.issue_strait_warning(fake_bot, session, sale_standoff.id, "hormuz", iran_c)
+        check("اخطار اول با موفقیت ثبت شد", warn1["warning_count"] == 1 and sale_standoff.warning_count == 1)
+
+        warn2 = await strait_service.issue_strait_warning(fake_bot, session, sale_standoff.id, "hormuz", iran_c)
+        check("اخطار دوم با موفقیت ثبت شد", warn2["warning_count"] == 2 and sale_standoff.warning_count == 2)
+
+        warn3 = await strait_service.issue_strait_warning(fake_bot, session, sale_standoff.id, "hormuz", iran_c)
+        check("اخطار سوم (اولتیماتوم) با موفقیت ثبت شد", warn3["warning_count"] == 3 and sale_standoff.warning_count == 3)
+
+        # اخطار چهارم باید رد شود چون سقف ۳ اخطار پر شده
+        try:
+            await strait_service.issue_strait_warning(fake_bot, session, sale_standoff.id, "hormuz", iran_c)
+            check("اخطار بیش از ۳ بار رد شد", False)
+        except strait_service.StraitError:
+            check("اخطار بیش از ۳ بار رد شد", True)
+
+        # ۵) تست تصمیم صاحب بار: توقف و لنگراندازی در دهانه (Hold)
+        res_hold = await strait_service.owner_hold_at_strait(fake_bot, session, sale_standoff.id, qatar_c)
+        check("دستور توقف و لنگراندازی اعمال شد", res_hold["status"] == "holding" and sale_standoff.standoff_action == "HOLD")
+
+        # ۶) تست تصمیم صاحب بار: شکستن محاصره و تلاش برای عبور (Run)
+        res_run = await strait_service.owner_run_blockade(fake_bot, session, sale_standoff.id, qatar_c)
+        check("دستور ادامه مسیر و شکستن محاصره اعمال شد", res_run["status"] == "running" and sale_standoff.standoff_action == "RUNNING")
+        check("زمان رسیدن پس از شروع حرکت مجدد فعال شد", sale_standoff.ship_eta is not None and sale_standoff.ship_eta > _utcnow())
+
+        # ۷) تست صدور اجازه عبور و رفع باگ ETA
+        res_allow_pass = await strait_service.allow_passage(fake_bot, session, sale_standoff.id, "hormuz", iran_c)
+        check("اجازه عبور صادر شد", res_allow_pass["status"] == "allowed")
+        check("وضعیت به PASSED تغییر یافت", sale_standoff.strait_status == "PASSED")
+        check("باگ رفع شد: ship_eta در آینده تنظیم شد و None نیست", sale_standoff.ship_eta is not None and sale_standoff.ship_eta > _utcnow())
+
+        # ۸) تست مصونیت پس از خروج از تنگه: حاکم دیگر نمی‌تواند شلیک کند
+        try:
+            await strait_service.fire_at_shipment(fake_bot, session, sale_standoff.id, "hormuz", iran_c)
+            check("شلیک به کشتی عبور کرده با موفقیت مسدود شد (مصونیت)", False)
+        except strait_service.StraitError:
+            check("شلیک به کشتی عبور کرده با موفقیت مسدود شد (مصونیت)", True)
+
+        # ۹) تست تصمیم صاحب بار: عقب‌نشینی به کشور مبدأ (Retreat)
+        sale_retreat = ResourceSale(
+            id=51,
+            seller_country=qatar_c.id if qatar_c else 3,
+            buyer_country=india_c.id if india_c else 2,
+            resource=ResourceType.OIL.value,
+            amount=2000,
+            price=8_000_000,
+            status=TradeStatus.IN_TRANSIT.value,
+            transport_mode="SEA",
+            strait_status="HELD_AT_STRAIT",
+            standoff_action="STANDOFF",
+            warning_count=2,
+            held_at_strait_id="hormuz",
+            held_since=_utcnow(),
+        )
+        session.add(sale_retreat)
+        await session.commit()
+
+        res_ret = await strait_service.owner_retreat_from_strait(fake_bot, session, sale_retreat.id, qatar_c)
+        check("دستور عقب‌نشینی ثبت شد", res_ret["status"] == "returning" and sale_retreat.standoff_action == "RETURNING")
+        check("وضعیت ترانزیت به RETURNING تغییر یافت", sale_retreat.strait_status == "RETURNING")
+
+        # حاکم تنگه نباید بتواند به کشتی که تمکین کرده و در حال عقب‌نشینی است حمله کند
+        try:
+            await strait_service.fire_at_shipment(fake_bot, session, sale_retreat.id, "hormuz", iran_c)
+            check("شلیک به کشتی در حال عقب‌نشینی رد شد", False)
+        except strait_service.StraitError:
+            check("شلیک به کشتی در حال عقب‌نشینی رد شد", True)
 
     # -------------------------------------------------------------
     # پایان تست‌ها و گزارش نهایی

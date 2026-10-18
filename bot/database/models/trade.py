@@ -62,6 +62,10 @@ class ResourceSale(Base):
     held_since: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # سیستم رویارویی تنگه‌ها (اخطارها و کنش صاحب بار)
+    warning_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    standoff_action: Mapped[str] = mapped_column(String(24), default="SAILING", nullable=False)
+    remaining_seconds: Mapped[float | None] = mapped_column(Float, nullable=True)
 
     ship_eta: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True

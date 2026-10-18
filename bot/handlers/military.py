@@ -20,6 +20,8 @@ from ..config import get_settings
 from ..constants import (
     AIR_TRANSPORT_FEE,
     AIR_TRANSPORT_FEE_NO_VISA,
+    AIR_TRANSIT_MAX_MINUTES,
+    AIR_TRANSIT_MIN_MINUTES,
     BUILD_LIMIT_WINDOW_HOURS,
     MIL_FACTORY_BUILD_LIMIT,
     MIL_FACTORY_BUILD_RESOURCES,
@@ -923,8 +925,8 @@ async def cb_milsale_ok(call: CallbackQuery, session: AsyncSession, db_user: Use
     eta_data = await evaluators.estimate_shipping_time(
         seller.name_fa, buyer.name_fa, sale.name, sale.count
     )
-    minutes = int(eta_data.get("shipping_minutes", 30) or 30)
-    minutes = max(5, min(minutes, 120))
+    minutes = int(eta_data.get("shipping_minutes", 45) or 45)
+    minutes = max(AIR_TRANSIT_MIN_MINUTES, min(minutes, AIR_TRANSIT_MAX_MINUTES))
     sale.ship_eta = _utcnow() + timedelta(minutes=minutes)
     sale.status = TradeStatus.IN_TRANSIT
 

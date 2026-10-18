@@ -193,24 +193,133 @@ def strait_country_rule_kb(
     return builder.as_markup()
 
 
-def strait_intercept_alert_kb(sale_id: int, strait_id: str) -> InlineKeyboardMarkup:
-    """کیبورد اخطار توقیف به پیوی کشور کنترل‌کننده تنگه."""
+def strait_standoff_ctrl_kb(
+    sale_id: int, strait_id: str, warning_count: int = 0, is_running: bool = False
+) -> InlineKeyboardMarkup:
+    """کیبورد رویارویی و ایست‌بازرسی تنگه برای کشور کنترل‌کننده."""
+    rows: list[list[InlineKeyboardButton]] = []
+
+    # دکمه صدور اخطار (۱ تا ۳)
+    if warning_count < 3:
+        next_w = warning_count + 1
+        w_label = "اخطار اول" if next_w == 1 else ("اخطار دوم (جدی)" if next_w == 2 else "اخطار سوم (اولتیماتوم)")
+        rows.append([
+            InlineKeyboardButton(
+                text=f"⚠️ صدور {w_label} ({fa_number(next_w)} از ۳)",
+                callback_data=f"strait_act:warn:{sale_id}:{strait_id}",
+                style=STYLE_NO,
+            )
+        ])
+    else:
+        rows.append([
+            InlineKeyboardButton(
+                text="🔴 اولتیماتوم نهایی صادر شده (۳ اخطار کامل)",
+                callback_data=f"strait_act:warn_max:{sale_id}:{strait_id}",
+                style=STYLE_NO,
+            )
+        ])
+
+    # ردیف عملیات نظامی
+    mil_row: list[InlineKeyboardButton] = []
+    if warning_count >= 1 or is_running:
+        mil_row.append(
+            InlineKeyboardButton(
+                text="💥 شلیک به کشتی",
+                callback_data=f"strait_act:fire:{sale_id}:{strait_id}",
+                style=STYLE_NO,
+            )
+        )
+    else:
+        mil_row.append(
+            InlineKeyboardButton(
+                text="🔒 شلیک (نیازمند ۱ اخطار)",
+                callback_data=f"strait_act:fire_locked:{sale_id}:{strait_id}",
+                style=STYLE_MAIN,
+            )
+        )
+
+    mil_row.append(
+        InlineKeyboardButton(
+            text="⚓ مصادره بار",
+            callback_data=f"strait_act:confiscate_menu:{sale_id}:{strait_id}",
+            style=STYLE_MAIN,
+        )
+    )
+    rows.append(mil_row)
+
+    # ردیف صدور اجازه عبور
+    rows.append([
+        InlineKeyboardButton(
+            text="✅ صدور اجازه عبور",
+            callback_data=f"strait_act:allow:{sale_id}:{strait_id}",
+            style=STYLE_OK,
+        )
+    ])
+
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def strait_standoff_owner_kb(
+    sale_id: int, strait_id: str, current_action: str = "STANDOFF"
+) -> InlineKeyboardMarkup:
+    """کیبورد تصمیم‌گیری مالک محموله در مواجهه با تنگه مسدود."""
+    if current_action == "HOLD":
+        return InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="⚓ لنگر انداخته‌اید (در انتظار دستور)",
+                        callback_data=f"strait_owner:info_hold:{sale_id}:{strait_id}",
+                        style=STYLE_MAIN,
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="🔄 عقب‌نشینی و بازگشت محموله به کشور",
+                        callback_data=f"strait_owner:retreat:{sale_id}:{strait_id}",
+                        style=STYLE_OK,
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="🚢 شکستن محاصره و ادامه مسیر",
+                        callback_data=f"strait_owner:run:{sale_id}:{strait_id}",
+                        style=STYLE_NO,
+                    )
+                ],
+            ]
+        )
+
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text="✅ صدور اجازه عبور",
-                    callback_data=f"strait_act:allow:{sale_id}:{strait_id}",
-                    style=STYLE_OK,
-                ),
+                    text="⚓ ۱- توقف و لنگراندازی در دهانه تنگه",
+                    callback_data=f"strait_owner:hold:{sale_id}:{strait_id}",
+                    style=STYLE_MAIN,
+                )
+            ],
+            [
                 InlineKeyboardButton(
-                    text="⚔️ حمله به کشتی",
-                    callback_data=f"strait_act:attack_menu:{sale_id}:{strait_id}",
+                    text="🔄 ۲- عقب‌نشینی و بازگشت محموله به کشور",
+                    callback_data=f"strait_owner:retreat:{sale_id}:{strait_id}",
+                    style=STYLE_OK,
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="🚢 ۳- ادامه مسیر با ریسک خود (تلاش برای عبور)",
+                    callback_data=f"strait_owner:run:{sale_id}:{strait_id}",
                     style=STYLE_NO,
-                ),
-            ]
+                )
+            ],
         ]
     )
+
+
+def strait_intercept_alert_kb(sale_id: int, strait_id: str) -> InlineKeyboardMarkup:
+    """کیبورد پیش‌فرض اخطار توقیف به پیوی کشور کنترل‌کننده تنگه."""
+    return strait_standoff_ctrl_kb(sale_id, strait_id, warning_count=0)
 
 
 def strait_intercept_attack_kb(sale_id: int, strait_id: str) -> InlineKeyboardMarkup:

@@ -200,8 +200,10 @@ async def process_shipments(bot: Bot) -> None:
     """محموله‌های WTO که زمان رسیدنشان فرارسیده را تحویل می‌دهد."""
     from ..constants import STRAIT_HOLD_TIMEOUT_HOURS
     from ..database.repositories import countries as countries_repo
+    from ..database.repositories import straits as straits_repo
     from ..enums import RESOURCE_FA, RESOURCE_UNIT_FA
     from ..services import geo_service as geo
+    from ..services import strait_service
     from ..services.news_service import send_log
     from ..utils.numbers import fa_number
 
@@ -212,13 +214,45 @@ async def process_shipments(bot: Bot) -> None:
         sales = await trade_repo.list_in_transit(session)
         now = _utcnow()
         for sale in sales:
-            # بررسی توقیف در تنگه
+            # ۱. بررسی تحویل بار بازگشتی به مبدأ
+            if getattr(sale, "standoff_action", None) == "RETURNING":
+                ret_eta = _aware(sale.ship_eta)
+                if ret_eta and now >= ret_eta:
+                    sale.strait_status = "RETURNED"
+                    sale.status = TradeStatus.REJECTED.value
+                    sale.standoff_action = "RETURNED"
+                    await reserves_repo.ensure_reserve(session, sale.seller_country, sale.resource)
+                    await reserves_repo.add_amount(
+                        session, sale.seller_country, sale.resource, sale.amount
+                    )
+                    seller = await countries_repo.get_country(session, sale.seller_country)
+                    try:
+                        rtype = ResourceType(sale.resource)
+                        rname = RESOURCE_FA[rtype]
+                        unit = RESOURCE_UNIT_FA[rtype]
+                    except (ValueError, KeyError):
+                        rname, unit = sale.resource, ""
+
+                    if seller and seller.owner_user_id:
+                        user_notices.append((
+                            seller.owner_user_id,
+                            f"🚢 <b>بازگشت ایمن محموله به کشور:</b>\n\n"
+                            f"کشتی محموله حامل <b>{fa_number(sale.amount)} {unit} {rname}</b> با موفقیت به بندر مبدأ بازگشت و بار مجدداً به موجودی ذخایر کشورتان اضافه شد.",
+                        ))
+                    log_notices.append(
+                        f"🚢 <b>بازگشت موفق محموله به کشور مبدأ</b>\n"
+                        f"کشور: {seller.flag if seller else ''} {seller.name_fa if seller else ''}\n"
+                        f"بار: {fa_number(sale.amount)} {unit} {rname}"
+                    )
+                continue
+
+            # ۲. بررسی توقیف طولانی‌مدت در تنگه (تایم‌اوت ۲۴ ساعته)
             if getattr(sale, "strait_status", None) == "HELD_AT_STRAIT":
                 held_since = _aware(getattr(sale, "held_since", None))
                 if held_since and (now - held_since).total_seconds() >= STRAIT_HOLD_TIMEOUT_HOURS * 3600:
-                    # منقضی شدن مهلت ۲۴ ساعته -> بازگشت خودکار به فروشنده
                     sale.strait_status = "RETURNED"
                     sale.status = TradeStatus.REJECTED.value
+                    sale.standoff_action = "RETURNED"
                     await reserves_repo.ensure_reserve(session, sale.seller_country, sale.resource)
                     await reserves_repo.add_amount(
                         session, sale.seller_country, sale.resource, sale.amount
@@ -251,6 +285,53 @@ async def process_shipments(bot: Bot) -> None:
 
             if getattr(sale, "strait_status", None) in ("DESTROYED", "CONFISCATED", "RETURNED"):
                 continue
+
+            # ۳. پایش خروج امن از تنگه برای کشتی در حال عبور (RUNNING)
+            if getattr(sale, "standoff_action", None) == "RUNNING" and sale.held_at_strait_id:
+                seller = await countries_repo.get_country(session, sale.seller_country)
+                buyer = await countries_repo.get_country(session, sale.buyer_country)
+                if seller and buyer:
+                    waypoints = geo.get_maritime_waypoints(seller.name_en, buyer.name_en)
+                    progress_info = geo.get_strait_transit_progress(waypoints, sale.held_at_strait_id)
+                    if progress_info:
+                        started = _aware(sale.created_at) or now
+                        eta_val = _aware(sale.ship_eta)
+                        ratio = max(0.0, min(1.0, (now - started).total_seconds() / (eta_val - started).total_seconds())) if (eta_val and eta_val > started) else 0.0
+                        if ratio >= progress_info["exit_ratio"]:
+                            s_def = geo.get_strait_def(sale.held_at_strait_id)
+                            strait_name_fa = s_def["name_fa"] if s_def else "تنگه"
+                            sale.strait_status = "PASSED"
+                            sale.standoff_action = "SAILING"
+                            sale.held_at_strait_id = None
+                            sale.held_since = None
+                            if seller and seller.owner_user_id:
+                                user_notices.append((
+                                    seller.owner_user_id,
+                                    f"🛡 <b>خروج موفق از حریم امنیتی {strait_name_fa}:</b>\n\n"
+                                    "کشتی شما از برد عملیاتی تنگه خارج شده و وارد آب‌های آزاد بین‌المللی گردید. حاکم تنگه دیگر نمی‌تواند به شناور شما حمله کند.",
+                                ))
+
+            # ۴. پایش ورود کشتی به محدوده دهانه تنگه مسدود (STANDOFF Proximity Trigger)
+            mode = (sale.transport_mode or "SEA").upper()
+            if mode == "SEA" and getattr(sale, "strait_status", None) not in ("PASSED", "HELD_AT_STRAIT"):
+                seller = await countries_repo.get_country(session, sale.seller_country)
+                buyer = await countries_repo.get_country(session, sale.buyer_country)
+                if seller and buyer:
+                    strait_ids = geo.get_route_straits(seller.name_en, buyer.name_en)
+                    if strait_ids:
+                        blocked_sid = await straits_repo.get_first_blocked_strait(
+                            session, strait_ids, sale.seller_country, sale.buyer_country
+                        )
+                        if blocked_sid:
+                            waypoints = geo.get_maritime_waypoints(seller.name_en, buyer.name_en)
+                            progress_info = geo.get_strait_transit_progress(waypoints, blocked_sid)
+                            if progress_info:
+                                started = _aware(sale.created_at) or now
+                                eta_val = _aware(sale.ship_eta)
+                                ratio = max(0.0, min(1.0, (now - started).total_seconds() / (eta_val - started).total_seconds())) if (eta_val and eta_val > started) else 0.0
+                                if ratio >= progress_info["approach_ratio"]:
+                                    await strait_service.trigger_strait_standoff(bot, session, sale, blocked_sid)
+                                    continue
 
             eta = _aware(sale.ship_eta)
             if eta is None or eta > now:

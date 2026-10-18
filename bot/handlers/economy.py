@@ -13,6 +13,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..constants import (
     AIR_TRANSPORT_FEE,
     AIR_TRANSPORT_FEE_NO_VISA,
+    AIR_TRANSIT_MAX_MINUTES,
+    AIR_TRANSIT_MIN_MINUTES,
     BUILD_LIMIT_WINDOW_HOURS,
     FACILITY_COST_USD,
     FACILITY_TOTAL_LIMIT_NON_VIP,
@@ -1092,45 +1094,27 @@ async def cb_sale_accept(
         await call.answer(str(exc), show_alert=True)
         return
 
-    # بررسی مسدود بودن تنگه‌های مسیر در حمل دریایی
-    blocked_sid: str | None = None
-    if mode == "SEA" and strait_ids:
-        blocked_sid = await straits_repo.get_first_blocked_strait(
-            session, strait_ids, sale.seller_country, sale.buyer_country
+    # محاسبه زمان واقعی و تاکتیکی ترانزیت بر پایه شیوه حمل
+    if mode == "SEA" and seller and buyer:
+        minutes = geo.calculate_maritime_transit_minutes(seller.name_en, buyer.name_en)
+    else:
+        rname = RESOURCE_FA[ResourceType(sale.resource)]
+        eta_data = await evaluators.estimate_shipping_time(
+            seller.name_fa if seller else "?", buyer.name_fa, rname, sale.amount
         )
+        if mode == "AIR":
+            minutes = max(AIR_TRANSIT_MIN_MINUTES, min(AIR_TRANSIT_MAX_MINUTES, int(eta_data.get("shipping_minutes", 45) or 45)))
+        else:
+            minutes = max(30, min(120, int(eta_data.get("shipping_minutes", 30) or 30)))
 
-    if blocked_sid:
-        await strait_service.hold_shipment_at_strait(bot, session, sale, blocked_sid)
-        s_def = geo.get_strait_def(blocked_sid)
-        s_name = s_def["name_fa"] if s_def else blocked_sid
-        await call.answer("خرید تأیید شد، اما کشتی در تنگه متوقف گردید ⚠️")
-        await safe_edit(
-            call,
-            call.message.html_text + f"\n\n⚠️ <b>توقف در تنگه {s_name}</b>\n"
-            "این آبراه مسدود است و محموله تا صدور دستور مرزبانی کشور کنترل‌کننده متوقف شد.",
-        )
-        if seller and seller.owner_user_id:
-            try:
-                await bot.send_message(
-                    seller.owner_user_id,
-                    f"⚠️ محموله ارسالی شما به {buyer.flag} {buyer.name_fa} در تنگه مسدودشده‌ی <b>{s_name}</b> متوقف شد "
-                    "و در انتظار تصمیم‌گیری مرزبانی دریایی است.",
-                )
-            except Exception:  # noqa: BLE001
-                pass
-        return
-
-    # در صورت باز بودن مسیر، تخمین زمان رسیدن توسط AI و حرکت محموله
-    rname = RESOURCE_FA[ResourceType(sale.resource)]
-    unit_fa = RESOURCE_UNIT_FA[ResourceType(sale.resource)]
-    eta_data = await evaluators.estimate_shipping_time(
-        seller.name_fa if seller else "?", buyer.name_fa, rname, sale.amount
-    )
-    minutes = int(eta_data.get("shipping_minutes", 30) or 30)
-    minutes = max(5, min(minutes, 120))
     sale.ship_eta = _utcnow() + timedelta(minutes=minutes)
+    sale.created_at = _utcnow()
     sale.status = TradeStatus.IN_TRANSIT
-    sale.strait_status = "PASSED" if strait_ids else "NONE"
+    sale.strait_status = "APPROACHING" if strait_ids else "NONE"
+    sale.standoff_action = "SAILING"
+    sale.warning_count = 0
+    sale.held_at_strait_id = None
+    sale.held_since = None
 
     # ثبت کول‌داون فروش برای فروشنده
     await cd_repo.touch(session, sale.seller_country, "resource_sale")

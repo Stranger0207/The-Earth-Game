@@ -833,3 +833,133 @@ def get_air_waypoints(origin_en: str, dest_en: str) -> list[list[float]]:
     return [orig_coords, dest_coords]
 
 
+def coords_distance_km(p1: list[float] | tuple[float, float], p2: list[float] | tuple[float, float]) -> float:
+    """فاصله ژئودزیک بین دو مختصات [lat, lon] بر حسب کیلومتر."""
+    lat1, lon1 = p1[0], p1[1]
+    lat2, lon2 = p2[0], p2[1]
+    r = 6371.0  # شعاع زمین
+    phi1, phi2 = math.radians(lat1), math.radians(lat2)
+    d_phi = phi2 - phi1
+    d_lambda = math.radians(lon2 - lon1)
+    h = math.sin(d_phi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(d_lambda / 2) ** 2
+    return 2 * r * math.asin(math.sqrt(min(1.0, h)))
+
+
+def calculate_path_length_km(points: list[list[float]]) -> float:
+    """محاسبه مجموع طول یک مسیر خطی متشکل از چندین نقطه بر حسب کیلومتر."""
+    if not points or len(points) < 2:
+        return 0.0
+    total = 0.0
+    for i in range(len(points) - 1):
+        total += coords_distance_km(points[i], points[i + 1])
+    return total
+
+
+def interpolate_path_at_ratio(points: list[list[float]], ratio: float) -> list[float]:
+    """محاسبه مختصات جغرافیایی یک نقطه در طول مسیر بر اساس درصد پیشرفت [0.0, 1.0]."""
+    if not points:
+        return [0.0, 0.0]
+    if len(points) == 1 or ratio <= 0.0:
+        return list(points[0])
+    if ratio >= 1.0:
+        return list(points[-1])
+
+    total_len = calculate_path_length_km(points)
+    if total_len <= 0.0:
+        return list(points[0])
+
+    target_dist = ratio * total_len
+    cum_dist = 0.0
+
+    for i in range(len(points) - 1):
+        seg_dist = coords_distance_km(points[i], points[i + 1])
+        if cum_dist + seg_dist >= target_dist:
+            if seg_dist <= 0.0:
+                return list(points[i])
+            seg_ratio = (target_dist - cum_dist) / seg_dist
+            lat = points[i][0] + (points[i + 1][0] - points[i][0]) * seg_ratio
+            lon = points[i][1] + (points[i + 1][1] - points[i][1]) * seg_ratio
+            return [round(lat, 4), round(lon, 4)]
+        cum_dist += seg_dist
+
+    return list(points[-1])
+
+
+def calculate_maritime_transit_minutes(origin_en: str, dest_en: str) -> int:
+    """
+    محاسبه مدت زمان واقعی و تاکتیکی ترانزیت دریایی بر حسب دقیقه.
+    بر پایه طول واقعی راهگذر ناوبری دریایی:
+    - حداقل ۶۰ دقیقه
+    - سقف ۳۶۰ دقیقه
+    """
+    from ..constants import (
+        SEA_TRANSIT_MAX_MINUTES,
+        SEA_TRANSIT_MIN_MINUTES,
+        SEA_TRANSIT_SPEED_KM_PER_MIN,
+    )
+    waypoints = get_maritime_waypoints(origin_en, dest_en)
+    total_km = calculate_path_length_km(waypoints)
+    raw_minutes = total_km / SEA_TRANSIT_SPEED_KM_PER_MIN
+    return max(SEA_TRANSIT_MIN_MINUTES, min(SEA_TRANSIT_MAX_MINUTES, int(round(raw_minutes))))
+
+
+def get_strait_transit_progress(waypoints: list[list[float]], strait_id: str) -> dict | None:
+    """
+    محاسبه نقاط کلیدی و درصدهای پیشرفت در طول مسیر برای یک تنگه خاص:
+    - approach_ratio: درصد ورود به دهانه ایست‌بازرسی (۱۵۰ کیلومتر مانده به تنگه)
+    - center_ratio: درصد مرکز گلویی تنگه
+    - exit_ratio: درصد خروج امن از برد آتش تنگه (۱۵۰ کیلومتر بعد از تنگه)
+    - approach_coords: مختصات لنگراندازی دهانه ورودی
+    - exit_coords: مختصات نقطه خروج امن
+    """
+    s_coords = get_strait_coords(strait_id)
+    if not s_coords or not waypoints or len(waypoints) < 2:
+        return None
+
+    total_len = calculate_path_length_km(waypoints)
+    if total_len <= 0.0:
+        return None
+
+    # یافتن نزدیک‌ترین نقطه مسیر به مختصات تنگه
+    best_idx = 0
+    min_dist_to_strait = float("inf")
+    cum_dists = [0.0]
+
+    for i in range(len(waypoints)):
+        d_to_strait = coords_distance_km(waypoints[i], s_coords)
+        if d_to_strait < min_dist_to_strait:
+            min_dist_to_strait = d_to_strait
+            best_idx = i
+        if i > 0:
+            cum_dists.append(cum_dists[-1] + coords_distance_km(waypoints[i - 1], waypoints[i]))
+
+    # اگر مسیر اصلاً از نزدیکی این تنگه عبور نمی‌کند (بیش از ۴۵۰ کیلومتر فاصله دارد)
+    if min_dist_to_strait > 450.0:
+        return None
+
+    center_dist = cum_dists[best_idx]
+    standoff_buffer_km = 150.0
+
+    approach_dist = max(0.0, center_dist - standoff_buffer_km)
+    exit_dist = min(total_len, center_dist + standoff_buffer_km)
+
+    approach_ratio = approach_dist / total_len
+    center_ratio = center_dist / total_len
+    exit_ratio = exit_dist / total_len
+
+    approach_coords = interpolate_path_at_ratio(waypoints, approach_ratio)
+    exit_coords = interpolate_path_at_ratio(waypoints, exit_ratio)
+
+    return {
+        "strait_id": strait_id,
+        "total_km": round(total_len, 1),
+        "strait_center_km": round(center_dist, 1),
+        "approach_ratio": round(approach_ratio, 4),
+        "center_ratio": round(center_ratio, 4),
+        "exit_ratio": round(exit_ratio, 4),
+        "approach_coords": approach_coords,
+        "exit_coords": exit_coords,
+    }
+
+
+

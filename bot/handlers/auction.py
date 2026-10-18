@@ -41,6 +41,7 @@ from ..keyboards.economy import (
     auction_resources_kb,
 )
 from ..loader import bot
+from ..services import geo_service as geo
 from ..services.ai import evaluators
 from ..services.news_service import publish_news, send_log
 from ..states import AuctionBidForm, AuctionCreateForm
@@ -178,15 +179,23 @@ async def finalize_auction(session: AsyncSession, auction: Auction) -> None:
     if seller:
         seller.budget = (seller.budget or 0.0) + final_price
 
-    # تخمین زمان حمل و نقل توسط هوش مصنوعی
-    eta_data = await evaluators.estimate_shipping_time(
-        seller.name_fa if seller else "?",
-        winner.name_fa if winner else "?",
-        r_name,
-        auction.amount,
-    )
-    minutes = int(eta_data.get("shipping_minutes", 30) or 30)
-    minutes = max(5, min(minutes, 120))
+    # تخمین زمان ترانزیت
+    if seller and winner and geo.can_use_sea_transport(seller.name_en, winner.name_en):
+        minutes = geo.calculate_maritime_transit_minutes(seller.name_en, winner.name_en)
+        strait_ids = geo.get_route_straits(seller.name_en, winner.name_en)
+        transport_mode = "SEA"
+    else:
+        eta_data = await evaluators.estimate_shipping_time(
+            seller.name_fa if seller else "?",
+            winner.name_fa if winner else "?",
+            r_name,
+            auction.amount,
+        )
+        minutes = int(eta_data.get("shipping_minutes", 45) or 45)
+        minutes = max(30, min(minutes, 180))
+        strait_ids = []
+        transport_mode = "LAND"
+
     ship_eta = now + timedelta(minutes=minutes)
 
     # ایجاد رکورد رسمی فروش و محموله WTO
@@ -197,6 +206,10 @@ async def finalize_auction(session: AsyncSession, auction: Auction) -> None:
         amount=auction.amount,
         price=final_price,
         status=TradeStatus.IN_TRANSIT,
+        transport_mode=transport_mode,
+        strait_status="APPROACHING" if strait_ids else "NONE",
+        standoff_action="SAILING",
+        warning_count=0,
         ship_eta=ship_eta,
     )
     session.add(sale)

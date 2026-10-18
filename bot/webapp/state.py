@@ -235,9 +235,41 @@ async def get_radar_state(
 
         mode = (sale.transport_mode or TransportMode.SEA.value).upper()
         if mode == TransportMode.SEA.value:
-            waypoints = geo.get_maritime_waypoints(seller.name_en, buyer.name_en)
+            base_waypoints = geo.get_maritime_waypoints(seller.name_en, buyer.name_en)
         else:
-            waypoints = geo.get_air_waypoints(seller.name_en, buyer.name_en)
+            base_waypoints = geo.get_air_waypoints(seller.name_en, buyer.name_en)
+
+        standoff_action = getattr(sale, "standoff_action", "SAILING") or "SAILING"
+        warning_count = getattr(sale, "warning_count", 0) or 0
+        strait_status = getattr(sale, "strait_status", "NONE") or "NONE"
+        held_strait_id = sale.held_at_strait_id
+
+        anchorage_coords = None
+        if held_strait_id:
+            p_info = geo.get_strait_transit_progress(base_waypoints, held_strait_id)
+            if p_info:
+                anchorage_coords = p_info["approach_coords"]
+            else:
+                anchorage_coords = geo.get_strait_coords(held_strait_id)
+
+        if standoff_action == "RETURNING":
+            waypoints = list(reversed(base_waypoints))
+            to_country_dict = {
+                "id": seller.id,
+                "name_en": seller.name_en,
+                "name_fa": seller.name_fa,
+                "flag": seller.flag,
+                "coords": base_waypoints[0],
+            }
+        else:
+            waypoints = base_waypoints
+            to_country_dict = {
+                "id": buyer.id,
+                "name_en": buyer.name_en,
+                "name_fa": buyer.name_fa,
+                "flag": buyer.flag,
+                "coords": waypoints[-1],
+            }
 
         # قانون محرمانگی بارنامه:
         is_owner_or_admin = (
@@ -271,7 +303,11 @@ async def get_radar_state(
             "sale_type": "resource",
             "transport_mode": mode,
             "status": sale.status,
-            "held_at_strait_id": sale.held_at_strait_id,
+            "strait_status": strait_status,
+            "standoff_action": standoff_action,
+            "warning_count": warning_count,
+            "held_at_strait_id": held_strait_id,
+            "anchorage_coords": anchorage_coords,
             "content": cargo_desc,
             "is_confidential": is_confidential,
             "has_escort": bool(sale.escort_power and sale.escort_power > 0),
@@ -284,13 +320,7 @@ async def get_radar_state(
                 "flag": seller.flag,
                 "coords": waypoints[0],
             },
-            "to_country": {
-                "id": buyer.id,
-                "name_en": buyer.name_en,
-                "name_fa": buyer.name_fa,
-                "flag": buyer.flag,
-                "coords": waypoints[-1],
-            },
+            "to_country": to_country_dict,
             "waypoints": waypoints,
             "started_at": started.isoformat() if started else None,
             "eta": eta.isoformat() if eta else None,

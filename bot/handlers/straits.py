@@ -28,6 +28,8 @@ from ..keyboards.straits import (
     strait_detail_kb,
     strait_intercept_alert_kb,
     strait_intercept_attack_kb,
+    strait_standoff_ctrl_kb,
+    strait_standoff_owner_kb,
     straits_menu_kb,
 )
 from ..loader import bot
@@ -498,6 +500,173 @@ async def cb_strait_act_allow(
         call,
         call.message.html_text + f"\n\n✅ <b>دستور شما:</b> صدور اجازه عبور از {res['strait_name_fa']}.",
     )
+
+
+@router.callback_query(F.data.startswith("strait_act:warn:"))
+async def cb_strait_act_warn(
+    call: CallbackQuery, session: AsyncSession, db_user: User
+) -> None:
+    """صدور اخطار رسمی به کشتی تجاری در تنگه (۱ تا ۳ اخطار)."""
+    parts = call.data.split(":")
+    sale_id = int(parts[2])
+    strait_id = parts[3]
+
+    country = await get_player_country(session, db_user)
+    if not country:
+        await call.answer(NO_COUNTRY_TEXT, show_alert=True)
+        return
+
+    try:
+        res = await strait_service.issue_strait_warning(bot, session, sale_id, strait_id, country)
+    except strait_service.StraitError as exc:
+        await call.answer(str(exc), show_alert=True)
+        return
+
+    w_count = res["warning_count"]
+    await call.answer(f"اخطار شماره {fa_number(w_count)} با موفقیت به کشتی ابلاغ شد ⚠️", show_alert=False)
+
+    await safe_edit(
+        call,
+        call.message.html_text + f"\n\n⚠️ <b>اخطار {fa_number(w_count)} صادر شد:</b> به کاپیتان کشتی هشدار داده شد.",
+        reply_markup=strait_standoff_ctrl_kb(sale_id, strait_id, warning_count=w_count, is_running=False),
+    )
+
+
+@router.callback_query(F.data.startswith("strait_act:warn_max:"))
+async def cb_strait_act_warn_max(call: CallbackQuery) -> None:
+    """اخطار به کنترل‌کننده که سقف ۳ اخطار پر شده است."""
+    await call.answer(
+        "حداکثر ۳ اخطار رسمی به این شناور ابلاغ شده است. اکنون در صورت تمرد یا عدم عقب‌نشینی می‌توانید دستور شلیک صادر کنید.",
+        show_alert=True,
+    )
+
+
+@router.callback_query(F.data.startswith("strait_act:fire_locked:"))
+async def cb_strait_act_fire_locked(call: CallbackQuery) -> None:
+    """اطلاع‌رسانی لزوم صدور حداقل یک اخطار پیش از شلیک."""
+    await call.answer(
+        "طبق قوانین بین‌المللی دریانوردی، شلیک مستقیم به شناور تجاری پیش از صدور حداقل یک اخطار رادیویی مجاز نیست!",
+        show_alert=True,
+    )
+
+
+@router.callback_query(F.data.startswith("strait_act:fire:"))
+async def cb_strait_act_fire(
+    call: CallbackQuery, session: AsyncSession, db_user: User
+) -> None:
+    """دستور شلیک موشکی و انهدام کشتی متخلف در تنگه."""
+    parts = call.data.split(":")
+    sale_id = int(parts[2])
+    strait_id = parts[3]
+
+    country = await get_player_country(session, db_user)
+    if not country:
+        await call.answer(NO_COUNTRY_TEXT, show_alert=True)
+        return
+
+    try:
+        res = await strait_service.fire_at_shipment(bot, session, sale_id, strait_id, country)
+    except strait_service.StraitError as exc:
+        await call.answer(str(exc), show_alert=True)
+        return
+
+    await call.answer("فرمان آتش صادر شد! شناور هدف قرار گرفت و غرق شد 💥", show_alert=True)
+    await safe_edit(
+        call,
+        call.message.html_text + f"\n\n💥 <b>فرمان آتش:</b> شناور متخلف با موشک‌های ساحلی در {res['strait_name_fa']} منهدم و به قعر دریا فرستاده شد.",
+    )
+
+
+# ============================================================
+#  تصمیمات مالک محموله در مواجهه با تنگه مسدود
+# ============================================================
+
+@router.callback_query(F.data.startswith("strait_owner:hold:"))
+async def cb_strait_owner_hold(
+    call: CallbackQuery, session: AsyncSession, db_user: User
+) -> None:
+    """دستور لنگراندازی و توقف کشتی در دهانه تنگه توسط مالک بار."""
+    parts = call.data.split(":")
+    sale_id = int(parts[2])
+    strait_id = parts[3]
+
+    country = await get_player_country(session, db_user)
+    if not country:
+        await call.answer(NO_COUNTRY_TEXT, show_alert=True)
+        return
+
+    try:
+        res = await strait_service.owner_hold_at_strait(bot, session, sale_id, country)
+    except strait_service.StraitError as exc:
+        await call.answer(str(exc), show_alert=True)
+        return
+
+    await call.answer("دستور توقف و لنگراندازی در مدخل تنگه صادر شد ⚓", show_alert=True)
+    await safe_edit(
+        call,
+        call.message.html_text + f"\n\n⚓ <b>دستور شما:</b> توقف و لنگراندازی در دهانه {res['strait_name_fa']} تا تعیین تکلیف دیپلماتیک.",
+        reply_markup=strait_standoff_owner_kb(sale_id, strait_id, current_action="HOLD"),
+    )
+
+
+@router.callback_query(F.data.startswith("strait_owner:retreat:"))
+async def cb_strait_owner_retreat(
+    call: CallbackQuery, session: AsyncSession, db_user: User
+) -> None:
+    """دستور عقب‌نشینی و بازگرداندن محموله به کشور مبدأ توسط مالک بار."""
+    parts = call.data.split(":")
+    sale_id = int(parts[2])
+    strait_id = parts[3]
+
+    country = await get_player_country(session, db_user)
+    if not country:
+        await call.answer(NO_COUNTRY_TEXT, show_alert=True)
+        return
+
+    try:
+        res = await strait_service.owner_retreat_from_strait(bot, session, sale_id, country)
+    except strait_service.StraitError as exc:
+        await call.answer(str(exc), show_alert=True)
+        return
+
+    await call.answer("کشتی دور زد و در حال بازگشت به مبدأ است 🔄", show_alert=True)
+    await safe_edit(
+        call,
+        call.message.html_text + f"\n\n🔄 <b>دستور شما:</b> عقب‌نشینی از {res['strait_name_fa']} و بازگشت ایمن به کشور مبدأ.",
+    )
+
+
+@router.callback_query(F.data.startswith("strait_owner:run:"))
+async def cb_strait_owner_run(
+    call: CallbackQuery, session: AsyncSession, db_user: User
+) -> None:
+    """دستور تلاش برای عبور با پذیرش ریسک شلیک توسط مالک بار."""
+    parts = call.data.split(":")
+    sale_id = int(parts[2])
+    strait_id = parts[3]
+
+    country = await get_player_country(session, db_user)
+    if not country:
+        await call.answer(NO_COUNTRY_TEXT, show_alert=True)
+        return
+
+    try:
+        res = await strait_service.owner_run_blockade(bot, session, sale_id, country)
+    except strait_service.StraitError as exc:
+        await call.answer(str(exc), show_alert=True)
+        return
+
+    await call.answer("کشتی با تمام قوا به سمت تنگه پیشروی می‌کند 🚢⚠️", show_alert=True)
+    await safe_edit(
+        call,
+        call.message.html_text + f"\n\n🚢 <b>دستور شما:</b> ورود به {res['strait_name_fa']} و شکستن محاصره با پذیرش خطر آتش ساحلی.",
+    )
+
+
+@router.callback_query(F.data.startswith("strait_owner:info_hold:"))
+async def cb_strait_owner_info_hold(call: CallbackQuery) -> None:
+    """توضیح وضعیت لنگراندازی."""
+    await call.answer("شناور شما هم‌اکنون در آب‌های بین‌المللی دهانه تنگه لنگر انداخته است.", show_alert=True)
 
 
 @router.callback_query(F.data.startswith("strait_act:attack_menu:"))

@@ -725,7 +725,12 @@
             endsAt: s.eta ? new Date(s.eta).getTime() : 0,
             type: isSea ? 'sea' : 'air',
             status: s.status,
-            heldAtStraitId: s.held_at_strait_id
+            straitStatus: s.strait_status,
+            standoffAction: s.standoff_action,
+            warningCount: s.warning_count,
+            heldAtStraitId: s.held_at_strait_id,
+            anchorageCoords: s.anchorage_coords,
+            raw: s
           });
         });
       }
@@ -739,14 +744,30 @@
       const now = Date.now() + serverTimeDelta;
 
       activeMovingEntities.forEach(ent => {
-        if (ent.status === 'HELD_AT_STRAIT' && ent.heldAtStraitId && radarData?.straits) {
-          const st = radarData.straits.find(x => x.id === ent.heldAtStraitId);
-          if (st && st.coords) {
-            ent.marker.setLatLng(st.coords);
+        // ۱. اگر کشتی در دهانه تنگه لنگرانداخته یا در وضعیت رویارویی است
+        const isStandoff = (ent.status === 'HELD_AT_STRAIT' || ent.standoffAction === 'HOLD' || ent.standoffAction === 'STANDOFF');
+        if (isStandoff && (ent.anchorageCoords || ent.heldAtStraitId)) {
+          if (ent.anchorageCoords && ent.anchorageCoords.length === 2) {
+            ent.marker.setLatLng(ent.anchorageCoords);
             return;
           }
+          if (radarData?.straits) {
+            const st = radarData.straits.find(x => x.id === ent.heldAtStraitId);
+            if (st && st.coords) {
+              ent.marker.setLatLng(st.coords);
+              return;
+            }
+          }
         }
-        if (!ent.startedAt || !ent.endsAt || ent.endsAt <= ent.startedAt) return;
+
+        // ۲. اگر زمان پایان نرسیده یا نامعتبر است
+        if (!ent.startedAt || !ent.endsAt || ent.endsAt <= ent.startedAt) {
+          if (ent.waypoints && ent.waypoints.length > 0) {
+            ent.marker.setLatLng(ent.waypoints[0]);
+          }
+          return;
+        }
+
         const total = ent.endsAt - ent.startedAt;
         const elapsed = now - ent.startedAt;
         const ratio = Math.max(0, Math.min(1, elapsed / total));
@@ -806,6 +827,49 @@
 
       const carrierLabel = (s.transport_mode === 'SEA') ? '🚢 کشتی باری / نفتکش' : '✈️ ترابری هوایی WTO';
 
+      let timeRow = '';
+      if (s.standoff_action === 'HOLD' || s.status === 'HELD_AT_STRAIT') {
+        const straitDef = radarData?.straits?.find(x => x.id === s.held_at_strait_id);
+        const straitName = straitDef ? straitDef.name_fa : (s.held_at_strait_id || 'تنگه');
+        timeRow = `
+          <div class="info-row">
+            <span class="info-label">وضعیت حرکت:</span>
+            <span class="info-value" style="color: #f59e0b;">⚓ لنگرانداخته در مدخل ${straitName}</span>
+          </div>
+        `;
+      } else if (s.standoff_action === 'RETURNING') {
+        timeRow = `
+          <div class="info-row">
+            <span class="info-label">وضعیت حرکت:</span>
+            <span class="info-value" style="color: #38bdf8;">🔄 در حال بازگشت به مبدأ (⏳ ${formatTimeRemaining(remain)})</span>
+          </div>
+        `;
+      } else {
+        timeRow = `
+          <div class="info-row">
+            <span class="info-label">زمان تا رسیدن به مقصد:</span>
+            <span class="info-value" style="color: #38bdf8;">⏳ ${formatTimeRemaining(remain)}</span>
+          </div>
+        `;
+      }
+
+      let standoffBadge = '';
+      if (s.status === 'HELD_AT_STRAIT' || s.standoff_action === 'STANDOFF' || s.standoff_action === 'HOLD') {
+        standoffBadge = `
+          <div class="info-row" style="background: rgba(239,68,68,0.12); border-radius: 8px; padding: 6px 10px;">
+            <span class="info-label" style="color: #ef4444;">ایست‌بازرسی تنگه:</span>
+            <span class="info-value" style="color: #ef4444;">🚨 متوقف در انتظار دستور (اخطارها: ${s.warning_count || 0} از ۳)</span>
+          </div>
+        `;
+      } else if (s.standoff_action === 'RUNNING') {
+        standoffBadge = `
+          <div class="info-row" style="background: rgba(245,158,11,0.12); border-radius: 8px; padding: 6px 10px;">
+            <span class="info-label" style="color: #f59e0b;">وضعیت تاکتیکی:</span>
+            <span class="info-value" style="color: #f59e0b;">⚠️ شکستن محاصره و تلاش برای عبور</span>
+          </div>
+        `;
+      }
+
       const html = `
         <div class="info-row">
           <span class="info-label">مسیر ترانزیت:</span>
@@ -823,16 +887,8 @@
           <span class="info-label">وضعیت اسکورت:</span>
           <span class="info-value">${s.escort_label}</span>
         </div>
-        <div class="info-row">
-          <span class="info-label">زمان تا رسیدن به مقصد:</span>
-          <span class="info-value" style="color: #38bdf8;">⏳ ${formatTimeRemaining(remain)}</span>
-        </div>
-        ${s.status === 'HELD_AT_STRAIT' ? `
-          <div class="info-row" style="background: rgba(239,68,68,0.1); border-radius: 8px; padding: 6px 8px;">
-            <span class="info-label" style="color: #ef4444;">وضعیت ویژه:</span>
-            <span class="info-value" style="color: #ef4444;">🚨 متوقف در تنگه استراتژیک</span>
-          </div>
-        ` : ''}
+        ${timeRow}
+        ${standoffBadge}
         ${interceptBtn}
       `;
 

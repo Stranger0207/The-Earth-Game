@@ -26,7 +26,7 @@ def _cors_headers() -> dict[str, str]:
     return {
         "Access-Control-Allow-Origin": "*",
         "Access-Control-Allow-Methods": "GET, OPTIONS",
-        "Access-Control-Allow-Headers": "Content-Type, X-Telegram-Init-Data, Authorization",
+        "Access-Control-Allow-Headers": "Content-Type, X-Telegram-Init-Data, Authorization, ngrok-skip-browser-warning",
     }
 
 

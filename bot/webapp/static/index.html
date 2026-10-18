@@ -586,7 +586,10 @@
     async function fetchRadarState(manual = false) {
       try {
         const initData = window.Telegram?.WebApp?.initData || "";
-        const headers = { "Content-Type": "application/json" };
+        const headers = {
+          "Content-Type": "application/json",
+          "ngrok-skip-browser-warning": "true"
+        };
         if (initData) {
           headers["X-Telegram-Init-Data"] = initData;
         }

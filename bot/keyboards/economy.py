@@ -29,6 +29,10 @@ MINEABLE_RESOURCES: list[ResourceType] = [
 
 def economy_menu_kb(is_usa: bool = False, has_straits: bool = False) -> InlineKeyboardMarkup:
     """منوی اصلی اقتصاد. برای آمریکا دکمه‌ی تعرفه‌ی بین‌المللی و برای کشورهای دارای تنگه دکمه‌ی عوارض تنگه اضافه می‌شود."""
+    from aiogram.types import WebAppInfo
+    from ..config import get_settings
+
+    settings = get_settings()
     builder = InlineKeyboardBuilder()
     builder.button(text="📊 گزارش اقتصادی", callback_data="econ:report", style=STYLE_MAIN)
     builder.button(text="📦 ذخایر", callback_data="econ:reserves", style=STYLE_MAIN)
@@ -44,8 +48,28 @@ def economy_menu_kb(is_usa: bool = False, has_straits: bool = False) -> InlineKe
         builder.button(text="🌊 مدیریت و عوارض تنگه", callback_data="menu:straits", style=STYLE_OK)
     if is_usa:
         builder.button(text="🇺🇸 تعرفه بین‌المللی", callback_data="econ:tariffs", style=STYLE_NO)
+
+    if settings.webapp_base_url:
+        builder.button(
+            text="🌍 رادار زنده جهان (نقشه)",
+            web_app=WebAppInfo(url=settings.webapp_base_url),
+        )
+    else:
+        builder.button(
+            text="🌍 رادار زنده جهان (نقشه)",
+            callback_data="menu:radar_info",
+            style=STYLE_OK,
+        )
+
     builder.button(text="🔙 بازگشت", callback_data="menu:main", style=STYLE_MAIN)
-    builder.adjust(2, 2, 2, 2, 2, 1 if (has_straits or is_usa) else 1, 1)
+    rows = [2, 2, 2, 2, 2]
+    if has_straits:
+        rows.append(1)
+    if is_usa:
+        rows.append(1)
+    rows.append(1)
+    rows.append(1)
+    builder.adjust(*rows)
     return builder.as_markup()
 
 

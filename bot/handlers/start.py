@@ -86,6 +86,19 @@ async def cmd_start(
             await show_auction_details(message, session, db_user, auc_id)
             return
 
+    # deep-link رهگیری محموله از مینی‌اپ رادار زنده: /start intc_<sale_id>
+    if command.args and (command.args.startswith("intc_") or command.args.startswith("intercept_")):
+        try:
+            sale_id = int(command.args.split("_", 1)[1])
+        except (ValueError, IndexError):
+            sale_id = None
+        if sale_id is not None:
+            from .interception import start_interception_for_sale
+
+            handled = await start_interception_for_sale(message, state, session, db_user, sale_id)
+            if handled:
+                return
+
     country = await get_player_country(session, db_user)
     if country is not None:
         await show_menu(

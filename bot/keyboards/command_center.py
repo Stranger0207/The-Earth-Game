@@ -15,6 +15,10 @@ from ..utils.ui import STYLE_MAIN, STYLE_NO, STYLE_OK
 
 def command_center_kb(is_vip: bool = False, has_straits: bool = False) -> InlineKeyboardMarkup:
     """منوی اصلی ستاد فرماندهی کل."""
+    from aiogram.types import WebAppInfo
+    from ..config import get_settings
+
+    settings = get_settings()
     builder = InlineKeyboardBuilder()
     builder.button(text="📊 وضعیت ارتش", callback_data="cc:status", style=STYLE_MAIN)
     builder.button(text="📡 ماهواره فضایی", callback_data="mil:sat", style=STYLE_MAIN)
@@ -26,11 +30,24 @@ def command_center_kb(is_vip: bool = False, has_straits: bool = False) -> Inline
     builder.button(text="🎖 فرماندهان", callback_data="cc:commanders", style=STYLE_MAIN)
     builder.button(text="🛡 پروژه‌های امنیتی (رول)", callback_data="mil:security_roles", style=STYLE_MAIN)
     builder.button(text="⚔️ عملیات و رول نظامی", callback_data="mil:ops_roles", style=STYLE_MAIN)
+
+    if settings.webapp_base_url:
+        builder.button(
+            text="🌍 رادار زنده جهان (نقشه)",
+            web_app=WebAppInfo(url=settings.webapp_base_url),
+        )
+    else:
+        builder.button(
+            text="🌍 رادار زنده جهان (نقشه)",
+            callback_data="menu:radar_info",
+            style=STYLE_OK,
+        )
+
     builder.button(text="🔙 بازگشت", callback_data="menu:main", style=STYLE_MAIN)
     if has_straits:
-        builder.adjust(2, 2, 2, 2, 1, 1)
+        builder.adjust(2, 2, 2, 2, 1, 1, 1)
     else:
-        builder.adjust(2, 2, 2, 2, 1)
+        builder.adjust(2, 2, 2, 2, 1, 1)
     return builder.as_markup()
 
 

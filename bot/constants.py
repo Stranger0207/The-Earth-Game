@@ -676,6 +676,7 @@ LOCKABLE_FEATURES: dict[str, tuple[str, str]] = {
     "military_roles": ("⚔️ رول‌های نظامی", FEATURE_CAT_MILITARY),
     "military.security_role": ("🛡 پروژه‌های امنیتی", FEATURE_CAT_MILITARY),
     "military.ops_role": ("⚔️ رول‌های نظامی", FEATURE_CAT_MILITARY),
+    "live_radar_map": ("🌍 رادار زنده جهان (نقشه)", FEATURE_CAT_MILITARY),
     # 💰 اقتصاد
     "econ.facility": ("🏗 احداث تأسیسات", FEATURE_CAT_ECONOMY),
     "econ.joint": ("🤝 تأسیسات مشترک", FEATURE_CAT_ECONOMY),

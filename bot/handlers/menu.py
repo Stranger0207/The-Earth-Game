@@ -16,7 +16,7 @@ from ..services import geo_service as geo
 from ..utils.formatting import render_economy_panel
 from ..utils.screens import safe_edit, show_menu
 from ..utils.ui import header
-from .deps import NO_COUNTRY_TEXT, get_player_country
+from .deps import NO_COUNTRY_TEXT, assert_feature, get_player_country
 
 router = Router(name="menu")
 
@@ -71,9 +71,31 @@ async def cb_status(
     await show_menu(call, render_economy_panel(country), main_menu_kb(), image_key="status")
 
 
+@router.callback_query(F.data == "menu:radar_info")
+async def cb_radar_info(
+    call: CallbackQuery, session: AsyncSession, db_user: User
+) -> None:
+    """نمایش راهنمای رادار زنده در صورت عدم تنظیم آدرس مینی‌اپ."""
+    country = await get_player_country(session, db_user)
+    if not await assert_feature(call, session, country, "live_radar_map"):
+        return
+
+    text = (
+        "🛰 <b>سامانه رادار زنده استراتژیک جهان (Live Strategic Radar)</b>\n\n"
+        "این سامانه یک مینی‌اپ تلگرامی با نقشه تعاملی و نظامی است که موقعیت و حرکت لحظه‌ای "
+        "پروازهای دیپلماتیک، کشتی‌های تجاری/سوخت، هواپیماهای ترابری WTO و وضعیت ۱۴ تنگه استراتژیک جهان را نمایش می‌دهد.\n\n"
+        "⚙️ <b>وضعیت اتصال:</b>\n"
+        "آدرس وب‌اپلیکیشن (<code>WEBAPP_BASE_URL</code>) در تنظیمات سرور ثبت نشده است. "
+        "با راه‌اندازی Ngrok یا ثبت آدرس معتبر HTTPS در فایل <code>.env</code>، این کلید مستقیماً نقشه زنده را باز خواهد کرد."
+    )
+    await call.answer()
+    await safe_edit(call, text, reply_markup=main_menu_kb())
+
+
 @router.callback_query(F.data == "cancel")
 async def cb_cancel(call: CallbackQuery, state: FSMContext) -> None:
     """لغو فرایند جاری و بازگشت به پنل."""
     await state.clear()
     await call.answer("لغو شد")
     await show_menu(call, PANEL_TITLE, main_menu_kb(), image_key="main")
+

@@ -67,6 +67,10 @@ class Settings(BaseSettings):
     role_security_group_id: int = -1004317826815  # گروه ۶: بررسی رول امنیتی
     payment_group_id: int = -1004337037351        # گروه ۷: پرداختی‌ها (فیش‌های واریزی)
 
+    # --- مینی‌اپ رادار زنده جهان (Live Strategic Radar) ---
+    webapp_port: int = 8080
+    webapp_base_url: str = ""                     # آدرس عمومی مینی‌اپ (مثلاً https://...ngrok-free.app)
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

@@ -1,0 +1,930 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>رادار زنده استراتژیک جهان • The Earth Game</title>
+
+  <!-- Telegram WebApp SDK -->
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+
+  <!-- Leaflet CSS & JS -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+
+  <!-- فونت وزیر متن -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;700;800;900&display=swap" rel="stylesheet">
+
+  <style>
+    :root {
+      --bg-dark: #080c14;
+      --panel-bg: rgba(12, 19, 32, 0.88);
+      --panel-border: rgba(30, 48, 77, 0.7);
+      --accent-cyan: #06b6d4;
+      --accent-gold: #f59e0b;
+      --accent-green: #10b981;
+      --accent-red: #ef4444;
+      --accent-purple: #a855f7;
+      --text-main: #f1f5f9;
+      --text-muted: #94a3b8;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: 'Vazirmatn', -apple-system, BlinkMacSystemFont, sans-serif;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      background: var(--bg-dark);
+      color: var(--text-main);
+      overflow: hidden;
+    }
+
+    #map {
+      width: 100%;
+      height: 100%;
+      background: #06090e;
+    }
+
+    /* هدر شیشه‌ای تاکتیکال */
+    .hud-header {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      right: 10px;
+      z-index: 1000;
+      background: var(--panel-bg);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid var(--panel-border);
+      border-radius: 14px;
+      padding: 10px 14px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.55);
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .hud-top-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .hud-title {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 14px;
+      font-weight: 800;
+      letter-spacing: -0.2px;
+      color: #fff;
+    }
+
+    .hud-title .live-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      background: rgba(16, 185, 129, 0.15);
+      border: 1px solid rgba(16, 185, 129, 0.4);
+      color: var(--accent-green);
+      font-size: 10px;
+      font-weight: 700;
+      padding: 2px 8px;
+      border-radius: 20px;
+    }
+
+    .live-dot {
+      width: 6px;
+      height: 6px;
+      background: var(--accent-green);
+      border-radius: 50%;
+      animation: blink 1.2s infinite ease-in-out;
+    }
+
+    @keyframes blink {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.3; transform: scale(0.8); }
+    }
+
+    .hud-stats {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    .stat-pill {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      background: rgba(255, 255, 255, 0.04);
+      padding: 3px 8px;
+      border-radius: 8px;
+    }
+
+    .stat-pill b {
+      color: #fff;
+    }
+
+    /* فیلتر لایه‌ها */
+    .layer-filters {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      overflow-x: auto;
+      padding-bottom: 2px;
+      scrollbar-width: none;
+    }
+    .layer-filters::-webkit-scrollbar { display: none; }
+
+    .filter-btn {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      color: var(--text-muted);
+      font-size: 11px;
+      font-weight: 600;
+      padding: 4px 10px;
+      border-radius: 8px;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: all 0.2s ease;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .filter-btn.active {
+      background: rgba(6, 182, 212, 0.18);
+      border-color: var(--accent-cyan);
+      color: #fff;
+      box-shadow: 0 0 10px rgba(6, 182, 212, 0.25);
+    }
+
+    /* دکمه ریفرش گوشه پایین */
+    .refresh-btn {
+      position: absolute;
+      top: 120px;
+      left: 14px;
+      z-index: 1000;
+      width: 38px;
+      height: 38px;
+      border-radius: 10px;
+      background: var(--panel-bg);
+      border: 1px solid var(--panel-border);
+      color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+      font-size: 16px;
+    }
+
+    /* پنل اطلاعات (Bottom Sheet) */
+    .bottom-sheet {
+      position: absolute;
+      bottom: -450px;
+      left: 0;
+      right: 0;
+      z-index: 1050;
+      background: var(--panel-bg);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border-top: 1px solid var(--panel-border);
+      border-radius: 20px 20px 0 0;
+      padding: 16px 20px;
+      box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.65);
+      transition: bottom 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+      max-height: 80vh;
+      overflow-y: auto;
+    }
+
+    .bottom-sheet.open {
+      bottom: 0;
+    }
+
+    .sheet-handle {
+      width: 40px;
+      height: 4px;
+      background: rgba(255, 255, 255, 0.25);
+      border-radius: 4px;
+      margin: 0 auto 12px auto;
+      cursor: pointer;
+    }
+
+    .sheet-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+
+    .sheet-title {
+      font-size: 15px;
+      font-weight: 800;
+      color: #fff;
+    }
+
+    .sheet-close {
+      background: rgba(255, 255, 255, 0.08);
+      border: none;
+      color: var(--text-muted);
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+    }
+
+    .sheet-body {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      font-size: 13px;
+    }
+
+    .info-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 6px 0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    }
+
+    .info-label {
+      color: var(--text-muted);
+    }
+
+    .info-value {
+      font-weight: 600;
+      color: #fff;
+    }
+
+    .action-btn {
+      margin-top: 8px;
+      width: 100%;
+      padding: 12px;
+      border-radius: 10px;
+      border: none;
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      transition: transform 0.1s ease;
+    }
+    .action-btn:active {
+      transform: scale(0.98);
+    }
+
+    .btn-intercept {
+      background: linear-gradient(135deg, #dc2626, #b91c1c);
+      color: #fff;
+      box-shadow: 0 4px 15px rgba(220, 38, 38, 0.4);
+    }
+
+    /* استایل آیکون‌های متحرک نقشه */
+    .vehicle-icon {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: transform 0.2s linear;
+    }
+
+    .radar-pulse-ring {
+      position: absolute;
+      width: 44px;
+      height: 44px;
+      top: -12px;
+      left: -12px;
+      border-radius: 50%;
+      border: 2px solid var(--accent-red);
+      animation: radar-pulse 1.8s infinite ease-out;
+      pointer-events: none;
+    }
+
+    @keyframes radar-pulse {
+      0% { transform: scale(0.4); opacity: 1; }
+      100% { transform: scale(1.6); opacity: 0; }
+    }
+
+    .capital-marker {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+      filter: drop-shadow(0 2px 4px rgba(0,0,0,0.8));
+      cursor: pointer;
+    }
+
+    .strait-marker {
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      color: #fff;
+      font-weight: bold;
+      border: 2px solid #fff;
+      box-shadow: 0 0 10px rgba(0,0,0,0.6);
+      cursor: pointer;
+    }
+    .strait-open { background: var(--accent-green); }
+    .strait-toll { background: var(--accent-gold); }
+    .strait-blocked { background: var(--accent-red); }
+
+    /* پاپ‌آپ‌های نقشه */
+    .leaflet-popup-content-wrapper {
+      background: var(--panel-bg);
+      backdrop-filter: blur(10px);
+      border: 1px solid var(--panel-border);
+      color: #fff;
+      border-radius: 12px;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.7);
+    }
+    .leaflet-popup-tip {
+      background: var(--panel-bg);
+    }
+    .leaflet-container {
+      font-family: 'Vazirmatn', sans-serif !important;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- هدر تاکتیکال بالای نقشه -->
+  <div class="hud-header">
+    <div class="hud-top-row">
+      <div class="hud-title">
+        <span>🛰 رادار استراتژیک جهان</span>
+        <div class="live-badge">
+          <div class="live-dot"></div>
+          <span>LIVE</span>
+        </div>
+      </div>
+      <div class="hud-stats">
+        <div class="stat-pill">✈️ <b id="stat-flights">۰</b></div>
+        <div class="stat-pill">🚢 <b id="stat-shipments">۰</b></div>
+        <div class="stat-pill">⚓ <b id="stat-straits">۱۴</b></div>
+      </div>
+    </div>
+
+    <!-- دکمه‌های فیلتر لایه‌ها -->
+    <div class="layer-filters">
+      <button class="filter-btn active" data-layer="flights" onclick="toggleLayer('flights', this)">
+        <span>✈️ پروازهای دیپلماتیک</span>
+      </button>
+      <button class="filter-btn active" data-layer="sea" onclick="toggleLayer('sea', this)">
+        <span>🚢 محموله‌های دریایی</span>
+      </button>
+      <button class="filter-btn active" data-layer="air" onclick="toggleLayer('air', this)">
+        <span>📦 ترابری هوایی</span>
+      </button>
+      <button class="filter-btn active" data-layer="straits" onclick="toggleLayer('straits', this)">
+        <span>⚓ تنگه‌ها</span>
+      </button>
+      <button class="filter-btn active" data-layer="capitals" onclick="toggleLayer('capitals', this)">
+        <span>🏛 پایتخت‌ها</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- دکمه رفرش -->
+  <div class="refresh-btn" onclick="fetchRadarState(true)" title="بروزرسانی داده‌ها">
+    🔄
+  </div>
+
+  <!-- نقشه اصلی Leaflet -->
+  <div id="map"></div>
+
+  <!-- پنل پایین (Bottom Sheet) -->
+  <div id="bottom-sheet" class="bottom-sheet">
+    <div class="sheet-handle" onclick="closeSheet()"></div>
+    <div class="sheet-header">
+      <div id="sheet-title" class="sheet-title">اطلاعات</div>
+      <button class="sheet-close" onclick="closeSheet()">✕</button>
+    </div>
+    <div id="sheet-body" class="sheet-body"></div>
+  </div>
+
+  <script>
+    // راه‌اندازی Telegram WebApp
+    const tg = window.Telegram?.WebApp;
+    if (tg) {
+      tg.ready();
+      tg.expand();
+      try {
+        tg.setHeaderColor('#0c1320');
+        tg.setBackgroundColor('#080c14');
+      } catch (e) {}
+    }
+
+    // متغیرهای نقشه و لایه‌ها
+    let map;
+    const layerGroups = {
+      flights: L.layerGroup(),
+      sea: L.layerGroup(),
+      air: L.layerGroup(),
+      straits: L.layerGroup(),
+      capitals: L.layerGroup()
+    };
+    const layerVisibility = {
+      flights: true,
+      sea: true,
+      air: true,
+      straits: true,
+      capitals: true
+    };
+
+    let radarData = null;
+    let botUsername = "";
+    let serverTimeDelta = 0; // تفاوت میلی‌ثانیه‌ای ساعت کلاینت با سرور
+
+    // ساخت آیکون‌های SVG
+    function createShipIcon(hasPulse = false) {
+      return L.divIcon({
+        className: 'vehicle-icon',
+        html: `
+          <div style="position: relative; width: 24px; height: 24px;">
+            ${hasPulse ? '<div class="radar-pulse-ring"></div>' : ''}
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" style="filter: drop-shadow(0 2px 4px rgba(0,0,0,0.8));">
+              <path d="M4 15L12 18L20 15L18 20H6L4 15Z" fill="#06b6d4" stroke="#ffffff" stroke-width="1.5"/>
+              <path d="M12 4V14M12 4L16 8M12 4L8 8" stroke="#ffffff" stroke-width="2" stroke-linecap="round"/>
+            </svg>
+          </div>
+        `,
+        iconSize: [24, 24],
+        iconAnchor: [12, 12]
+      });
+    }
+
+    function createPlaneIcon(color = "#f59e0b", hasPulse = false) {
+      return L.divIcon({
+        className: 'vehicle-icon',
+        html: `
+          <div style="position: relative; width: 26px; height: 26px;">
+            ${hasPulse ? '<div class="radar-pulse-ring"></div>' : ''}
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="${color}" stroke="#ffffff" stroke-width="1.2" style="filter: drop-shadow(0 2px 5px rgba(0,0,0,0.9));">
+              <path d="M21 16V14L13 9V3.5C13 2.67 12.33 2 11.5 2C10.67 2 10 2.67 10 3.5V9L2 14V16L10 13.5V19L8 20.5V22L11.5 21L15 22V20.5L13 19V13.5L21 16Z"/>
+            </svg>
+          </div>
+        `,
+        iconSize: [26, 26],
+        iconAnchor: [13, 13]
+      });
+    }
+
+    // مقداردهی اولیه نقشه
+    function initMap() {
+      map = L.map('map', {
+        zoomControl: false,
+        attributionControl: false
+      }).setView([28.0, 48.0], 3.5);
+
+      // تایل تیره CartoDB Dark Matter
+      L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+        maxZoom: 18,
+        subdomains: 'abcd'
+      }).addTo(map);
+
+      // افزودن لایه‌ها
+      Object.values(layerGroups).forEach(lg => lg.addTo(map));
+    }
+
+    function toggleLayer(name, btn) {
+      layerVisibility[name] = !layerVisibility[name];
+      if (layerVisibility[name]) {
+        map.addLayer(layerGroups[name]);
+        btn.classList.add('active');
+      } else {
+        map.removeLayer(layerGroups[name]);
+        btn.classList.remove('active');
+      }
+    }
+
+    // محاسبه زاویه چرخش جهت حرکت (Bearing)
+    function calculateBearing(lat1, lon1, lat2, lon2) {
+      const dLon = (lon2 - lon1) * Math.PI / 180;
+      const y = Math.sin(dLon) * Math.cos(lat2 * Math.PI / 180);
+      const x = Math.cos(lat1 * Math.PI / 180) * Math.sin(lat2 * Math.PI / 180) -
+                Math.sin(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.cos(dLon);
+      const brng = Math.atan2(y, x) * 180 / Math.PI;
+      return (brng + 360) % 360;
+    }
+
+    // محاسبه مسافت هاورساین
+    function getDistance(p1, p2) {
+      const R = 6371;
+      const dLat = (p2[0] - p1[0]) * Math.PI / 180;
+      const dLon = (p2[1] - p1[1]) * Math.PI / 180;
+      const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                Math.cos(p1[0] * Math.PI / 180) * Math.cos(p2[0] * Math.PI / 180) *
+                Math.sin(dLon/2) * Math.sin(dLon/2);
+      return 2 * R * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    }
+
+    // درونیابی موقعیت در چند نقطه مسیر (Waypoints)
+    function interpolateWaypoints(waypoints, progressRatio) {
+      if (!waypoints || waypoints.length === 0) return { point: [0, 0], bearing: 0 };
+      if (waypoints.length === 1) return { point: waypoints[0], bearing: 0 };
+      if (progressRatio <= 0) return { point: waypoints[0], bearing: calculateBearing(waypoints[0][0], waypoints[0][1], waypoints[1][0], waypoints[1][1]) };
+      if (progressRatio >= 1) {
+        const last = waypoints[waypoints.length - 1];
+        const prev = waypoints[waypoints.length - 2];
+        return { point: last, bearing: calculateBearing(prev[0], prev[1], last[0], last[1]) };
+      }
+
+      // محاسبه طول کل مسیر و هر بخش
+      let totalDist = 0;
+      const segDists = [];
+      for (let i = 0; i < waypoints.length - 1; i++) {
+        const d = getDistance(waypoints[i], waypoints[i+1]);
+        segDists.push(d);
+        totalDist += d;
+      }
+
+      const targetDist = totalDist * progressRatio;
+      let accumDist = 0;
+
+      for (let i = 0; i < segDists.length; i++) {
+        if (accumDist + segDists[i] >= targetDist) {
+          const segRatio = (targetDist - accumDist) / (segDists[i] || 1);
+          const pA = waypoints[i];
+          const pB = waypoints[i+1];
+          const lat = pA[0] + (pB[0] - pA[0]) * segRatio;
+          const lon = pA[1] + (pB[1] - pA[1]) * segRatio;
+          const bearing = calculateBearing(pA[0], pA[1], pB[0], pB[1]);
+          return { point: [lat, lon], bearing };
+        }
+        accumDist += segDists[i];
+      }
+
+      return { point: waypoints[waypoints.length - 1], bearing: 0 };
+    }
+
+    // نگهداری ارجاع به مارکرهای متحرک
+    const activeMovingEntities = [];
+
+    // بارگذاری وضعیت از سرور
+    async function fetchRadarState(manual = false) {
+      try {
+        const initData = window.Telegram?.WebApp?.initData || "";
+        const headers = { "Content-Type": "application/json" };
+        if (initData) {
+          headers["X-Telegram-Init-Data"] = initData;
+        }
+
+        const res = await fetch('/api/radar-state', { headers });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const data = await res.json();
+        radarData = data;
+        botUsername = data.bot_username || "";
+
+        if (data.server_time) {
+          serverTimeDelta = new Date(data.server_time).getTime() - Date.now();
+        }
+
+        renderRadar(data);
+        if (manual && tg) {
+          tg.HapticFeedback?.notificationOccurred('success');
+        }
+      } catch (err) {
+        console.error('Fetch radar state error:', err);
+      }
+    }
+
+    function renderRadar(data) {
+      // پاکسازی لایه‌ها
+      Object.values(layerGroups).forEach(lg => lg.clearLayers());
+      activeMovingEntities.length = 0;
+
+      // بروزرسانی آمار هدر
+      document.getElementById('stat-flights').innerText = (data.diplomatic_flights?.length || 0).toLocaleString('fa-IR');
+      document.getElementById('stat-shipments').innerText = (data.shipments?.length || 0).toLocaleString('fa-IR');
+      document.getElementById('stat-straits').innerText = (data.straits?.length || 0).toLocaleString('fa-IR');
+
+      // ۱. رسم پایتخت‌ها
+      if (data.countries) {
+        data.countries.forEach(c => {
+          if (!c.coords || (c.coords[0] === 0 && c.coords[1] === 0)) return;
+          const icon = L.divIcon({
+            className: 'capital-marker',
+            html: `<span>${c.flag}</span>`,
+            iconSize: [22, 22],
+            iconAnchor: [11, 11]
+          });
+          const m = L.marker(c.coords, { icon });
+          m.on('click', () => showCapitalInfo(c));
+          layerGroups.capitals.addLayer(m);
+        });
+      }
+
+      // ۲. رسم تنگه‌های استراتژیک
+      if (data.straits) {
+        data.straits.forEach(s => {
+          if (!s.coords || (s.coords[0] === 0 && s.coords[1] === 0)) return;
+          let cls = 'strait-open';
+          let statusText = '🟢 باز';
+          if (s.status === 'BLOCKED') { cls = 'strait-blocked'; statusText = '🔴 مسدود'; }
+          else if (s.status === 'TOLL') { cls = 'strait-toll'; statusText = '🟠 دارای عوارض'; }
+
+          const icon = L.divIcon({
+            className: `strait-marker ${cls}`,
+            html: `<span>⚓</span>`,
+            iconSize: [22, 22],
+            iconAnchor: [11, 11]
+          });
+          const m = L.marker(s.coords, { icon });
+          m.on('click', () => showStraitInfo(s, statusText));
+          layerGroups.straits.addLayer(m);
+        });
+      }
+
+      // ۳. رسم پروازهای دیپلماتیک
+      if (data.diplomatic_flights) {
+        data.diplomatic_flights.forEach(f => {
+          if (!f.waypoints || f.waypoints.length < 2) return;
+
+          // خط مسیر طلایی
+          const line = L.polyline(f.waypoints, {
+            color: '#f59e0b',
+            weight: 2.5,
+            dashArray: '6, 8',
+            opacity: 0.85
+          });
+          layerGroups.flights.addLayer(line);
+
+          // مارکر هواپیمای دیپلماتیک
+          const icon = createPlaneIcon('#f59e0b', false);
+          const marker = L.marker(f.waypoints[0], { icon });
+          marker.on('click', () => showFlightInfo(f));
+          layerGroups.flights.addLayer(marker);
+
+          activeMovingEntities.push({
+            marker: marker,
+            waypoints: f.waypoints,
+            startedAt: f.started_at ? new Date(f.started_at).getTime() : 0,
+            endsAt: f.arrives_at ? new Date(f.arrives_at).getTime() : 0,
+            type: 'flight'
+          });
+        });
+      }
+
+      // ۴. رسم محموله‌ها (دریایی و هوایی)
+      if (data.shipments) {
+        data.shipments.forEach(s => {
+          if (!s.waypoints || s.waypoints.length < 2) return;
+          const isSea = (s.transport_mode === 'SEA');
+          const targetGroup = isSea ? layerGroups.sea : layerGroups.air;
+          const lineColor = isSea ? '#06b6d4' : '#a855f7';
+
+          // خط مسیر
+          const line = L.polyline(s.waypoints, {
+            color: lineColor,
+            weight: 2.5,
+            dashArray: isSea ? '4, 6' : '6, 8',
+            opacity: 0.85
+          });
+          targetGroup.addLayer(line);
+
+          // مارکر شناور یا هواپیما
+          const icon = isSea ? createShipIcon(s.can_intercept) : createPlaneIcon('#a855f7', s.can_intercept);
+          const marker = L.marker(s.waypoints[0], { icon });
+          marker.on('click', () => showShipmentInfo(s));
+          targetGroup.addLayer(marker);
+
+          activeMovingEntities.push({
+            marker: marker,
+            waypoints: s.waypoints,
+            startedAt: s.started_at ? new Date(s.started_at).getTime() : 0,
+            endsAt: s.eta ? new Date(s.eta).getTime() : 0,
+            type: isSea ? 'sea' : 'air'
+          });
+        });
+      }
+
+      // اعمال اولیه موقعیت‌ها
+      tickMovement();
+    }
+
+    // حلقه درونیابی زنده موقعیت‌ها (Real-Time Interpolation)
+    function tickMovement() {
+      const now = Date.now() + serverTimeDelta;
+
+      activeMovingEntities.forEach(ent => {
+        if (!ent.startedAt || !ent.endsAt || ent.endsAt <= ent.startedAt) return;
+        const total = ent.endsAt - ent.startedAt;
+        const elapsed = now - ent.startedAt;
+        const ratio = Math.max(0, Math.min(1, elapsed / total));
+
+        const res = interpolateWaypoints(ent.waypoints, ratio);
+        ent.marker.setLatLng(res.point);
+
+        // چرخش آیکون به سمت زاویه حرکت
+        const iconElem = ent.marker.getElement();
+        if (iconElem) {
+          const svg = iconElem.querySelector('svg');
+          if (svg) {
+            svg.style.transform = `rotate(${res.bearing}deg)`;
+            svg.style.transformOrigin = 'center center';
+          }
+        }
+      });
+    }
+
+    // اجرای هر ۱ ثانیه برای حرکت نرم
+    setInterval(tickMovement, 1000);
+
+    // پنل پایین (Bottom Sheet)
+    function openSheet(title, html) {
+      document.getElementById('sheet-title').innerHTML = title;
+      document.getElementById('sheet-body').innerHTML = html;
+      document.getElementById('bottom-sheet').classList.add('open');
+      if (tg) tg.HapticFeedback?.impactOccurred('light');
+    }
+
+    function closeSheet() {
+      document.getElementById('bottom-sheet').classList.remove('open');
+    }
+
+    function formatTimeRemaining(ms) {
+      if (ms <= 0) return 'رسیده به مقصد';
+      const sec = Math.floor(ms / 1000) % 60;
+      const min = Math.floor(ms / (1000 * 60)) % 60;
+      const hr = Math.floor(ms / (1000 * 60 * 60));
+      if (hr > 0) return `${hr} ساعت و ${min} دقیقه`;
+      return `${min} دقیقه و ${sec} ثانیه`;
+    }
+
+    function showShipmentInfo(s) {
+      const now = Date.now() + serverTimeDelta;
+      const etaTime = s.eta ? new Date(s.eta).getTime() : 0;
+      const remain = etaTime - now;
+
+      let interceptBtn = '';
+      if (s.can_intercept) {
+        interceptBtn = `
+          <button class="action-btn btn-intercept" onclick="interceptShipment(${s.id})">
+            🎯 اقدام به رهگیری این محموله
+          </button>
+        `;
+      }
+
+      const carrierLabel = (s.transport_mode === 'SEA') ? '🚢 کشتی باری / نفتکش' : '✈️ ترابری هوایی WTO';
+
+      const html = `
+        <div class="info-row">
+          <span class="info-label">مسیر ترانزیت:</span>
+          <span class="info-value">${s.from_country.flag} ${s.from_country.name_fa} ⬅️ ${s.to_country.flag} ${s.to_country.name_fa}</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">نوع حامل:</span>
+          <span class="info-value">${carrierLabel}</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">محتویات بارنامه:</span>
+          <span class="info-value" style="color: ${s.is_confidential ? '#f59e0b' : '#10b981'};">${s.content}</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">وضعیت اسکورت:</span>
+          <span class="info-value">${s.escort_label}</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">زمان تا رسیدن به مقصد:</span>
+          <span class="info-value" style="color: #38bdf8;">⏳ ${formatTimeRemaining(remain)}</span>
+        </div>
+        ${s.status === 'HELD_AT_STRAIT' ? `
+          <div class="info-row" style="background: rgba(239,68,68,0.1); border-radius: 8px; padding: 6px 8px;">
+            <span class="info-label" style="color: #ef4444;">وضعیت ویژه:</span>
+            <span class="info-value" style="color: #ef4444;">🚨 متوقف در تنگه استراتژیک</span>
+          </div>
+        ` : ''}
+        ${interceptBtn}
+      `;
+
+      openSheet(`📦 محموله تجاری #${s.id}`, html);
+    }
+
+    function interceptShipment(saleId) {
+      if (!botUsername) {
+        alert('شناسه ربات در دسترس نیست.');
+        return;
+      }
+      const deepLink = `https://t.me/${botUsername}?start=intc_${saleId}`;
+      if (tg) {
+        tg.openTelegramLink(deepLink);
+      } else {
+        window.open(deepLink, '_blank');
+      }
+    }
+
+    function showFlightInfo(f) {
+      const now = Date.now() + serverTimeDelta;
+      const etaTime = f.arrives_at ? new Date(f.arrives_at).getTime() : 0;
+      const remain = etaTime - now;
+
+      const html = `
+        <div class="info-row">
+          <span class="info-label">عنوان سفر:</span>
+          <span class="info-value">${f.title}</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">مبدأ ⬅️ مقصد:</span>
+          <span class="info-value">${f.from_country.flag} ${f.from_country.name_fa} ⬅️ ${f.to_country.flag} ${f.to_country.name_fa}</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">پیشرفت پرواز:</span>
+          <span class="info-value" style="color: #f59e0b;">${f.progress_pct}%</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">زمان تا فرود:</span>
+          <span class="info-value" style="color: #38bdf8;">⏳ ${formatTimeRemaining(remain)}</span>
+        </div>
+      `;
+
+      openSheet(`✈️ پرواز دیپلماتیک`, html);
+    }
+
+    function showStraitInfo(s, statusText) {
+      const tollText = s.default_toll > 0 ? `${s.default_toll.toLocaleString('fa-IR')} دلار` : 'عبور رایگان';
+      const html = `
+        <div class="info-row">
+          <span class="info-label">نام تنگه:</span>
+          <span class="info-value">${s.name_fa} (${s.name_en})</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">کشور ناظر و کنترل‌کننده:</span>
+          <span class="info-value">${s.controller_flag} ${s.controller_name_fa}</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">وضعیت تردد:</span>
+          <span class="info-value">${statusText}</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">عوارض پایه عبور:</span>
+          <span class="info-value" style="color: #f59e0b;">${tollText}</span>
+        </div>
+        ${s.held_cargo_count > 0 ? `
+          <div class="info-row" style="background: rgba(239,68,68,0.15); border-radius: 8px; padding: 6px 8px;">
+            <span class="info-label" style="color: #ef4444;">محموله‌های توقیف‌شده:</span>
+            <span class="info-value" style="color: #ef4444;">⚠️ ${s.held_cargo_count.toLocaleString('fa-IR')} کشتی متوقف است</span>
+          </div>
+        ` : ''}
+        <div style="font-size: 11px; color: #94a3b8; margin-top: 6px; line-height: 1.6;">
+          ${s.description}
+        </div>
+      `;
+
+      openSheet(`⚓ ${s.name_fa}`, html);
+    }
+
+    function showCapitalInfo(c) {
+      const html = `
+        <div class="info-row">
+          <span class="info-label">کشور:</span>
+          <span class="info-value">${c.flag} ${c.name_fa} (${c.name_en})</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">رهبر کشور:</span>
+          <span class="info-value">${c.leader_name ? '👑 ' + c.leader_name : 'آزاد (بدون رهبر)'}</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">اتحاد:</span>
+          <span class="info-value">${c.alliance ? '🤝 ' + c.alliance : 'مستقل'}</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">قدرت اقتصادی:</span>
+          <span class="info-value" style="color: #10b981;">📊 ${c.economic_power} از ۱۰۰</span>
+        </div>
+      `;
+
+      openSheet(`🏛 ${c.flag} ${c.name_fa}`, html);
+    }
+
+    // شروع برنامه
+    window.addEventListener('DOMContentLoaded', () => {
+      initMap();
+      fetchRadarState();
+      // بروزرسانی خودکار هر ۱۵ ثانیه
+      setInterval(() => fetchRadarState(false), 15000);
+    });
+  </script>
+</body>
+</html>

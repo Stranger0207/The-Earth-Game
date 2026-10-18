@@ -57,10 +57,26 @@ async def main() -> None:
     logger.info("Starting scheduler...")
     setup_scheduler(bot)
 
+    from .config import get_settings
+    from .webapp import start_webapp
+
+    settings = get_settings()
+    webapp_runner = None
+    try:
+        logger.info("Starting Live Radar WebApp on port %d...", settings.webapp_port)
+        webapp_runner = await start_webapp(bot, settings.webapp_port)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Could not start Live Radar WebApp: %s", exc)
+
     logger.info("Bot is starting (polling)...")
     # حذف آپدیت‌های معوق هنگام شروع
     await bot.delete_webhook(drop_pending_updates=True)
-    await dp.start_polling(bot)
+    try:
+        await dp.start_polling(bot)
+    finally:
+        if webapp_runner:
+            logger.info("Stopping Live Radar WebApp...")
+            await webapp_runner.cleanup()
 
 
 if __name__ == "__main__":

@@ -696,3 +696,90 @@ async def cb_escort_done(
         f"قدرت اسکورت: {fa_number(power)}\n"
         f"نیرو: {escort_service.describe_escort(sale)}",
     )
+
+
+async def start_interception_for_sale(
+    message: Message,
+    state: FSMContext,
+    session: AsyncSession,
+    db_user: User,
+    sale_id: int,
+) -> bool:
+    """آغاز فرآیند رهگیری مستقیم یک محموله از دیپ‌لینک مینی‌اپ رادار زنده."""
+    from ..enums import TradeStatus
+    from ..services import geo_service as geo
+
+    country = await get_player_country(session, db_user)
+    if country is None:
+        await message.answer(NO_COUNTRY_TEXT)
+        return False
+
+    if not await assert_feature(message, session, country, "military.interception"):
+        return False
+
+    sale = await trade_repo.get_sale(session, sale_id)
+    if sale is None or sale.status != TradeStatus.IN_TRANSIT:
+        await message.answer("⚠️ این محموله دیگر در حال حرکت نیست یا یافت نشد.")
+        return False
+
+    seller = await countries_repo.get_country(session, sale.seller_country)
+    buyer = await countries_repo.get_country(session, sale.buyer_country)
+    if not seller or not buyer:
+        return False
+
+    if not geo.is_on_route(country.name_en, seller.name_en, buyer.name_en):
+        await message.answer("⚠️ این محموله از قلمرو یا آب‌های کشور شما عبور نمی‌کند و قابل رهگیری نیست.")
+        return False
+
+    escort_power = float(getattr(sale, "escort_power", 0.0) or 0.0)
+    needed = interception_service.required_power(escort_power)
+
+    await state.clear()
+    await state.update_data(
+        sale_id=sale_id, escort_power=escort_power, required_power=needed, selected={}, page=0
+    )
+
+    base = (
+        f"🚢 محموله: {seller.flag} {seller.name_fa} ← {buyer.flag} {buyer.name_fa}\n"
+        f"📦 محتوا: <i>نامعلوم — بارنامه در اختیار شما نیست</i>\n"
+        f"🛡 وضعیت: {interception_service.escort_label(escort_power)}"
+    )
+
+    if escort_power <= 0:
+        await state.set_state(InterceptionForm.confirming)
+        await message.answer(
+            header("تأیید رهگیری", "⚓") + f"\n\n{base}\n"
+            f"{DIVIDER}\n"
+            "✅ این محموله محافظ ندارد و با نیروهای گشت قابل توقیف است.\n\n"
+            "⚠️ <i>رهگیری بحران دیپلماتیک با فروشنده و خریدار ایجاد می‌کند.</i>",
+            reply_markup=confirm_kb("intc_confirm", "op:intercept"),
+        )
+        return True
+
+    escort_items = interception_service.parse_escort(sale)
+    escort_text = "، ".join(
+        f"{i.get('name')} ({fa_number(i.get('count', 0))})" for i in escort_items[:4]
+    ) or "نامشخص"
+
+    assets = await escort_service.available_interceptor_assets(session, country.id)
+    if not assets:
+        await message.answer(
+            f"{base}\n\n⚠️ شما تجهیزات مناسبی برای رهگیری ندارید "
+            "(نیروی دریایی، هوایی یا پدافندی لازم است).",
+            reply_markup=command_center_kb(),
+        )
+        return False
+
+    await state.update_data(assets=assets)
+    await state.set_state(InterceptionForm.selecting_assets)
+    await message.answer(
+        header("انتخاب نیروی رهگیر", "⚓") + f"\n\n{base}\n"
+        f"🛡 محافظان: {escort_text}\n"
+        f"{DIVIDER}\n"
+        f"قدرت اسکورت: <b>{fa_number(round(escort_power, 1))}</b>\n"
+        f"حداقل قدرت لازم برای رهگیری: <b>{fa_number(round(needed, 1))}</b>\n\n"
+        "تجهیزات مورد نظر برای اعزام را انتخاب کنید:",
+        reply_markup=asset_picker_kb(assets, {}, page=0),
+    )
+    return True
+

@@ -282,6 +282,7 @@ STRAITS_DEFINITIONS: dict[str, dict] = {
         "name_fa": "تنگه هرمز",
         "name_en": "Strait of Hormuz",
         "controller": "Iran",
+        "coords": [26.56, 56.25],
         "connects": ("persian_gulf", "gulf_of_oman"),
         "description": "شاهراه انرژی جهان، اتصال خلیج فارس به دریای عمان و اقیانوس هند",
     },
@@ -290,6 +291,7 @@ STRAITS_DEFINITIONS: dict[str, dict] = {
         "name_fa": "تنگه برینگ",
         "name_en": "Bering Strait",
         "controller": "USA",
+        "coords": [65.80, -168.90],
         "connects": ("pacific", "arctic"),
         "description": "گذرگاه استراتژیک اقیانوس آرام شمالی و قطب شمال",
     },
@@ -298,6 +300,7 @@ STRAITS_DEFINITIONS: dict[str, dict] = {
         "name_fa": "تنگه دوور (مانش)",
         "name_en": "Strait of Dover",
         "controller": "Britain",
+        "coords": [51.13, 1.45],
         "connects": ("atlantic", "north_sea"),
         "description": "کانال مانش، مسیر اتصال دریای شمال و اروپای شمالی به اقیانوس اطلس",
     },
@@ -306,6 +309,7 @@ STRAITS_DEFINITIONS: dict[str, dict] = {
         "name_fa": "تنگه بسفر",
         "name_en": "Bosphorus Strait",
         "controller": "Turkey",
+        "coords": [41.11, 29.07],
         "connects": ("black_sea", "mediterranean"),
         "description": "گذرگاه حیاتی دریای سیاه به دریای مدیترانه",
     },
@@ -314,6 +318,7 @@ STRAITS_DEFINITIONS: dict[str, dict] = {
         "name_fa": "تنگه داردانل",
         "name_en": "Dardanelles Strait",
         "controller": "Turkey",
+        "coords": [40.20, 26.40],
         "connects": ("black_sea", "mediterranean"),
         "description": "تنگه مکمل بسفر در کنترل ترکیه جهت اتصال به اژه و مدیترانه",
     },
@@ -322,6 +327,7 @@ STRAITS_DEFINITIONS: dict[str, dict] = {
         "name_fa": "تنگه جبل‌الطارق",
         "name_en": "Strait of Gibraltar",
         "controller": "Spain",
+        "coords": [35.98, -5.60],
         "connects": ("mediterranean", "atlantic"),
         "description": "تنها معبر طبیعی اتصال دریای مدیترانه به اقیانوس اطلس",
     },
@@ -330,6 +336,7 @@ STRAITS_DEFINITIONS: dict[str, dict] = {
         "name_fa": "تنگه لاپروش (سویا)",
         "name_en": "La Perouse Strait",
         "controller": "Japan",
+        "coords": [45.70, 142.00],
         "connects": ("sea_of_japan", "pacific"),
         "description": "مسیر دریای ژاپن و اختسک به اقیانوس آرام شمالی",
     },
@@ -338,6 +345,7 @@ STRAITS_DEFINITIONS: dict[str, dict] = {
         "name_fa": "تنگه تسوشیما",
         "name_en": "Tsushima Strait",
         "controller": "SouthKorea",
+        "coords": [34.40, 129.50],
         "connects": ("east_china_sea", "sea_of_japan"),
         "description": "معبر استراتژیک دریای چین شرقی به دریای ژاپن",
     },
@@ -346,6 +354,7 @@ STRAITS_DEFINITIONS: dict[str, dict] = {
         "name_fa": "تنگه باب‌المندب",
         "name_en": "Bab el-Mandeb Strait",
         "controller": "Yemen",
+        "coords": [12.58, 43.33],
         "connects": ("red_sea", "arabian_sea"),
         "description": "ورودی جنوبی دریای سرخ و شاهراه اتصال آسیا به اروپا",
     },
@@ -354,6 +363,7 @@ STRAITS_DEFINITIONS: dict[str, dict] = {
         "name_fa": "تنگه کرچ",
         "name_en": "Kerch Strait",
         "controller": "Russia",
+        "coords": [45.31, 36.52],
         "connects": ("black_sea", "azov_sea"),
         "description": "مسیر اتصال دریای آزوف به دریای سیاه",
     },
@@ -362,6 +372,7 @@ STRAITS_DEFINITIONS: dict[str, dict] = {
         "name_fa": "تنگه مسینا",
         "name_en": "Strait of Messina",
         "controller": "Italy",
+        "coords": [38.24, 15.63],
         "connects": ("mediterranean_west", "mediterranean_east"),
         "description": "گذرگاه مابین سیسیل و شبه‌جزیره ایتالیا در مرکز مدیترانه",
     },
@@ -370,6 +381,7 @@ STRAITS_DEFINITIONS: dict[str, dict] = {
         "name_fa": "کانال سوئز",
         "name_en": "Suez Canal",
         "controller": "Egypt",
+        "coords": [29.97, 32.56],
         "connects": ("red_sea", "mediterranean"),
         "description": "آبراه تاریخی اتصال آسیا و خاورمیانه به اروپا",
     },
@@ -378,6 +390,7 @@ STRAITS_DEFINITIONS: dict[str, dict] = {
         "name_fa": "تنگه تایوان",
         "name_en": "Taiwan Strait",
         "controller": "Taiwan",
+        "coords": [24.00, 119.50],
         "connects": ("south_china_sea", "east_china_sea"),
         "description": "معبر پرتردد اتصال دریای چین جنوبی به دریای چین شرقی و اقیانوس آرام",
     },
@@ -386,6 +399,7 @@ STRAITS_DEFINITIONS: dict[str, dict] = {
         "name_fa": "تنگه سوند (دانمارک/سوئد)",
         "name_en": "Oresund Strait",
         "controller": "Sweden",
+        "coords": [55.75, 12.70],
         "connects": ("baltic_sea", "north_sea"),
         "description": "ورودی انحصاری دریای بالتیک به دریای شمال و اقیانوس اطلس",
     },
@@ -520,4 +534,49 @@ def get_route_straits(origin_en: str, dest_en: str) -> list[str]:
                     heapq.heappush(pq, (cost + weight, nxt, new_straits))
 
     return best_straits
+
+
+def get_strait_coords(strait_id: str) -> list[float] | None:
+    """مختصات جغرافیایی یک تنگه [lat, lon]."""
+    s_def = get_strait_def(strait_id)
+    if not s_def:
+        return None
+    return s_def.get("coords")
+
+
+def get_maritime_waypoints(origin_en: str, dest_en: str) -> list[list[float]]:
+    """
+    تولید نقاط مسیر دریایی (Waypoints) بین دو کشور:
+    مختصات پایتخت/بندر مبدأ ⬅️ عبور از مختصات تنگه‌های استراتژیک مسیر ⬅️ پایتخت/بندر مقصد.
+    اگر مسیر تنگه‌ای نداشته باشد یا حمل‌ونقل دریایی مقدور نباشد، خط مستقیم دو پایتخت بازگردانده می‌شود.
+    """
+    geo_orig = get_geo(origin_en)
+    geo_dest = get_geo(dest_en)
+    orig_coords: list[float] = geo_orig.get("coords", [0.0, 0.0]) if geo_orig else [0.0, 0.0]
+    dest_coords: list[float] = geo_dest.get("coords", [0.0, 0.0]) if geo_dest else [0.0, 0.0]
+
+    if not can_use_sea_transport(origin_en, dest_en):
+        return [orig_coords, dest_coords]
+
+    straits = get_route_straits(origin_en, dest_en)
+    if not straits:
+        return [orig_coords, dest_coords]
+
+    points: list[list[float]] = [orig_coords]
+    for sid in straits:
+        c = get_strait_coords(sid)
+        if c:
+            points.append(c)
+    points.append(dest_coords)
+    return points
+
+
+def get_air_waypoints(origin_en: str, dest_en: str) -> list[list[float]]:
+    """نقاط مسیر ترابری هوایی یا پروازهای دیپلماتیک (مبدأ ⬅️ مقصد)."""
+    geo_orig = get_geo(origin_en)
+    geo_dest = get_geo(dest_en)
+    orig_coords: list[float] = geo_orig.get("coords", [0.0, 0.0]) if geo_orig else [0.0, 0.0]
+    dest_coords: list[float] = geo_dest.get("coords", [0.0, 0.0]) if geo_dest else [0.0, 0.0]
+    return [orig_coords, dest_coords]
+
 

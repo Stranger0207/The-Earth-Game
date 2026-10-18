@@ -274,3 +274,41 @@ async def count_visas_against(session: AsyncSession, target_country_id: int) -> 
         VisaRequirement.target_country_id == target_country_id,
     )
     return (await session.execute(q)).scalar() or 0
+
+
+async def add_visas_bulk(
+    session: AsyncSession, country_id: int, target_country_ids: list[int]
+) -> int:
+    """افزودن ویزای اجباری به صورت دسته‌جمعی برای چندین کشور."""
+    if not target_country_ids:
+        return 0
+    existing = await get_visa_list(session, country_id)
+    existing_targets = {v.target_country_id for v in existing}
+    new_targets = [tid for tid in target_country_ids if tid not in existing_targets and tid != country_id]
+    for tid in new_targets:
+        session.add(VisaRequirement(country_id=country_id, target_country_id=tid))
+    await session.flush()
+    return len(new_targets)
+
+
+async def remove_all_visas(session: AsyncSession, country_id: int) -> int:
+    """حذف تمامی ویزاهای اجباری وضع‌شده توسط این کشور."""
+    q = delete(VisaRequirement).where(VisaRequirement.country_id == country_id)
+    res = await session.execute(q)
+    await session.flush()
+    return res.rowcount or 0
+
+
+async def remove_visas_bulk(
+    session: AsyncSession, country_id: int, target_country_ids: list[int]
+) -> int:
+    """حذف دسته‌جمعی ویزاهای اجباری برای چندین کشور مشخص."""
+    if not target_country_ids:
+        return 0
+    q = delete(VisaRequirement).where(
+        VisaRequirement.country_id == country_id,
+        VisaRequirement.target_country_id.in_(target_country_ids),
+    )
+    res = await session.execute(q)
+    await session.flush()
+    return res.rowcount or 0

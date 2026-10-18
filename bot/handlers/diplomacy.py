@@ -2190,6 +2190,7 @@ async def cb_visa_waivers_menu(call: CallbackQuery, session: AsyncSession, db_us
     lines.append("💡 <i>لغو روادید جدید فقط در جریان دیدارهای حضوری فعال قابل انعقاد است.</i>")
 
     builder.adjust(1)
+    builder.row(InlineKeyboardButton(text="🛂 سامانه جامع روادید و کنترل مرزها", callback_data="gov:visa_law", style=STYLE_MAIN))
     builder.row(InlineKeyboardButton(text="🔙 بازگشت به دیپلماسی", callback_data="menu:diplomacy", style=STYLE_MAIN))
 
     await safe_edit(call, "\n".join(lines), reply_markup=builder.as_markup())

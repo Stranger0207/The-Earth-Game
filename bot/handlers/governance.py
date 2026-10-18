@@ -5,7 +5,8 @@ from __future__ import annotations
 from aiogram import F, Router
 from aiogram.filters import StateFilter
 from aiogram.fsm.context import FSMContext
-from aiogram.types import CallbackQuery, Message
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
+from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..config import get_settings
@@ -16,6 +17,7 @@ from ..constants import (
 )
 from ..database.models import Country, Law, User
 from ..database.repositories import countries as countries_repo
+from ..database.repositories import diplomacy as dip_repo
 from ..database.repositories import governance as gov_repo
 from ..enums import (
     GOVERNMENT_EMOJI,
@@ -41,7 +43,12 @@ from ..keyboards.governance import (
     protest_action_kb,
     protest_menu_kb,
     tax_law_kb,
+    visa_all_confirm_kb,
+    visa_law_dashboard_kb,
     visa_law_kb,
+    visa_rm_all_confirm_kb,
+    visa_rm_menu_kb,
+    visa_status_menu_kb,
 )
 from ..loader import bot
 from ..services.governance_service import (
@@ -618,119 +625,484 @@ async def msg_set_tax(
     )
 
 
-# ---------- ویزا ----------
+# ============================================================
+#  🛂 سامانه جامع روادید (ویزا) و کنترل مرزها
+# ============================================================
 
-@router.callback_query(F.data == "gov:visa_law")
-async def cb_visa_law(call: CallbackQuery) -> None:
-    await call.answer()
-    await safe_edit(call, header("قانون ویزا", "🛂"), reply_markup=visa_law_kb())
+REGION_LABELS: dict[str, str] = {
+    "middle_east": "خاورمیانه 🏜",
+    "europe": "اروپا 🏰",
+    "east_asia": "شرق آسیا 🏯",
+    "asia": "آسیا 🌏",
+    "americas": "قاره آمریکا 🌎",
+    "america": "قاره آمریکا 🌎",
+    "north_america": "آمریکای شمالی 🗽",
+    "south_america": "آمریکای جنوبی 🌴",
+    "africa": "آفریقا 🌍",
+    "oceania": "اقیانوسیه 🏝",
+}
 
 
-@router.callback_query(F.data == "gov:visa_list")
-async def cb_visa_list(
-    call: CallbackQuery, session: AsyncSession, db_user: User
-) -> None:
-    """نمایش کشورهایی که ویزا لازم دارند."""
-    await call.answer()
-    country = await get_player_country(session, db_user)
-    if country is None:
-        await safe_edit(call, NO_COUNTRY_TEXT)
-        return
+async def _build_visa_dashboard_data(session: AsyncSession, country: Country) -> dict:
+    """محاسبه کامل آمار و وضعیت‌های مرزی برای سامانه ویزا."""
+    all_countries = await countries_repo.list_countries(session)
+    other_countries = [c for c in all_countries if c.id != country.id]
 
     visas = await gov_repo.get_visa_list(session, country.id)
-    if not visas:
-        await safe_edit(
-            call,
-            f"{header('لیست ویزاها', '🛂')}\n\nهیچ کشوری نیاز به ویزا ندارد.",
-            reply_markup=visa_law_kb(),
-        )
-        return
+    req_target_ids = {v.target_country_id for v in visas}
 
-    lines = [header("لیست ویزاها", "🛂"), ""]
-    for v in visas:
-        target = await countries_repo.get_country(session, v.target_country_id)
-        if target:
-            lines.append(f"🛂 {target.flag} {target.name_fa}")
-    lines.append(f"\nمجموع: {fa_number(len(visas))} کشور")
+    granted_waivers = await dip_repo.list_granted_visa_waivers(session, country.id)
+    granted_target_ids = {w.target_country_id for w in granted_waivers}
 
-    await safe_edit(call, "\n".join(lines), reply_markup=visa_law_kb())
+    received_waivers = await dip_repo.list_received_visa_waivers(session, country.id)
+
+    normal_count = max(0, len(other_countries) - len(req_target_ids | granted_target_ids))
+
+    return {
+        "all_others": other_countries,
+        "req_target_ids": req_target_ids,
+        "req_count": len(req_target_ids),
+        "granted_waivers": granted_waivers,
+        "granted_target_ids": granted_target_ids,
+        "granted_count": len(granted_target_ids),
+        "received_waivers": received_waivers,
+        "rec_count": len(received_waivers),
+        "normal_count": normal_count,
+        "total_others": len(other_countries),
+    }
 
 
-@router.callback_query(F.data == "gov:visa_add")
-async def cb_visa_add(
-    call: CallbackQuery, session: AsyncSession, db_user: User
-) -> None:
-    """انتخاب کشور برای افزودن ویزا."""
+def _format_visa_dashboard_text(country: Country, data: dict) -> str:
+    """متن داشبورد اصلی سامانه ویزا."""
+    lines = [
+        "╔══════════════════════════════╗",
+        "  🛂 <b>سامانه جامع روادید (ویزا) و مدیریت مرزها</b>",
+        f"  🏳️ <b>کشور:</b> {country.flag} {country.name_fa}",
+        "╚══════════════════════════════╝",
+        "",
+        "📊 <b>وضعیت کنونی سیاست‌های مرزی کشور:</b>",
+        f"• ⛔️ <b>ویزای اجباری وضع‌شده:</b> {fa_number(data['req_count'])} کشور",
+        f"• 🤝 <b>توافق لغو روادید اعطایی (مرز باز):</b> {fa_number(data['granted_count'])} کشور (۵۰٪ تخفیف عوارض ترانزیت)",
+        f"• 📥 <b>لغو روادید دریافتی از سایرین:</b> {fa_number(data['rec_count'])} کشور",
+        f"• ⚪️ <b>روابط مرزی عادی:</b> {fa_number(data['normal_count'])} کشور",
+        "",
+        "💡 <b>راهنمای قوانین روادید (ویزا):</b>",
+        "• <b>لغو ویزا (Visa Waiver):</b> معافیت از روادید ورود و ۵۰٪ تخفیف عوارض ارسال محموله است که در <b>دیدار حضوری فعال</b> منعقد می‌شود.",
+        "• <b>وضع ویزای اجباری:</b> اعمال محدودیت تردد اتباع خارجی بر مرزهای کشور، که به صورت تکی، منطقه‌ای یا سراسری برای تمامی کشورهای جهان قابل اجراست.",
+    ]
+    return "\n".join(lines)
+
+
+@router.callback_query(F.data == "gov:visa_law")
+async def cb_visa_law(call: CallbackQuery, session: AsyncSession, db_user: User) -> None:
+    """داشبورد اصلی سامانه جامع ویزا و مرزها."""
     await call.answer()
     country = await get_player_country(session, db_user)
     if country is None:
         await safe_edit(call, NO_COUNTRY_TEXT)
         return
 
-    # کشورهایی که قبلاً ویزا دارند را حذف کن
-    existing_visas = await gov_repo.get_visa_list(session, country.id)
-    excluded_ids = {v.target_country_id for v in existing_visas}
-    excluded_ids.add(country.id)  # خود کشور
+    data = await _build_visa_dashboard_data(session, country)
+    text = _format_visa_dashboard_text(country, data)
+    await safe_edit(call, text, reply_markup=visa_law_dashboard_kb())
+
+
+@router.callback_query(F.data == "gov:visa_status")
+@router.callback_query(F.data == "gov:visa_list")
+async def cb_visa_status(call: CallbackQuery, session: AsyncSession, db_user: User) -> None:
+    """منوی تفکیک و انتخاب دسته‌بندی استعلام ویزاها."""
+    await call.answer()
+    country = await get_player_country(session, db_user)
+    if country is None:
+        await safe_edit(call, NO_COUNTRY_TEXT)
+        return
+
+    data = await _build_visa_dashboard_data(session, country)
+    text = (
+        "╔══════════════════════════════╗\n"
+        "  📋 <b>استعلام وضعیت مرزها (کیا دارن / کیا ندارن)</b>\n"
+        f"  🏳️ <b>کشور:</b> {country.flag} {country.name_fa}\n"
+        "╚══════════════════════════════╝\n\n"
+        "لطفاً دسته‌بندی مورد نظر خود را جهت مشاهده لیست تفکیک‌شده کشورها انتخاب کنید:"
+    )
+    kb = visa_status_menu_kb(
+        req_count=data["req_count"],
+        granted_count=data["granted_count"],
+        rec_count=data["rec_count"],
+        normal_count=data["normal_count"],
+    )
+    await safe_edit(call, text, reply_markup=kb)
+
+
+@router.callback_query(F.data.startswith("gov_vview:"))
+async def cb_visa_view(call: CallbackQuery, session: AsyncSession, db_user: User) -> None:
+    """مشاهده لیست کشورها در هر یک از ۴ وضعیت مرزی به صورت صفحه‌بندی‌شده."""
+    await call.answer()
+    country = await get_player_country(session, db_user)
+    if country is None:
+        await safe_edit(call, NO_COUNTRY_TEXT)
+        return
+
+    parts = call.data.split(":")
+    view_type = parts[1]
+    page = int(parts[2]) if len(parts) > 2 else 0
 
     all_countries = await countries_repo.list_countries(session)
-    filtered = [c for c in all_countries if c.id not in excluded_ids]
+    c_map = {c.id: c for c in all_countries}
+    other_countries = [c for c in all_countries if c.id != country.id]
 
-    if not filtered:
-        await safe_edit(call, "⚠️ کشوری برای افزودن ویزا باقی نمانده.", reply_markup=visa_law_kb())
-        return
+    visas = await gov_repo.get_visa_list(session, country.id)
+    req_target_ids = {v.target_country_id for v in visas}
 
-    kb = countries_kb(filtered, "gov_visa_add", back_data="gov:visa_law")
-    await safe_edit(call, "🛂 کشوری که باید ویزا بگیرد را انتخاب کنید:", reply_markup=kb)
+    granted_waivers = await dip_repo.list_granted_visa_waivers(session, country.id)
+    granted_target_ids = {w.target_country_id for w in granted_waivers}
+
+    received_waivers = await dip_repo.list_received_visa_waivers(session, country.id)
+    received_source_ids = {w.country_id for w in received_waivers}
+
+    if view_type == "req":
+        title = "⛔️ <b>فهرست کشورهای نیازمند ویزای ورود</b>"
+        sub_desc = "<i>ورود اتباع این کشورها به خاک شما نیازمند اخذ روادید اجباری است.</i>"
+        matched_countries = [c_map[tid] for tid in req_target_ids if tid in c_map]
+    elif view_type == "waiver":
+        title = "🤝 <b>فهرست کشورهای دارای لغو روادید اعطایی</b>"
+        sub_desc = "<i>با این کشورها توافق لغو ویزا دارید (مرز باز + ۵۰٪ تخفیف عوارض ترانزیت کالا).</i>"
+        matched_countries = [c_map[tid] for tid in granted_target_ids if tid in c_map]
+    elif view_type == "rec":
+        title = "📥 <b>فهرست کشورهایی که ویزای شما را لغو کرده‌اند</b>"
+        sub_desc = "<i>این کشورها برای ورود اتباع شما روادید را لغو کرده و ارسال کالا به آنها با ۵۰٪ تخفیف عوارض است.</i>"
+        matched_countries = [c_map[sid] for sid in received_source_ids if sid in c_map]
+    else:  # none
+        title = "⚪️ <b>فهرست کشورهای دارای روابط مرزی عادی</b>"
+        sub_desc = "<i>برای اتباع این کشورها ویزای اجباری وضع نشده و روابط مرزی به صورت استاندارد است.</i>"
+        matched_countries = [c for c in other_countries if c.id not in req_target_ids and c.id not in granted_target_ids]
+
+    PAGE_SIZE = 10
+    total_items = len(matched_countries)
+    total_pages = max(1, (total_items + PAGE_SIZE - 1) // PAGE_SIZE)
+    page = max(0, min(page, total_pages - 1))
+    slice_items = matched_countries[page * PAGE_SIZE : (page + 1) * PAGE_SIZE]
+
+    lines = [
+        title,
+        f"📊 مجموع: {fa_number(total_items)} کشور | صفحه {fa_number(page + 1)} از {fa_number(total_pages)}",
+        "",
+        sub_desc,
+        "",
+    ]
+
+    if not slice_items:
+        lines.append("<i>موردی در این دسته ثبت نشده است.</i>")
+    else:
+        for idx, c in enumerate(slice_items, start=page * PAGE_SIZE + 1):
+            lines.append(f"{fa_number(idx)}. {c.flag} {c.name_fa} ({c.name_en})")
+
+    builder = InlineKeyboardBuilder()
+    nav_btns = []
+    if page > 0:
+        nav_btns.append(InlineKeyboardButton(text="◀️ قبلی", callback_data=f"gov_vview:{view_type}:{page - 1}"))
+    nav_btns.append(InlineKeyboardButton(text=f"📄 {fa_number(page + 1)}/{fa_number(total_pages)}", callback_data="noop"))
+    if page < total_pages - 1:
+        nav_btns.append(InlineKeyboardButton(text="بعدی ▶️", callback_data=f"gov_vview:{view_type}:{page + 1}"))
+    if len(nav_btns) > 1:
+        builder.row(*nav_btns)
+
+    builder.row(InlineKeyboardButton(text="🔙 بازگشت به دسته‌بندی‌ها", callback_data="gov:visa_status", style=STYLE_MAIN))
+    await safe_edit(call, "\n".join(lines), reply_markup=builder.as_markup())
 
 
-@router.callback_query(F.data.startswith("gov_visa_add:"))
-async def cb_visa_add_confirm(
-    call: CallbackQuery, session: AsyncSession, db_user: User
-) -> None:
-    """تأیید افزودن ویزا."""
+@router.callback_query(F.data == "gov:visa_all_ask")
+async def cb_visa_all_ask(call: CallbackQuery, session: AsyncSession, db_user: User) -> None:
+    """درخواست تایید برای وضع ویزا روی تمامی کشورها."""
     await call.answer()
     country = await get_player_country(session, db_user)
     if country is None:
         await safe_edit(call, NO_COUNTRY_TEXT)
         return
 
-    target_id = int(call.data.split(":")[-1])
-    target = await countries_repo.get_country(session, target_id)
-    if target is None:
-        await safe_edit(call, "⚠️ کشور یافت نشد.", reply_markup=visa_law_kb())
+    all_countries = await countries_repo.list_countries(session)
+    others_count = len([c for c in all_countries if c.id != country.id])
+
+    text = (
+        "⚠️ <b>هشدار وضع ویزای اجباری سراسری (بستن مرزها)</b>\n\n"
+        f"آیا اطمینان دارید که می‌خواهید برای <b>تمامی کشورهای جهان</b> ({fa_number(others_count)} کشور) ویزای اجباری ورود وضع کنید؟\n\n"
+        "📌 <b>پیامدهای این تصمیم:</b>\n"
+        "• ورود اتباع تمامی کشورهای خارجی به خاک کشور شما مشروط به اخذ روادید خواهد شد.\n"
+        "• کنترل‌های مرزی و امنیتی به حداکثر سطح خواهد رسید."
+    )
+    await safe_edit(call, text, reply_markup=visa_all_confirm_kb())
+
+
+@router.callback_query(F.data == "gov:visa_all_confirm")
+async def cb_visa_all_confirm(call: CallbackQuery, session: AsyncSession, db_user: User) -> None:
+    """اجرای وضع ویزا بر تمامی کشورهای جهان."""
+    await call.answer()
+    country = await get_player_country(session, db_user)
+    if country is None:
+        await safe_edit(call, NO_COUNTRY_TEXT)
         return
 
-    already = await gov_repo.has_visa(session, country.id, target_id)
-    if already:
-        await safe_edit(call, "⚠️ این کشور از قبل ویزا دارد.", reply_markup=visa_law_kb())
-        return
+    all_countries = await countries_repo.list_countries(session)
+    other_ids = [c.id for c in all_countries if c.id != country.id]
 
-    await gov_repo.add_visa(session, country.id, target_id)
-    # کسر رضایت از کشور هدف به دلیل ویزا
-    target.public_satisfaction = max(0.0, (target.public_satisfaction or 0.0) - 1.0)
+    added = await gov_repo.add_visas_bulk(session, country.id, other_ids)
     await session.commit()
 
-    await safe_edit(
-        call,
-        f"✅ ویزای اجباری برای {target.flag} {target.name_fa} وضع شد.\n\n"
-        f"شهروندان {target.name_fa} برای سفر به {country.name_fa} نیاز به ویزا دارند.",
-        reply_markup=visa_law_kb(),
+    text = (
+        "✅ <b>ویزای اجباری ورود برای تمامی کشورهای جهان با موفقیت وضع گردید!</b>\n\n"
+        f"• تعداد کل کشورهای مشمول ویزا: {fa_number(len(other_ids))} کشور\n"
+        f"• ویزاهای جدیداً وضع‌شده: {fa_number(added)} مورد\n\n"
+        "از این پس هیچ تبعه‌ی خارجی بدون اخذ روادید رسمی اجازه ورود به خاک کشور شما را نخواهد داشت."
     )
+    builder = InlineKeyboardBuilder()
+    builder.button(text="🔙 بازگشت به سامانه ویزا", callback_data="gov:visa_law", style=STYLE_MAIN)
+
+    await safe_edit(call, text, reply_markup=builder.as_markup())
 
     await send_to_admin_group(
         bot,
         AdminGroupType.SANCTION_BILL,
-        f"🛂 <b>وضع ویزا</b>\n"
+        f"🛂 <b>وضع ویزای سراسری (بستن کامل مرزها)</b>\n"
         f"کشور: {country.flag} {country.name_fa}\n"
-        f"هدف: {target.flag} {target.name_fa}",
+        f"شامل: تمامی {fa_number(len(other_ids))} کشور جهان\n"
+        f"موارد جدید: {fa_number(added)}",
     )
 
 
+@router.callback_query(F.data == "gov:visa_bulk_menu")
+@router.callback_query(F.data == "gov:visa_add")
+async def cb_visa_bulk_menu(call: CallbackQuery, session: AsyncSession, db_user: User) -> None:
+    """منوی وضع ویزا بر اساس منطقه یا انتخاب تکی/چندتایی."""
+    await call.answer()
+    country = await get_player_country(session, db_user)
+    if country is None:
+        await safe_edit(call, NO_COUNTRY_TEXT)
+        return
+
+    all_countries = await countries_repo.list_countries(session)
+    visas = await gov_repo.get_visa_list(session, country.id)
+    req_target_ids = {v.target_country_id for v in visas}
+    req_target_ids.add(country.id)
+
+    regions_map: dict[str, list[Country]] = {}
+    for c in all_countries:
+        if c.id not in req_target_ids:
+            reg = getattr(c, "region", "other") or "other"
+            regions_map.setdefault(reg, []).append(c)
+
+    text = (
+        "╔══════════════════════════════╗\n"
+        "  🌐 <b>وضع ویزا بر چند کشور یا یک قاره</b>\n"
+        "╚══════════════════════════════╝\n\n"
+        "شما می‌توانید برای کشورهای یک قاره/منطقه به صورت یکجا، یا به صورت تکی/چندتایی ویزای ورود وضع نمایید:\n\n"
+        "<b>🌍 مناطق دارای کشورهای بدون ویزا:</b>"
+    )
+
+    builder = InlineKeyboardBuilder()
+    for reg, c_list in sorted(regions_map.items()):
+        reg_title = REGION_LABELS.get(reg, reg.replace("_", " ").title())
+        builder.button(
+            text=f"{reg_title} ({fa_number(len(c_list))} کشور)",
+            callback_data=f"gov_vreg:{reg}",
+            style=STYLE_NO,
+        )
+
+    builder.button(
+        text="📌 انتخاب تکی / چندتایی کشورها",
+        callback_data="gov_vpick:0",
+        style=STYLE_MAIN,
+    )
+    builder.button(
+        text="🔙 بازگشت به سامانه ویزا",
+        callback_data="gov:visa_law",
+        style=STYLE_MAIN,
+    )
+    builder.adjust(1)
+    await safe_edit(call, text, reply_markup=builder.as_markup())
+
+
+@router.callback_query(F.data.startswith("gov_vreg:"))
+async def cb_visa_region_ask(call: CallbackQuery, session: AsyncSession, db_user: User) -> None:
+    """تایید وضع ویزا روی کشورهای یک منطقه."""
+    await call.answer()
+    country = await get_player_country(session, db_user)
+    if country is None:
+        await safe_edit(call, NO_COUNTRY_TEXT)
+        return
+
+    reg_key = call.data.split(":")[1]
+    all_countries = await countries_repo.list_countries(session)
+    visas = await gov_repo.get_visa_list(session, country.id)
+    req_target_ids = {v.target_country_id for v in visas}
+    req_target_ids.add(country.id)
+
+    targets = [c for c in all_countries if getattr(c, "region", "") == reg_key and c.id not in req_target_ids]
+    reg_title = REGION_LABELS.get(reg_key, reg_key.replace("_", " ").title())
+
+    if not targets:
+        await safe_edit(
+            call,
+            f"⚠️ تمامی کشورهای منطقه {reg_title} از قبل دارای ویزای اجباری هستند.",
+            reply_markup=InlineKeyboardBuilder().button(text="🔙 بازگشت", callback_data="gov:visa_bulk_menu", style=STYLE_MAIN).as_markup(),
+        )
+        return
+
+    preview = "، ".join(f"{c.flag} {c.name_fa}" for c in targets[:8])
+    if len(targets) > 8:
+        preview += f" و {fa_number(len(targets) - 8)} کشور دیگر"
+
+    text = (
+        f"⚠️ <b>وضع ویزای اجباری برای منطقه {reg_title}</b>\n\n"
+        f"آیا اطمینان دارید که می‌خواهید برای <b>تمامی {fa_number(len(targets))} کشور</b> این منطقه ویزای اجباری وضع کنید؟\n\n"
+        f"📋 <b>کشورها:</b> {preview}"
+    )
+
+    builder = InlineKeyboardBuilder()
+    builder.button(
+        text=f"⛔️ بله، وضع ویزا برای منطقه {reg_title}",
+        callback_data=f"gov_vreg_do:{reg_key}",
+        style=STYLE_NO,
+    )
+    builder.button(
+        text="🔙 انصراف و بازگشت",
+        callback_data="gov:visa_bulk_menu",
+        style=STYLE_MAIN,
+    )
+    builder.adjust(1)
+    await safe_edit(call, text, reply_markup=builder.as_markup())
+
+
+@router.callback_query(F.data.startswith("gov_vreg_do:"))
+async def cb_visa_region_do(call: CallbackQuery, session: AsyncSession, db_user: User) -> None:
+    """اعمال وضع ویزا برای کشورهای یک منطقه."""
+    await call.answer()
+    country = await get_player_country(session, db_user)
+    if country is None:
+        await safe_edit(call, NO_COUNTRY_TEXT)
+        return
+
+    reg_key = call.data.split(":")[1]
+    all_countries = await countries_repo.list_countries(session)
+    visas = await gov_repo.get_visa_list(session, country.id)
+    req_target_ids = {v.target_country_id for v in visas}
+    req_target_ids.add(country.id)
+
+    targets = [c for c in all_countries if getattr(c, "region", "") == reg_key and c.id not in req_target_ids]
+    reg_title = REGION_LABELS.get(reg_key, reg_key.replace("_", " ").title())
+
+    added = await gov_repo.add_visas_bulk(session, country.id, [c.id for c in targets])
+    for c in targets:
+        c.public_satisfaction = max(0.0, (c.public_satisfaction or 0.0) - 1.0)
+    await session.commit()
+
+    text = (
+        f"✅ <b>ویزای اجباری برای منطقه {reg_title} با موفقیت وضع گردید!</b>\n\n"
+        f"• تعداد کشورهای افزوده شده: {fa_number(added)} کشور"
+    )
+    builder = InlineKeyboardBuilder()
+    builder.button(text="🔙 بازگشت به سامانه ویزا", callback_data="gov:visa_law", style=STYLE_MAIN)
+    await safe_edit(call, text, reply_markup=builder.as_markup())
+
+    await send_to_admin_group(
+        bot,
+        AdminGroupType.SANCTION_BILL,
+        f"🛂 <b>وضع ویزای منطقه‌ای</b>\n"
+        f"کشور: {country.flag} {country.name_fa}\n"
+        f"منطقه: {reg_title}\n"
+        f"تعداد: {fa_number(added)} کشور",
+    )
+
+
+@router.callback_query(F.data.startswith("gov_vpick:"))
+async def cb_visa_pick(call: CallbackQuery, session: AsyncSession, db_user: User) -> None:
+    """لیست صفحه‌بندی‌شده کشورها برای انتخاب تکی/چندتایی وضع ویزا."""
+    await call.answer()
+    country = await get_player_country(session, db_user)
+    if country is None:
+        await safe_edit(call, NO_COUNTRY_TEXT)
+        return
+
+    page = int(call.data.split(":")[1])
+    all_countries = await countries_repo.list_countries(session)
+    visas = await gov_repo.get_visa_list(session, country.id)
+    req_target_ids = {v.target_country_id for v in visas}
+    req_target_ids.add(country.id)
+
+    available = [c for c in all_countries if c.id not in req_target_ids]
+
+    PAGE_SIZE = 8
+    total_pages = max(1, (len(available) + PAGE_SIZE - 1) // PAGE_SIZE)
+    page = max(0, min(page, total_pages - 1))
+    slice_items = available[page * PAGE_SIZE : (page + 1) * PAGE_SIZE]
+
+    builder = InlineKeyboardBuilder()
+    for c in slice_items:
+        builder.button(
+            text=f"➕ {c.flag} {c.name_fa}",
+            callback_data=f"gov_vadd_one:{c.id}:{page}",
+            style=STYLE_NO,
+        )
+    builder.adjust(2)
+
+    nav_btns = []
+    if page > 0:
+        nav_btns.append(InlineKeyboardButton(text="◀️ قبلی", callback_data=f"gov_vpick:{page - 1}"))
+    nav_btns.append(InlineKeyboardButton(text=f"📄 {fa_number(page + 1)}/{fa_number(total_pages)}", callback_data="noop"))
+    if page < total_pages - 1:
+        nav_btns.append(InlineKeyboardButton(text="بعدی ▶️", callback_data=f"gov_vpick:{page + 1}"))
+    if len(nav_btns) > 1:
+        builder.row(*nav_btns)
+
+    builder.row(InlineKeyboardButton(text="🔙 بازگشت به منوی ویزا", callback_data="gov:visa_bulk_menu", style=STYLE_MAIN))
+
+    text = (
+        "📌 <b>انتخاب کشور برای وضع ویزای اجباری</b>\n\n"
+        f"تعداد کل کشورهای بدون ویزا: {fa_number(len(available))} کشور\n"
+        "روی هر کشور بزنید تا ویزای اجباری برای اتباع آن وضع شود:"
+    )
+    await safe_edit(call, text, reply_markup=builder.as_markup())
+
+
+@router.callback_query(F.data.startswith("gov_vadd_one:"))
+async def cb_visa_add_one(call: CallbackQuery, session: AsyncSession, db_user: User) -> None:
+    """وضع ویزا برای یک کشور و بازگشت به صفحه انتخاب."""
+    country = await get_player_country(session, db_user)
+    if country is None:
+        await call.answer(NO_COUNTRY_TEXT, show_alert=True)
+        return
+
+    parts = call.data.split(":")
+    target_id = int(parts[1])
+    page = int(parts[2]) if len(parts) > 2 else 0
+
+    target = await countries_repo.get_country(session, target_id)
+    if not target:
+        await call.answer("کشور یافت نشد.", show_alert=True)
+        return
+
+    already = await gov_repo.has_visa(session, country.id, target_id)
+    if already:
+        await call.answer("این کشور از قبل ویزا دارد.", show_alert=True)
+    else:
+        await gov_repo.add_visa(session, country.id, target_id)
+        target.public_satisfaction = max(0.0, (target.public_satisfaction or 0.0) - 1.0)
+        await session.commit()
+        await call.answer(f"✅ ویزای اجباری برای {target.name_fa} وضع شد.", show_alert=True)
+
+        await send_to_admin_group(
+            bot,
+            AdminGroupType.SANCTION_BILL,
+            f"🛂 <b>وضع ویزا</b>\nکشور: {country.flag} {country.name_fa}\nهدف: {target.flag} {target.name_fa}",
+        )
+
+    call.data = f"gov_vpick:{page}"
+    await cb_visa_pick(call, session, db_user)
+
+
+@router.callback_query(F.data == "gov:visa_rm_menu")
 @router.callback_query(F.data == "gov:visa_remove")
-async def cb_visa_remove(
-    call: CallbackQuery, session: AsyncSession, db_user: User
-) -> None:
-    """انتخاب ویزا برای حذف."""
+async def cb_visa_rm_menu(call: CallbackQuery, session: AsyncSession, db_user: User) -> None:
+    """منوی رفع ویزای اجباری (تکی یا سراسری)."""
     await call.answer()
     country = await get_player_country(session, db_user)
     if country is None:
@@ -738,53 +1110,156 @@ async def cb_visa_remove(
         return
 
     visas = await gov_repo.get_visa_list(session, country.id)
-    if not visas:
-        await safe_edit(
-            call, "⚠️ هیچ ویزایی وضع نشده.", reply_markup=visa_law_kb(),
+    has_visas = len(visas) > 0
+
+    if not has_visas:
+        text = (
+            "⚠️ <b>هیچ ویزای اجباری ثبت نشده است.</b>\n\n"
+            "کشور شما در حال حاضر برای هیچ کشوری ویزای ورود وضع نکرده است."
         )
-        return
+    else:
+        text = (
+            "➖ <b>مدیریت رفع ویزای اجباری</b>\n\n"
+            f"در حال حاضر برای {fa_number(len(visas))} کشور ویزای اجباری وضع شده است.\n"
+            "می‌توانید ویزا را به صورت انتخابی یا برای تمامی کشورها لغو نمایید:"
+        )
 
-    from aiogram.utils.keyboard import InlineKeyboardBuilder
-    builder = InlineKeyboardBuilder()
-    for v in visas:
-        target = await countries_repo.get_country(session, v.target_country_id)
-        if target:
-            builder.button(
-                text=f"❌ {target.flag} {target.name_fa}",
-                callback_data=f"gov_visa_rm:{v.target_country_id}",
-                style=STYLE_NO,
-            )
-    builder.button(text="🔙 بازگشت", callback_data="gov:visa_law", style=STYLE_MAIN)
-    builder.adjust(1)
-
-    await safe_edit(call, "ویزای کدام کشور حذف شود؟", reply_markup=builder.as_markup())
+    await safe_edit(call, text, reply_markup=visa_rm_menu_kb(has_visas))
 
 
-@router.callback_query(F.data.startswith("gov_visa_rm:"))
-async def cb_visa_remove_confirm(
-    call: CallbackQuery, session: AsyncSession, db_user: User
-) -> None:
-    """حذف ویزا."""
+@router.callback_query(F.data.startswith("gov_vrm_pick:"))
+async def cb_visa_rm_pick(call: CallbackQuery, session: AsyncSession, db_user: User) -> None:
+    """لیست صفحه‌بندی‌شده کشورها برای رفع تکی ویزا."""
     await call.answer()
     country = await get_player_country(session, db_user)
     if country is None:
         await safe_edit(call, NO_COUNTRY_TEXT)
         return
 
-    target_id = int(call.data.split(":")[-1])
+    page = int(call.data.split(":")[1])
+    visas = await gov_repo.get_visa_list(session, country.id)
+
+    all_countries = await countries_repo.list_countries(session)
+    c_map = {c.id: c for c in all_countries}
+    visa_countries = [c_map[v.target_country_id] for v in visas if v.target_country_id in c_map]
+
+    if not visa_countries:
+        await safe_edit(
+            call,
+            "⚠️ هیچ ویزایی برای رفع وجود ندارد.",
+            reply_markup=InlineKeyboardBuilder().button(text="🔙 بازگشت به سامانه ویزا", callback_data="gov:visa_law", style=STYLE_MAIN).as_markup(),
+        )
+        return
+
+    PAGE_SIZE = 8
+    total_pages = max(1, (len(visa_countries) + PAGE_SIZE - 1) // PAGE_SIZE)
+    page = max(0, min(page, total_pages - 1))
+    slice_items = visa_countries[page * PAGE_SIZE : (page + 1) * PAGE_SIZE]
+
+    builder = InlineKeyboardBuilder()
+    for c in slice_items:
+        builder.button(
+            text=f"❌ {c.flag} {c.name_fa}",
+            callback_data=f"gov_vrm_do:{c.id}:{page}",
+            style=STYLE_NO,
+        )
+    builder.adjust(2)
+
+    nav_btns = []
+    if page > 0:
+        nav_btns.append(InlineKeyboardButton(text="◀️ قبلی", callback_data=f"gov_vrm_pick:{page - 1}"))
+    nav_btns.append(InlineKeyboardButton(text=f"📄 {fa_number(page + 1)}/{fa_number(total_pages)}", callback_data="noop"))
+    if page < total_pages - 1:
+        nav_btns.append(InlineKeyboardButton(text="بعدی ▶️", callback_data=f"gov_vrm_pick:{page + 1}"))
+    if len(nav_btns) > 1:
+        builder.row(*nav_btns)
+
+    builder.row(InlineKeyboardButton(text="🔙 بازگشت به منوی رفع ویزا", callback_data="gov:visa_rm_menu", style=STYLE_MAIN))
+
+    text = (
+        "❌ <b>رفع ویزای اجباری (انتخاب کشور)</b>\n\n"
+        f"تعداد کشورهای دارای ویزا: {fa_number(len(visa_countries))} کشور\n"
+        "روی هر کشور بزنید تا ویزای اجباری آن لغو شود:"
+    )
+    await safe_edit(call, text, reply_markup=builder.as_markup())
+
+
+@router.callback_query(F.data.startswith("gov_vrm_do:"))
+async def cb_visa_rm_do(call: CallbackQuery, session: AsyncSession, db_user: User) -> None:
+    """لغو ویزا برای یک کشور و بازنشانی لیست."""
+    country = await get_player_country(session, db_user)
+    if country is None:
+        await call.answer(NO_COUNTRY_TEXT, show_alert=True)
+        return
+
+    parts = call.data.split(":")
+    target_id = int(parts[1])
+    page = int(parts[2]) if len(parts) > 2 else 0
+
+    target = await countries_repo.get_country(session, target_id)
+    target_name = f"{target.flag} {target.name_fa}" if target else f"#{target_id}"
+
     removed = await gov_repo.remove_visa(session, country.id, target_id)
     await session.commit()
 
-    target = await countries_repo.get_country(session, target_id)
-    name = f"{target.flag} {target.name_fa}" if target else f"#{target_id}"
-
     if removed:
-        await safe_edit(
-            call, f"✅ ویزای {name} حذف شد.", reply_markup=visa_law_kb(),
+        await call.answer(f"✅ ویزای {target_name} لغو شد.", show_alert=True)
+        await send_to_admin_group(
+            bot,
+            AdminGroupType.SANCTION_BILL,
+            f"🛂 <b>لغو ویزای اجباری</b>\nکشور: {country.flag} {country.name_fa}\nهدف: {target_name}",
         )
-        await send_to_admin_group(bot, AdminGroupType.SANCTION_BILL, f"🛂 <b>حذف ویزا</b>\nکشور: {country.flag} {country.name_fa}\nهدف: {name}")
     else:
-        await safe_edit(call, "⚠️ ویزا یافت نشد.", reply_markup=visa_law_kb())
+        await call.answer("ویزا یافت نشد.", show_alert=True)
+
+    call.data = f"gov_vrm_pick:{page}"
+    await cb_visa_rm_pick(call, session, db_user)
+
+
+@router.callback_query(F.data == "gov_vrm_all_ask")
+async def cb_visa_rm_all_ask(call: CallbackQuery, session: AsyncSession, db_user: User) -> None:
+    """درخواست تایید برای رفع ویزا از تمامی کشورها."""
+    await call.answer()
+    country = await get_player_country(session, db_user)
+    if country is None:
+        await safe_edit(call, NO_COUNTRY_TEXT)
+        return
+
+    visas = await gov_repo.get_visa_list(session, country.id)
+    text = (
+        "⚠️ <b>تأیید رفع ویزای اجباری از تمامی کشورها (عادی‌سازی مرزها)</b>\n\n"
+        f"آیا اطمینان دارید که می‌خواهید ویزای اجباری تمامی <b>{fa_number(len(visas))} کشور</b> را لغو کرده و روابط مرزی را عادی‌سازی کنید؟"
+    )
+    await safe_edit(call, text, reply_markup=visa_rm_all_confirm_kb())
+
+
+@router.callback_query(F.data == "gov_vrm_all_confirm")
+async def cb_visa_rm_all_confirm(call: CallbackQuery, session: AsyncSession, db_user: User) -> None:
+    """اجرای رفع تمامی ویزاهای اجباری."""
+    await call.answer()
+    country = await get_player_country(session, db_user)
+    if country is None:
+        await safe_edit(call, NO_COUNTRY_TEXT)
+        return
+
+    count = await gov_repo.remove_all_visas(session, country.id)
+    await session.commit()
+
+    text = (
+        "✅ <b>تمامی ویزاهای اجباری ورود با موفقیت لغو شدند!</b>\n\n"
+        f"تعداد {fa_number(count)} کشور از حالت ویزای اجباری خارج شده و مرزها به وضعیت عادی بازگشت."
+    )
+    builder = InlineKeyboardBuilder()
+    builder.button(text="🔙 بازگشت به سامانه ویزا", callback_data="gov:visa_law", style=STYLE_MAIN)
+    await safe_edit(call, text, reply_markup=builder.as_markup())
+
+    await send_to_admin_group(
+        bot,
+        AdminGroupType.SANCTION_BILL,
+        f"🛂 <b>لغو کلیه ویزاهای اجباری (عادی‌سازی مرزها)</b>\n"
+        f"کشور: {country.flag} {country.name_fa}\n"
+        f"تعداد: {fa_number(count)} کشور",
+    )
 
 
 # ---------- مجلس ----------

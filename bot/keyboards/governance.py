@@ -107,14 +107,138 @@ def tax_law_kb(current_rate: float) -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
-def visa_law_kb() -> InlineKeyboardMarkup:
-    """منوی ویزا."""
+def visa_law_dashboard_kb() -> InlineKeyboardMarkup:
+    """داشبورد اصلی سامانه جامع ویزا و کنترل مرزها."""
     builder = InlineKeyboardBuilder()
-    builder.button(text="📋 لیست ویزاها", callback_data="gov:visa_list", style=STYLE_MAIN)
-    builder.button(text="➕ افزودن ویزا", callback_data="gov:visa_add", style=STYLE_OK)
-    builder.button(text="➖ حذف ویزا", callback_data="gov:visa_remove", style=STYLE_NO)
-    builder.button(text="🔙 بازگشت", callback_data="gov:legislation", style=STYLE_MAIN)
-    builder.adjust(1, 1, 1, 1)
+    builder.button(
+        text="📋 استعلام وضعیت مرزها (کیا دارن / کیا ندارن)",
+        callback_data="gov:visa_status",
+        style=STYLE_MAIN,
+    )
+    builder.button(
+        text="➕ وضع ویزا بر چند کشور / قاره",
+        callback_data="gov:visa_bulk_menu",
+        style=STYLE_NO,
+    )
+    builder.button(
+        text="🌍 وضع ویزا بر تمامی کشورهای جهان",
+        callback_data="gov:visa_all_ask",
+        style=STYLE_NO,
+    )
+    builder.button(
+        text="🤝 توافقات لغو روادید (دیدارهای حضوری)",
+        callback_data="dip:visa_waivers",
+        style=STYLE_OK,
+    )
+    builder.button(
+        text="➖ رفع ویزای اجباری (تکی یا همگانی)",
+        callback_data="gov:visa_rm_menu",
+        style=STYLE_MAIN,
+    )
+    builder.button(
+        text="🔙 بازگشت به قانون‌گذاری",
+        callback_data="gov:legislation",
+        style=STYLE_MAIN,
+    )
+    builder.adjust(1, 1, 1, 1, 1, 1)
+    return builder.as_markup()
+
+
+def visa_law_kb() -> InlineKeyboardMarkup:
+    """سازگاری با کدهای قبلی."""
+    return visa_law_dashboard_kb()
+
+
+def visa_status_menu_kb(
+    req_count: int, granted_count: int, rec_count: int, normal_count: int
+) -> InlineKeyboardMarkup:
+    """منوی انتخاب دسته‌بندی ویزاها."""
+    from ..utils.numbers import fa_number
+
+    builder = InlineKeyboardBuilder()
+    builder.button(
+        text=f"⛔️ ویزای اجباری وضع‌شده ({fa_number(req_count)})",
+        callback_data="gov_vview:req:0",
+        style=STYLE_NO,
+    )
+    builder.button(
+        text=f"🤝 لغو روادید اعطایی ({fa_number(granted_count)})",
+        callback_data="gov_vview:waiver:0",
+        style=STYLE_OK,
+    )
+    builder.button(
+        text=f"📥 لغو روادید دریافتی ({fa_number(rec_count)})",
+        callback_data="gov_vview:rec:0",
+        style=STYLE_MAIN,
+    )
+    builder.button(
+        text=f"⚪️ مرز عادی (بدون ویزای اجباری) ({fa_number(normal_count)})",
+        callback_data="gov_vview:none:0",
+        style=STYLE_MAIN,
+    )
+    builder.button(
+        text="🔙 بازگشت به سامانه ویزا",
+        callback_data="gov:visa_law",
+        style=STYLE_MAIN,
+    )
+    builder.adjust(1, 1, 1, 1, 1)
+    return builder.as_markup()
+
+
+def visa_all_confirm_kb() -> InlineKeyboardMarkup:
+    """تأییدیه وضع ویزا بر همه کشورها."""
+    builder = InlineKeyboardBuilder()
+    builder.button(
+        text="⛔️ بله، وضع ویزا بر تمامی کشورها",
+        callback_data="gov:visa_all_confirm",
+        style=STYLE_NO,
+    )
+    builder.button(
+        text="🔙 انصراف و بازگشت",
+        callback_data="gov:visa_law",
+        style=STYLE_MAIN,
+    )
+    builder.adjust(1, 1)
+    return builder.as_markup()
+
+
+def visa_rm_menu_kb(has_visas: bool) -> InlineKeyboardMarkup:
+    """منوی رفع ویزای اجباری."""
+    builder = InlineKeyboardBuilder()
+    if has_visas:
+        builder.button(
+            text="❌ رفع ویزا از یک کشور خاص",
+            callback_data="gov_vrm_pick:0",
+            style=STYLE_MAIN,
+        )
+        builder.button(
+            text="🔓 رفع ویزا از تمامی کشورها (عادی‌سازی)",
+            callback_data="gov_vrm_all_ask",
+            style=STYLE_OK,
+        )
+    builder.button(
+        text="🔙 بازگشت به سامانه ویزا",
+        callback_data="gov:visa_law",
+        style=STYLE_MAIN,
+    )
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def visa_rm_all_confirm_kb() -> InlineKeyboardMarkup:
+    """تأییدیه رفع ویزا از همه کشورها."""
+    builder = InlineKeyboardBuilder()
+    builder.button(
+        text="🔓 بله، رفع ویزا از تمامی کشورها",
+        callback_data="gov_vrm_all_confirm",
+        style=STYLE_OK,
+    )
+    builder.button(
+        text="🔙 انصراف",
+        callback_data="gov:visa_rm_menu",
+        style=STYLE_MAIN,
+    )
+    builder.adjust(1, 1)
     return builder.as_markup()
 
 

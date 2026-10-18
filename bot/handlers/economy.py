@@ -753,16 +753,18 @@ async def cb_sell_buyer(
 
     resource = data["resource"]
 
-    # تعیین شیوه‌های مجاز حمل‌ونقل (سوخت در هواپیما ممنوع، دریایی نیازمند دریا، زمینی برای همه)
+    # تعیین شیوه‌های مجاز حمل‌ونقل (سوخت در هواپیما ممنوع، ترانزیت زمینی سوخت فقط برای کشورهای بدون مرز آبی)
     allowed_modes: list[TransportMode] = []
     is_fuel = resource in FUEL_RESOURCES
     can_sea = geo.can_use_sea_transport(country.name_en, buyer.name_en)
+    has_landlocked = geo.is_landlocked(country.name_en) or geo.is_landlocked(buyer.name_en)
 
     if not is_fuel:
         allowed_modes.append(TransportMode.AIR)
     if can_sea:
         allowed_modes.append(TransportMode.SEA)
-    allowed_modes.append(TransportMode.LAND)
+    if not is_fuel or has_landlocked:
+        allowed_modes.append(TransportMode.LAND)
 
     await state.set_state(SaleForm.choosing_transport_mode)
     notice = ""
@@ -770,6 +772,8 @@ async def cb_sell_buyer(
         notice += "⚠️ <i>به دلیل ماهیت سوختی این منبع، حمل هوایی ممنوع است.</i>\n"
     if not can_sea:
         notice += "⚠️ <i>به دلیل محصور بودن در خشکی، حمل دریایی امکان‌پذیر نیست.</i>\n"
+    if is_fuel and not has_landlocked:
+        notice += "⚠️ <i>برای منابع سوختی بین کشورهای دارای مرز آبی، ترانزیت زمینی غیرفعال است (الزام حمل دریایی).</i>\n"
 
     await safe_edit(
         call,
@@ -787,7 +791,6 @@ async def cb_sell_transport_mode(
     await call.answer()
     mode_str = call.data.split(":")[1]
     mode = TransportMode(mode_str)
-    await state.update_data(transport_mode=mode.value)
 
     data = await state.get_data()
     country = await get_player_country(session, db_user)
@@ -796,6 +799,16 @@ async def cb_sell_transport_mode(
         await safe_edit(call, NO_COUNTRY_TEXT)
         await state.clear()
         return
+
+    # کنترل قانون ترانزیت زمینی سوخت
+    if mode == TransportMode.LAND:
+        is_fuel = data.get("resource") in FUEL_RESOURCES
+        has_landlocked = geo.is_landlocked(country.name_en) or geo.is_landlocked(buyer.name_en)
+        if is_fuel and not has_landlocked:
+            await call.answer("ترانزیت زمینی سوخت تنها برای کشورهای فاقد مرز آبی مجاز است.", show_alert=True)
+            return
+
+    await state.update_data(transport_mode=mode.value)
 
     has_waiver = await dip_repo.is_shipping_visa_waived(session, country.id, buyer.id)
     air_fee = AIR_TRANSPORT_FEE_NO_VISA if has_waiver else AIR_TRANSPORT_FEE
@@ -845,12 +858,14 @@ async def cb_sale_back_mode(
     allowed_modes: list[TransportMode] = []
     is_fuel = resource in FUEL_RESOURCES
     can_sea = geo.can_use_sea_transport(country.name_en, buyer.name_en)
+    has_landlocked = geo.is_landlocked(country.name_en) or geo.is_landlocked(buyer.name_en)
 
     if not is_fuel:
         allowed_modes.append(TransportMode.AIR)
     if can_sea:
         allowed_modes.append(TransportMode.SEA)
-    allowed_modes.append(TransportMode.LAND)
+    if not is_fuel or has_landlocked:
+        allowed_modes.append(TransportMode.LAND)
 
     await state.set_state(SaleForm.choosing_transport_mode)
     notice = ""
@@ -858,6 +873,8 @@ async def cb_sale_back_mode(
         notice += "⚠️ <i>به دلیل ماهیت سوختی این منبع، حمل هوایی ممنوع است.</i>\n"
     if not can_sea:
         notice += "⚠️ <i>به دلیل محصور بودن در خشکی، حمل دریایی امکان‌پذیر نیست.</i>\n"
+    if is_fuel and not has_landlocked:
+        notice += "⚠️ <i>برای منابع سوختی بین کشورهای دارای مرز آبی، ترانزیت زمینی غیرفعال است (الزام حمل دریایی).</i>\n"
 
     await safe_edit(
         call,

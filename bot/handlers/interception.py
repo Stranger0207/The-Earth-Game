@@ -722,6 +722,10 @@ async def start_interception_for_sale(
         await message.answer("⚠️ این محموله دیگر در حال حرکت نیست یا یافت نشد.")
         return False
 
+    if getattr(sale, "transport_mode", "SEA") == "SEA":
+        await message.answer("⚠️ امکان رهگیری هوایی/زمینی برای محموله‌های دریایی وجود ندارد.")
+        return False
+
     seller = await countries_repo.get_country(session, sale.seller_country)
     buyer = await countries_repo.get_country(session, sale.buyer_country)
     if not seller or not buyer:

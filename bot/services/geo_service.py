@@ -962,4 +962,14 @@ def get_strait_transit_progress(waypoints: list[list[float]], strait_id: str) ->
     }
 
 
+def get_all_maritime_corridor_segments() -> list[list[list[float]]]:
+    """فهرست تمام پاره‌خط‌های شبکه کریدورهای دریایی بین‌المللی برای نمایش خط‌چین روی نقشه."""
+    segments: list[list[list[float]]] = []
+    for u, v, _strait, _w in _MARITIME_CORRIDOR_EDGES:
+        if u in _MARITIME_CORRIDOR_COORDS and v in _MARITIME_CORRIDOR_COORDS:
+            segments.append([_MARITIME_CORRIDOR_COORDS[u], _MARITIME_CORRIDOR_COORDS[v]])
+    return segments
+
+
+
 

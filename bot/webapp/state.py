@@ -8,7 +8,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -218,10 +218,17 @@ async def get_radar_state(
     # ۴. محموله‌های در حال حرکت (منابع طبیعی و تجهیزات نظامی)
     shipments: list[dict[str, Any]] = []
 
-    # محموله‌های منابع
+    # محموله‌های منابع (شامل محموله‌های فعال و همچنین موارد درگیری/انهدام/توقیف تا ۱ ساعت پیش)
+    one_hour_ago = now - timedelta(hours=1)
     sales_res = await session.execute(
         select(ResourceSale).where(
-            ResourceSale.status.in_([TradeStatus.IN_TRANSIT, TradeStatus.HELD_AT_STRAIT])
+            or_(
+                ResourceSale.status.in_([TradeStatus.IN_TRANSIT, TradeStatus.HELD_AT_STRAIT]),
+                and_(
+                    ResourceSale.strait_status.in_(["DESTROYED", "CONFISCATED"]),
+                    ResourceSale.held_since >= one_hour_ago,
+                ),
+            )
         )
     )
     for sale in sales_res.scalars().all():
@@ -245,14 +252,28 @@ async def get_radar_state(
         held_strait_id = sale.held_at_strait_id
 
         anchorage_coords = None
+        strait_name_fa = ""
         if held_strait_id:
+            s_def = geo.get_strait_def(held_strait_id)
+            strait_name_fa = s_def["name_fa"] if s_def else held_strait_id
             p_info = geo.get_strait_transit_progress(base_waypoints, held_strait_id)
             if p_info:
                 anchorage_coords = p_info["approach_coords"]
             else:
                 anchorage_coords = geo.get_strait_coords(held_strait_id)
 
-        if standoff_action == "RETURNING":
+        is_conflict = strait_status in ("DESTROYED", "CONFISCATED")
+
+        if is_conflict and anchorage_coords:
+            waypoints = [anchorage_coords, anchorage_coords]
+            to_country_dict = {
+                "id": buyer.id,
+                "name_en": buyer.name_en,
+                "name_fa": buyer.name_fa,
+                "flag": buyer.flag,
+                "coords": anchorage_coords,
+            }
+        elif standoff_action == "RETURNING":
             waypoints = list(reversed(base_waypoints))
             to_country_dict = {
                 "id": seller.id,
@@ -271,32 +292,42 @@ async def get_radar_state(
                 "coords": waypoints[-1],
             }
 
-        # قانون محرمانگی بارنامه:
-        is_owner_or_admin = (
-            is_admin
-            or (viewer_country and viewer_country.id in (sale.seller_country, sale.buyer_country))
-        )
-
-        if is_owner_or_admin:
-            try:
-                rtype = ResourceType(sale.resource)
-                r_name = RESOURCE_FA.get(rtype, sale.resource)
-                r_unit = RESOURCE_UNIT_FA.get(rtype, "")
-            except Exception:
-                r_name = sale.resource
-                r_unit = ""
-            cargo_desc = f"{fa_number(sale.amount)} {r_unit} {r_name}"
+        # قانون محرمانگی بارنامه و رویدادهای درگیری
+        if is_conflict:
+            # رویدادهای درگیری برای همه کشورها علنی است
             is_confidential = False
+            if strait_status == "DESTROYED":
+                cargo_desc = f"💥 کشتی در {strait_name_fa} مورد اصابت موشک قرار گرفت و غرق شد"
+            else:
+                cargo_desc = f"🚨 کشتی در {strait_name_fa} توقیف و بار آن مصادره شد"
+            can_intercept = False
         else:
-            cargo_desc = "🔒 محرمانه (بارنامه طبقه‌بندی‌شده)"
-            is_confidential = True
+            is_owner_or_admin = (
+                is_admin
+                or (viewer_country and viewer_country.id in (sale.seller_country, sale.buyer_country))
+            )
 
-        # امکان رهگیری برای بیننده
-        can_intercept = (
-            viewer_country is not None
-            and viewer_country.id not in (sale.seller_country, sale.buyer_country)
-            and geo.is_on_route(viewer_country.name_en, seller.name_en, buyer.name_en)
-        )
+            if is_owner_or_admin:
+                try:
+                    rtype = ResourceType(sale.resource)
+                    r_name = RESOURCE_FA.get(rtype, sale.resource)
+                    r_unit = RESOURCE_UNIT_FA.get(rtype, "")
+                except Exception:
+                    r_name = sale.resource
+                    r_unit = ""
+                cargo_desc = f"{fa_number(sale.amount)} {r_unit} {r_name}"
+                is_confidential = False
+            else:
+                cargo_desc = "🔒 محرمانه (بارنامه طبقه‌بندی‌شده)"
+                is_confidential = True
+
+            # امکان رهگیری (محموله‌های دریایی طبق دستور کاملاً غیرفعال هستند)
+            can_intercept = (
+                mode != TransportMode.SEA.value
+                and viewer_country is not None
+                and viewer_country.id not in (sale.seller_country, sale.buyer_country)
+                and geo.is_on_route(viewer_country.name_en, seller.name_en, buyer.name_en)
+            )
 
         shipments.append({
             "id": sale.id,
@@ -308,6 +339,7 @@ async def get_radar_state(
             "warning_count": warning_count,
             "held_at_strait_id": held_strait_id,
             "anchorage_coords": anchorage_coords,
+            "is_conflict": is_conflict,
             "content": cargo_desc,
             "is_confidential": is_confidential,
             "has_escort": bool(sale.escort_power and sale.escort_power > 0),
@@ -446,5 +478,6 @@ async def get_radar_state(
         "diplomatic_flights": diplomatic_flights,
         "shipments": shipments,
         "straits": straits_data,
+        "maritime_network": geo.get_all_maritime_corridor_segments(),
         "server_time": now.isoformat(),
     }

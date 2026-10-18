@@ -95,6 +95,10 @@ async def interceptable_shipments(
     result: list[dict] = []
 
     for sale in sales:
+        # محموله‌های دریایی طبق قوانین جدید غیرقابل رهگیری هستند
+        if getattr(sale, "transport_mode", "SEA") == "SEA":
+            continue
+
         # محموله‌ی خودِ کشور (فروشنده یا خریدار) قابل رهگیری نیست
         if country.id in (sale.seller_country, sale.buyer_country):
             continue

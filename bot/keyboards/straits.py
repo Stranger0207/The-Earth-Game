@@ -219,9 +219,9 @@ def strait_standoff_ctrl_kb(
             )
         ])
 
-    # ردیف عملیات نظامی
+    # ردیف عملیات نظامی و قاطع (صرفاً پس از صدور هر ۳ اخطار مجاز است)
     mil_row: list[InlineKeyboardButton] = []
-    if warning_count >= 1 or is_running:
+    if warning_count >= 3:
         mil_row.append(
             InlineKeyboardButton(
                 text="💥 شلیک به کشتی",
@@ -229,22 +229,28 @@ def strait_standoff_ctrl_kb(
                 style=STYLE_NO,
             )
         )
+        mil_row.append(
+            InlineKeyboardButton(
+                text="⚓ مصادره بار",
+                callback_data=f"strait_act:confiscate_menu:{sale_id}:{strait_id}",
+                style=STYLE_MAIN,
+            )
+        )
     else:
         mil_row.append(
             InlineKeyboardButton(
-                text="🔒 شلیک (نیازمند ۱ اخطار)",
+                text=f"🔒 شلیک ({fa_number(warning_count)}/۳ اخطار)",
                 callback_data=f"strait_act:fire_locked:{sale_id}:{strait_id}",
                 style=STYLE_MAIN,
             )
         )
-
-    mil_row.append(
-        InlineKeyboardButton(
-            text="⚓ مصادره بار",
-            callback_data=f"strait_act:confiscate_menu:{sale_id}:{strait_id}",
-            style=STYLE_MAIN,
+        mil_row.append(
+            InlineKeyboardButton(
+                text=f"🔒 مصادره ({fa_number(warning_count)}/۳ اخطار)",
+                callback_data=f"strait_act:conf_locked:{sale_id}:{strait_id}",
+                style=STYLE_MAIN,
+            )
         )
-    )
     rows.append(mil_row)
 
     # ردیف صدور اجازه عبور

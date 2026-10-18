@@ -196,11 +196,19 @@ async def main():
         allowed_modes_steel_coastal.append(TransportMode.AIR)
     allowed_modes_steel_coastal.append(TransportMode.LAND)
 
-    check("برای فولاد بین دو کشور ساحلی، هر ۳ روش دریایی، هوایی و زمینی مجاز است",
-          len(allowed_modes_steel_coastal) == 3 and
-          TransportMode.SEA in allowed_modes_steel_coastal and
-          TransportMode.AIR in allowed_modes_steel_coastal and
-          TransportMode.LAND in allowed_modes_steel_coastal)
+    # ج) برای سوخت بین دو کشور ساحلی (ایران به آلمان):
+    is_fuel = ResourceType.OIL in FUEL_RESOURCES
+    is_coastal_possible = geo.can_use_sea_transport("Iran", "Germany")
+    allowed_modes_fuel_coastal = []
+    if is_coastal_possible:
+        allowed_modes_fuel_coastal.append(TransportMode.SEA)
+    if not is_fuel:
+        allowed_modes_fuel_coastal.append(TransportMode.AIR)
+    if not is_fuel or (geo.is_landlocked("Iran") or geo.is_landlocked("Germany")):
+        allowed_modes_fuel_coastal.append(TransportMode.LAND)
+
+    check("برای سوخت بین دو کشور ساحلی، ترانزیت زمینی غیرفعال است (فقط دریایی مجاز است)",
+          allowed_modes_fuel_coastal == [TransportMode.SEA])
 
     # -------------------------------------------------------------
     # ۳. تست پایگاه‌داده و مخازن تنگه‌ها (straits_repo)
@@ -405,22 +413,51 @@ async def main():
         sale.strait_status = "HELD_AT_STRAIT"
         sale.held_at_strait_id = "hormuz"
         sale.held_since = _utcnow()
+        sale.warning_count = 1
         await session.flush()
 
+        # فرمان شلیک قبل از ۳ اخطار باید خطا دهد
+        try:
+            await strait_service.destroy_shipment(fake_bot, session, sale.id, "hormuz", iran)
+            check("فرمان شلیک قبل از ۳ اخطار رد شد", False)
+        except strait_service.StraitError:
+            check("فرمان شلیک قبل از ۳ اخطار رد شد", True)
+
+        # افزایش اخطار به ۳ و شلیک موفق
+        sale.warning_count = 3
+        await session.flush()
         res_destroy = await strait_service.destroy_shipment(fake_bot, session, sale.id, "hormuz", iran)
-        check("کشتی با موفقیت منهدم شد", res_destroy["status"] == "destroyed")
+        check("کشتی پس از ۳ اخطار با موفقیت منهدم شد", res_destroy["status"] == "destroyed")
         check("وضعیت محموله DESTROYED و معامله REJECTED شد", sale.strait_status == "DESTROYED" and sale.status == TradeStatus.REJECTED.value)
+
+        # پس از انهدام، ثبت اخطار یا دستورات دیگر باید خطا دهد
+        try:
+            await strait_service.issue_strait_warning(fake_bot, session, sale.id, "hormuz", iran)
+            check("صدور اخطار به کشتی منهدم‌شده رد شد", False)
+        except strait_service.StraitError:
+            check("صدور اخطار به کشتی منهدم‌شده رد شد", True)
 
         # ۴) اقدام سوم: مصادره مستقیم به ذخایر خودی
         sale.strait_status = "HELD_AT_STRAIT"
         sale.held_at_strait_id = "hormuz"
         sale.held_since = _utcnow()
+        sale.warning_count = 2
         await session.flush()
 
+        # مصادره قبل از ۳ اخطار باید خطا دهد
+        try:
+            await strait_service.confiscate_shipment(fake_bot, session, sale.id, "hormuz", iran, to_blocked_assets=False)
+            check("مصادره بار قبل از ۳ اخطار رد شد", False)
+        except strait_service.StraitError:
+            check("مصادره بار قبل از ۳ اخطار رد شد", True)
+
+        # با ۳ اخطار مصادره موفق است
+        sale.warning_count = 3
+        await session.flush()
         res_confiscate_direct = await strait_service.confiscate_shipment(
             fake_bot, session, sale.id, "hormuz", iran, to_blocked_assets=False
         )
-        check("کشتی مستقیماً مصادره شد", res_confiscate_direct["status"] == "confiscated")
+        check("کشتی با ۳ اخطار مستقیماً مصادره شد", res_confiscate_direct["status"] == "confiscated")
         iran_reserves = await reserves_repo.get_reserve(session, iran.id, ResourceType.OIL.value)
         check("نفت مصادره شده به ذخایر ایران افزوده شد", iran_reserves is not None and iran_reserves.amount >= 10_000)
 
@@ -437,6 +474,7 @@ async def main():
             strait_status="HELD_AT_STRAIT",
             held_at_strait_id="hormuz",
             held_since=_utcnow(),
+            warning_count=3,
         )
         session.add(sale2)
         await session.flush()
@@ -801,6 +839,65 @@ async def main():
         wto_caption = mock_send_photo_news.call_args[0][3]
         check("خبر WTO شامل ایموجی کشتی 🚢 است", "🚢" in wto_caption)
         check("خبر WTO شامل واژه دریانوردی است", "دریانوردی" in wto_caption)
+        # -------------------------------------------------------------
+        # [بخش ۱۰] تست عدم امکان رهگیری محموله دریایی، پایداری ۱ ساعته درگیری و کریدورها
+        # -------------------------------------------------------------
+        print("\n[بخش ۱۰] تست غیرفعال‌سازی رهگیری دریایی، نمایش ۱ ساعته درگیری و کریدورها:")
+        from bot.services import interception_service
+        from bot.webapp import state as webapp_state
+
+        # ۱) بررسی سرویس رهگیری برای محموله‌های دریایی
+        intc_list = await interception_service.interceptable_shipments(session, iran_c.id)
+        sea_in_intc = [s for s in intc_list if s.get("transport_mode") == "SEA"]
+        check("هیچ محموله دریایی در لیست رهگیری قرار نمی‌گیرد", len(sea_in_intc) == 0)
+
+        # ۲) بررسی کریدورهای دریایی بین‌المللی
+        corridors = geo.get_all_maritime_corridor_segments()
+        check("کریدورهای دریایی بین‌المللی استخراج شدند", len(corridors) > 0)
+        check("هر قطعه کریدور دارای دو نقطه مختصات جغرافیایی است", len(corridors[0]) == 2 and len(corridors[0][0]) == 2)
+
+        # ۳) ثبت دو محموله منهدم شده: یکی ۳۰ دقیقه پیش (زیر ۱ ساعت) و یکی ۹۰ دقیقه پیش (بالای ۱ ساعت)
+        sale_conflict_recent = ResourceSale(
+            id=60,
+            seller_country=uae_c.id,
+            buyer_country=india_c.id,
+            resource=ResourceType.OIL.value,
+            amount=500.0,
+            price=5_000_000.0,
+            transport_mode="SEA",
+            status=TradeStatus.REJECTED.value,
+            strait_status="DESTROYED",
+            held_at_strait_id="hormuz",
+            held_since=_utcnow() - timedelta(minutes=30),
+        )
+        sale_conflict_expired = ResourceSale(
+            id=61,
+            seller_country=uae_c.id,
+            buyer_country=india_c.id,
+            resource=ResourceType.OIL.value,
+            amount=500.0,
+            price=5_000_000.0,
+            transport_mode="SEA",
+            status=TradeStatus.REJECTED.value,
+            strait_status="CONFISCATED",
+            held_at_strait_id="hormuz",
+            held_since=_utcnow() - timedelta(minutes=90),
+        )
+        session.add_all([sale_conflict_recent, sale_conflict_expired])
+        await session.commit()
+
+        # بررسی خروجی get_radar_state برای یک کاربر ناظر (مثلاً آلمان که هیچ نفعی در معامله نداشته)
+        state_data = await webapp_state.get_radar_state(session, viewer_user_id=102)
+        active_ids = [s["id"] for s in state_data["shipments"]]
+        check("محموله درگیری زیر ۱ ساعت در رادار همه کشورها نمایش داده می‌شود", 60 in active_ids)
+        check("محموله درگیری بالای ۱ ساعت از روی نقشه حذف شده است", 61 not in active_ids)
+
+        conflict_shipment = next(s for s in state_data["shipments"] if s["id"] == 60)
+        check("فلگ is_conflict برای محموله منهدم‌شده True است", conflict_shipment["is_conflict"] is True)
+        check("محموله درگیری قابل رهگیری نیست", conflict_shipment["can_intercept"] is False)
+        check("مختصات درگیری در مدخل تنگه تنظیم شده است", len(conflict_shipment["waypoints"]) >= 1)
+        check("لیست کریدورهای دریایی در خروجی رادار ارسال می‌شود", "maritime_network" in state_data and len(state_data["maritime_network"]) > 0)
+
     # پایان تست‌ها و گزارش نهایی
     # -------------------------------------------------------------
     print("\n" + "=" * 65)

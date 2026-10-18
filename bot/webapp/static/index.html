@@ -365,6 +365,14 @@
     .leaflet-container {
       font-family: 'Vazirmatn', sans-serif !important;
     }
+    @keyframes conflict-beacon {
+      0% { transform: scale(0.95); box-shadow: 0 0 6px rgba(239, 68, 68, 0.7); }
+      50% { transform: scale(1.25); box-shadow: 0 0 22px rgba(239, 68, 68, 1); }
+      100% { transform: scale(0.95); box-shadow: 0 0 6px rgba(239, 68, 68, 0.7); }
+    }
+    .conflict-beacon-icon {
+      animation: conflict-beacon 1.1s infinite ease-in-out;
+    }
   </style>
 </head>
 <body>
@@ -402,6 +410,9 @@
       </button>
       <button class="filter-btn active" data-layer="capitals" onclick="toggleLayer('capitals', this)">
         <span>🏛 پایتخت‌ها</span>
+      </button>
+      <button class="filter-btn" id="btn-toggle-lanes" onclick="toggleSeaLanes(this)">
+        <span>🌐 آبراه‌های بین‌المللی</span>
       </button>
     </div>
   </div>
@@ -453,11 +464,69 @@
       capitals: true
     };
 
+    const seaLanesGroup = L.layerGroup();
+    let isSeaLanesVisible = false;
+
     let radarData = null;
     let botUsername = "";
     let serverTimeDelta = 0; // تفاوت میلی‌ثانیه‌ای ساعت کلاینت با سرور
 
     // ساخت آیکون‌های SVG
+    function createConflictIcon(straitStatus) {
+      const isDestroyed = (straitStatus === 'DESTROYED');
+      const emoji = isDestroyed ? '💥' : '🚨';
+      const bgColor = isDestroyed ? 'rgba(239, 68, 68, 0.95)' : 'rgba(245, 158, 11, 0.95)';
+
+      return L.divIcon({
+        className: 'vehicle-icon',
+        html: `
+          <div class="conflict-beacon-icon" style="
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            background: ${bgColor};
+            border: 2px solid #ffffff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 15px;
+            cursor: pointer;
+            box-shadow: 0 0 12px ${isDestroyed ? 'rgba(239, 68, 68, 0.8)' : 'rgba(245, 158, 11, 0.8)'};
+          ">
+            <span>${emoji}</span>
+          </div>
+        `,
+        iconSize: [30, 30],
+        iconAnchor: [15, 15]
+      });
+    }
+
+    function toggleSeaLanes(btn) {
+      isSeaLanesVisible = !isSeaLanesVisible;
+      if (isSeaLanesVisible) {
+        map.addLayer(seaLanesGroup);
+        if (btn) btn.classList.add('active');
+      } else {
+        map.removeLayer(seaLanesGroup);
+        if (btn) btn.classList.remove('active');
+      }
+    }
+
+    function renderSeaLanes(segments) {
+      seaLanesGroup.clearLayers();
+      if (!segments || segments.length === 0) return;
+      segments.forEach(seg => {
+        if (!seg || seg.length < 2) return;
+        const poly = L.polyline(seg, {
+          color: '#38bdf8',
+          weight: 1.6,
+          dashArray: '5, 8',
+          opacity: 0.75
+        });
+        seaLanesGroup.addLayer(poly);
+      });
+    }
+
     function createShipIcon(hasPulse = false) {
       return L.divIcon({
         className: 'vehicle-icon',
@@ -698,9 +767,23 @@
       // ۴. رسم محموله‌ها (دریایی و هوایی)
       if (data.shipments) {
         data.shipments.forEach(s => {
-          if (!s.waypoints || s.waypoints.length < 2) return;
+          if (!s.waypoints || s.waypoints.length === 0) return;
           const isSea = (s.transport_mode === 'SEA');
           const targetGroup = isSea ? layerGroups.sea : layerGroups.air;
+
+          // رویداد درگیری و انهدام/مصادره کشتی
+          if (s.is_conflict) {
+            const conflictIcon = createConflictIcon(s.strait_status);
+            const conflictPoint = (s.anchorage_coords && s.anchorage_coords.length === 2)
+              ? s.anchorage_coords
+              : s.waypoints[0];
+            const marker = L.marker(conflictPoint, { icon: conflictIcon });
+            marker.on('click', () => showShipmentInfo(s));
+            targetGroup.addLayer(marker);
+            return;
+          }
+
+          if (s.waypoints.length < 2) return;
           const lineColor = isSea ? '#06b6d4' : '#a855f7';
 
           // خط مسیر
@@ -733,6 +816,11 @@
             raw: s
           });
         });
+      }
+
+      // ۵. رسم آبراه‌های بین‌المللی دریایی
+      if (data.maritime_network) {
+        renderSeaLanes(data.maritime_network);
       }
 
       // اعمال اولیه موقعیت‌ها
@@ -812,12 +900,44 @@
     }
 
     function showShipmentInfo(s) {
+      if (s.is_conflict) {
+        const isDestroyed = (s.strait_status === 'DESTROYED');
+        const eventTitle = isDestroyed ? '💥 انهدام کشتی در درگیری تنگه' : '🚨 توقیف شناور و مصادره بار';
+        const eventColor = isDestroyed ? '#ef4444' : '#f59e0b';
+        const descText = s.content || (isDestroyed ? 'کشتی پس از ۳ اخطار هدف آتش ساحلی قرار گرفته و غرق شد.' : 'شناور متوقف و محموله آن توسط کنترل‌کننده تنگه مصادره شد.');
+
+        const html = `
+          <div class="info-row" style="background: rgba(239, 68, 68, 0.15); border-radius: 8px; padding: 8px 12px; margin-bottom: 8px;">
+            <span class="info-label" style="color: ${eventColor}; font-weight: bold;">وضعیت کشتی:</span>
+            <span class="info-value" style="color: ${eventColor}; font-weight: bold;">${eventTitle}</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">مبدأ حرکت:</span>
+            <span class="info-value">${s.from_country.flag} ${s.from_country.name_fa}</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">مقصد اعلامی:</span>
+            <span class="info-value">${s.to_country.flag} ${s.to_country.name_fa}</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">شرح حادثه:</span>
+            <span class="info-value" style="color: #fca5a5;">${descText}</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">مدت نمایش رادار:</span>
+            <span class="info-value" style="color: #94a3b8;">⚠️ نشان چشمک‌زن حادثه به مدت ۱ ساعت روی رادار زنده همه کشورها فعال است.</span>
+          </div>
+        `;
+        openSheet(`💥 لاگ درگیری دریایی #${s.id}`, html);
+        return;
+      }
+
       const now = Date.now() + serverTimeDelta;
       const etaTime = s.eta ? new Date(s.eta).getTime() : 0;
       const remain = etaTime - now;
 
       let interceptBtn = '';
-      if (s.can_intercept) {
+      if (s.can_intercept && s.transport_mode !== 'SEA') {
         interceptBtn = `
           <button class="action-btn btn-intercept" onclick="interceptShipment(${s.id})">
             🎯 اقدام به رهگیری این محموله

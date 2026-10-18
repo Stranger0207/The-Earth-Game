@@ -176,6 +176,9 @@ async def issue_strait_warning(
     if not sale:
         raise StraitError("محموله یافت نشد.")
 
+    if sale.strait_status in ("DESTROYED", "CONFISCATED"):
+        raise StraitError("این شناور پیش‌تر تعیین تکلیف شده (منهدم/مصادره) و صدور اخطار برای آن ممکن نیست.")
+
     if sale.strait_status == "PASSED":
         raise StraitError("این کشتی از محدوده عملیاتی تنگه عبور کرده و وارد آب‌های آزاد شده است. صدور اخطار ممکن نیست.")
 
@@ -183,7 +186,7 @@ async def issue_strait_warning(
         raise StraitError("کشتی به اخطارها تمکین کرده و در حال بازگشت به کشور مبدأ است. نیازی به اخطار مجدد نیست.")
 
     if sale.warning_count >= 3:
-        raise StraitError("حداکثر ۳ اخطار به این شناور داده شده است. اکنون می‌توانید در صورت لزوم دستور شلیک صادر کنید.")
+        raise StraitError("حداکثر ۳ اخطار به این شناور داده شده است. اکنون می‌توانید در صورت لزوم دستور شلیک یا مصادره صادر کنید.")
 
     sale.warning_count += 1
     w_count = sale.warning_count
@@ -264,8 +267,14 @@ async def owner_hold_at_strait(
     if not sale or sale.seller_country != owner_country.id:
         raise StraitError("محموله مربوط به کشور شما نیست.")
 
+    if sale.strait_status in ("DESTROYED", "CONFISCATED"):
+        raise StraitError("شناور هدف آتش قرار گرفته یا مصادره شده و امکان لنگراندازی وجود ندارد.")
+
     if sale.strait_status == "PASSED":
         raise StraitError("کشتی از تنگه عبور کرده است و امکان توقف وجود ندارد.")
+
+    if sale.standoff_action == "RETURNING":
+        raise StraitError("کشتی در حال عقب‌نشینی به کشور مبدأ است.")
 
     sale.standoff_action = "HOLD"
     now = _utcnow()
@@ -308,6 +317,9 @@ async def owner_retreat_from_strait(
     sale = await trade_repo.get_sale(session, sale_id)
     if not sale or sale.seller_country != owner_country.id:
         raise StraitError("محموله مربوط به کشور شما نیست.")
+
+    if sale.strait_status in ("DESTROYED", "CONFISCATED"):
+        raise StraitError("شناور هدف آتش قرار گرفته یا مصادره شده و امکان عقب‌نشینی وجود ندارد.")
 
     if sale.strait_status == "PASSED":
         raise StraitError("کشتی از تنگه عبور کرده است و امکان عقب‌نشینی وجود ندارد.")
@@ -356,8 +368,14 @@ async def owner_run_blockade(
     if not sale or sale.seller_country != owner_country.id:
         raise StraitError("محموله مربوط به کشور شما نیست.")
 
+    if sale.strait_status in ("DESTROYED", "CONFISCATED"):
+        raise StraitError("شناور هدف قرار گرفته یا مصادره شده و امکان حرکت ندارد.")
+
     if sale.strait_status == "PASSED":
         raise StraitError("کشتی پیشتر از تنگه عبور کرده است.")
+
+    if sale.standoff_action == "RETURNING":
+        raise StraitError("کشتی در حال عقب‌نشینی به کشور مبدأ است.")
 
     sale.standoff_action = "RUNNING"
     now = _utcnow()
@@ -401,6 +419,9 @@ async def allow_passage(
     sale = await trade_repo.get_sale(session, sale_id)
     if not sale or (sale.strait_status != "HELD_AT_STRAIT" and sale.standoff_action not in ("STANDOFF", "HOLD", "RUNNING")):
         raise StraitError("این محموله دیگر در انتظار تصمیم‌گیری در تنگه نیست.")
+
+    if sale.strait_status in ("DESTROYED", "CONFISCATED"):
+        raise StraitError("این شناور منهدم یا مصادره شده و امکان صدور اجازه عبور ندارد.")
 
     s_def = get_strait_def(strait_id)
     strait_name_fa = s_def["name_fa"] if s_def else strait_id
@@ -467,6 +488,12 @@ async def destroy_shipment(
     if not sale or (sale.strait_status != "HELD_AT_STRAIT" and sale.standoff_action not in ("STANDOFF", "HOLD", "RUNNING")):
         raise StraitError("این محموله دیگر در انتظار تصمیم‌گیری یا تیررس در تنگه نیست.")
 
+    if sale.strait_status in ("DESTROYED", "CONFISCATED"):
+        raise StraitError("این شناور پیش‌تر تعیین تکلیف (منهدم/مصادره) شده است.")
+
+    if sale.warning_count < 3:
+        raise StraitError("فرمان شلیک تنها پس از صدور ۳ اخطار رسمی به شناور مجاز است!")
+
     if sale.standoff_action == "RETURNING":
         raise StraitError("شناور به اخطارها تمکین کرده و در حال عقب‌نشینی به کشور مبدأ است. امکان حمله به آن وجود ندارد!")
 
@@ -479,8 +506,8 @@ async def destroy_shipment(
     sale.strait_status = "DESTROYED"
     sale.status = TradeStatus.REJECTED.value
     sale.standoff_action = "DESTROYED"
-    sale.held_at_strait_id = None
-    sale.held_since = None
+    sale.held_at_strait_id = strait_id
+    sale.held_since = _utcnow()
     await session.flush()
 
     seller = await countries_repo.get_country(session, sale.seller_country)
@@ -554,6 +581,12 @@ async def confiscate_shipment(
     if not sale or sale.strait_status != "HELD_AT_STRAIT":
         raise StraitError("این محموله دیگر در انتظار تصمیم‌گیری در تنگه نیست.")
 
+    if sale.strait_status in ("DESTROYED", "CONFISCATED"):
+        raise StraitError("این شناور پیش‌تر تعیین تکلیف (منهدم/مصادره) شده است.")
+
+    if sale.warning_count < 3:
+        raise StraitError("مصادره بار تنها پس از صدور ۳ اخطار رسمی به شناور مجاز است!")
+
     s_def = get_strait_def(strait_id)
     strait_name_fa = s_def["name_fa"] if s_def else strait_id
 
@@ -570,8 +603,9 @@ async def confiscate_shipment(
 
     sale.strait_status = "CONFISCATED"
     sale.status = TradeStatus.REJECTED.value
-    sale.held_at_strait_id = None
-    sale.held_since = None
+    sale.standoff_action = "CONFISCATED"
+    sale.held_at_strait_id = strait_id
+    sale.held_since = _utcnow()
 
     if to_blocked_assets:
         # انتقال به اموال بلوکه‌شده

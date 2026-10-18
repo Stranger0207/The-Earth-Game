@@ -498,10 +498,15 @@
         attributionControl: false
       }).setView([28.0, 48.0], 3.5);
 
-      // تایل تیره CartoDB Dark Matter
-      L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-        maxZoom: 18,
-        subdomains: 'abcd'
+      // تایل تیره و رسمی استراتژیک ESRI بدون نیاز به API Key
+      L.tileLayer('https://services.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}', {
+        maxZoom: 16
+      }).addTo(map);
+
+      // لایه مرزها و اسامی کشورها روی نقشه تیره
+      L.tileLayer('https://services.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}', {
+        maxZoom: 16,
+        opacity: 0.85
       }).addTo(map);
 
       // افزودن لایه‌ها

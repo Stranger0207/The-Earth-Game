@@ -409,159 +409,259 @@ STRAITS_DEFINITIONS: dict[str, dict] = {
 _MARITIME_CORRIDOR_COORDS: dict[str, list[float]] = {
     # آمریکای شمالی و جنوبی (حوضه اطلس)
     "us_east": [37.0, -75.5],             # خروجی خلیج چساپیک و بنادر اطلس آمریکا (نورفک/نیویورک)
-    "mid_atlantic": [36.0, -40.0],         # میانه اقیانوس اطلس شمالی
-    "north_atlantic": [48.0, -25.0],       # مسیر اطلس شمالی به بریتانیا و کانال مانش
+    "us_offshore": [36.5, -72.0],         # آب‌های ساحلی اطلس آمریکا
+    "mid_atlantic": [36.0, -45.0],         # میانه اقیانوس اطلس شمالی
     "azores_gate": [36.0, -18.0],          # معبر جنوب مجمع‌الجزایر آزور به سمت جبل‌الطارق
+    "north_atlantic": [48.0, -25.0],       # مسیر اطلس شمالی به بریتانیا و کانال مانش
+    "celtic_sea": [49.5, -10.0],           # دریای سلتیک ورودی جزایر بریتانیا
     "brazil_coast": [-23.0, -42.0],        # کریدور ساحلی اطلس جنوبی (ریودوژانیرو/سنتوس)
     "equator_atlantic": [0.0, -25.0],      # اقیانوس اطلس استوایی
 
     # اروپای غربی، دریای شمال و بالتیک
-    "portugal_coast": [40.0, -10.0],       # اقیانوس اطلس روبه‌روی پرتغال و لیسبون
+    "cadiz_bay": [36.2, -8.0],             # خلیج کادیز مدخل غربی جبل‌الطارق
+    "gibraltar": [35.98, -5.60],           # تنگه جبل‌الطارق
+    "portugal_coast": [39.0, -10.0],       # اقیانوس اطلس روبه‌روی پرتغال و لیسبون
     "bay_of_biscay": [45.0, -7.0],         # خلیج بیسکای (فرانسه/شمال اسپانیا)
     "english_channel_west": [49.5, -4.5],  # مدخل غربی کانال مانش
     "dover": [51.13, 1.45],                # تنگه دوور
-    "north_sea_mid": [54.5, 4.5],          # مرکز دریای شمال (آلمان/بریتانیا)
+    "north_sea_south": [52.5, 3.0],        # جنوب دریای شمال
+    "north_sea_mid": [54.5, 5.0],          # مرکز دریای شمال (آلمان/بریتانیا)
+    "german_bight": [54.0, 7.5],           # خلیج آلمان مدخل هامبورگ و البه
+    "skagerrak": [57.5, 9.0],              # تنگه اسکاگراک مابین نروژ و دانمارک
+    "kattegat": [56.8, 11.5],              # تنگه کاتگات
     "oresund": [55.75, 12.70],             # تنگه اورسوند (دانمارک/سوئد)
+    "baltic_south": [55.2, 14.5],          # جنوب دریای بالتیک (لهستان/آلمان)
     "baltic_mid": [56.5, 19.0],            # مرکز دریای بالتیک (سوئد/لهستان/روسیه)
 
     # مدیترانه و دریای سیاه
-    "gibraltar": [35.98, -5.60],           # تنگه جبل‌الطارق
-    "west_med": [36.5, 0.0],               # غرب مدیترانه (جنوب اسپانیا)
-    "central_med": [35.5, 15.0],           # مرکز مدیترانه (جنوب سیسیل/مالت)
+    "alboran_sea": [36.2, -3.0],           # دریای آلبوران مدخل شرقی جبل‌الطارق
+    "west_med": [36.8, 1.5],               # غرب مدیترانه
+    "balearic_sea": [37.5, 5.0],           # دریای بالئاریک (جنوب جزایر بالئار)
+    "sardinia_south": [37.5, 9.0],         # جنوب ساردینیا
+    "sicily_strait": [36.5, 12.5],         # آبراه سیسیل (مابین تونس و سیسیل)
+    "malta_south": [35.5, 15.0],           # مرکز مدیترانه (جنوب مالت)
+    "ionian_sea": [35.5, 19.0],            # دریای یونان
+    "crete_south": [34.5, 25.0],           # شرق مدیترانه (جنوب کرت)
+    "levant_sea": [33.5, 31.0],            # حوضه لوانتین مدخل شرقی مدیترانه
+    "tyrrhenian_sea": [39.5, 12.5],        # دریای تیرنی (غرب ایتالیا)
     "messina": [38.24, 15.63],             # تنگه مسینا
-    "east_med": [34.5, 25.0],              # شرق مدیترانه (جنوب کرت/یونان)
-    "suez_north": [31.5, 32.3],            # مدخل شمالی کانال سوئز (بندر سعید)
-    "suez": [29.97, 32.56],                # کانال سوئز
-    "bosphorus": [41.11, 29.07],           # تنگه بسفر
+    "aegean_south": [36.0, 25.0],          # جنوب دریای اژه
+    "dardanelles_south": [40.0, 26.0],     # مدخل جنوبی تنگه داردانل
     "dardanelles": [40.20, 26.40],         # تنگه داردانل
+    "marmara_sea": [40.7, 28.0],           # دریای مرمره
+    "bosphorus": [41.11, 29.07],           # تنگه بسفر
+    "black_sea_south": [41.6, 29.5],       # مدخل جنوبی دریای سیاه
     "black_sea_mid": [43.5, 34.0],         # مرکز دریای سیاه (ترکیه/روسیه/اوکراین)
     "kerch": [45.31, 36.52],               # تنگه کرچ
 
-    # دریای سرخ، خلیج فارس و اقیانوس هند
+    # کانال سوئز و دریای سرخ (مسیر فوق‌دقیق بدون عبور از صحرای سینا)
+    "suez_med_approach": [31.6, 32.32],    # لنگرگاه مدیترانه روبه‌روی بندر سعید
+    "suez_port_said": [31.26, 32.31],      # مدخل شمالی کانال سوئز (بندر سعید)
+    "suez_ismailia": [30.58, 32.27],       # دریاچه تمساح و اسماعیلیه
+    "suez_bitter_lakes": [30.34, 32.36],   # دریاچه‌های تلخ
+    "suez": [29.97, 32.56],                # خروجی جنوبی کانال سوئز (پورت توفیق/سوئز)
+    "gulf_of_suez_mid": [28.5, 33.0],      # مرکز خلیج سوئز
+    "gulf_of_suez_exit": [27.6, 33.8],     # تنگه جوبال و خروجی خلیج سوئز
+    "red_sea_north": [26.0, 35.0],         # شمال دریای سرخ
     "red_sea_mid": [21.0, 38.0],           # مرکز دریای سرخ
+    "red_sea_south": [16.0, 41.5],         # جنوب دریای سرخ
     "bab_el_mandeb": [12.58, 43.33],       # تنگه باب‌المندب
-    "gulf_of_aden": [12.5, 48.0],          # خلیج عدن
-    "persian_gulf_mid": [27.0, 51.5],      # مرکز خلیج فارس (ایران/قطر/عربستان)
-    "hormuz": [26.56, 56.25],              # تنگه هرمز
-    "gulf_of_oman": [24.5, 59.0],          # دریای عمان
-    "arabian_sea_mid": [12.0, 60.0],       # مرکز دریای عربی
-    "sri_lanka_south": [5.5, 80.5],        # گذرگاه دریایی جنوب سری‌لانکا/هند
+    "gulf_of_aden_west": [12.3, 45.5],     # غرب خلیج عدن
+    "gulf_of_aden_east": [13.0, 50.0],     # شرق خلیج عدن
+    "socotra_passage": [13.0, 54.0],       # گذرگاه سوکوترا به اقیانوس هند
 
-    # آسیای شرقی و اقیانوس آرام غربی
-    "malacca_north": [5.5, 95.5],          # ورودی دریای آندامان به تنگه مالاکا
-    "singapore": [1.3, 103.8],             # تنگه مالاکا و سنگاپور
+    # خلیج فارس و دریای عمان (مسیر انحنادار بدون برخورد با قشم و مسندم)
+    "persian_gulf_west": [28.0, 49.5],     # شمال غرب خلیج فارس (بصره/دمام)
+    "persian_gulf_mid": [27.0, 51.5],      # مرکز خلیج فارس
+    "qatar_exit": [25.4, 52.2],            # آب‌های آزاد شرق دوحه قطر
+    "persian_gulf_central": [25.9, 53.8],  # آبراه بین‌المللی جنوب قشم و شمال امارات
+    "persian_gulf_east": [25.8, 55.0],     # آب‌های روبه‌روی دبی و شارجه
+    "hormuz_west": [26.3, 56.1],           # مدخل غربی تنگه هرمز
+    "hormuz": [26.56, 56.25],              # تنگه هرمز
+    "hormuz_east": [25.6, 57.3],           # خروجی شرقی هرمز
+    "gulf_of_oman": [24.5, 59.0],          # مرکز دریای عمان
+    "gulf_of_oman_exit": [23.5, 61.0],     # خروجی دریای عمان به دریای عربی
+
+    # اقیانوس هند، تنگه مالاکا و سنگاپور (مسیر کامل آبراه شمالی سوماترا)
+    "arabian_sea_mid": [12.0, 63.0],       # مرکز دریای عربی
+    "india_south": [6.5, 77.5],            # جنوب شبه‌قاره هند (دماغه کومورین)
+    "sri_lanka_south": [5.5, 80.6],        # گذرگاه دریایی جنوب سری‌لانکا
+    "bay_of_bengal_south": [5.5, 88.0],    # جنوب خلیج بنگال
+    "six_degree_channel": [6.0, 94.5],     # کانال ۶ درجه (شمال سوماترا بدون تماس با خشکی)
+    "malacca_north": [5.2, 97.5],          # مدخل شمالی تنگه مالاکا (بین پنانگ و سوماترا)
+    "malacca_mid": [3.8, 100.3],           # میانه تنگه مالاکا (روبه‌روی پورت کلانگ)
+    "malacca_south": [2.5, 101.8],         # جنوب تنگه مالاکا (روبه‌روی ملوکا)
+    "singapore_strait_west": [1.25, 103.5], # مدخل غربی تنگه سنگاپور
+    "singapore": [1.25, 103.85],           # تنگه سنگاپور
+    "singapore_strait_east": [1.4, 104.5], # مدخل شرقی تنگه سنگاپور
+    "south_china_sea_sw": [3.0, 106.0],    # جنوب غرب دریای چین جنوبی
+
+    # دریای چین جنوبی، تنگه تایوان، دریای زرد و خلیج بوهای
     "south_china_sea_mid": [10.0, 112.0],  # مرکز دریای چین جنوبی
     "south_china_sea_north": [18.0, 115.0], # شمال دریای چین جنوبی
+    "taiwan_strait_south": [22.5, 118.5],  # مدخل جنوبی تنگه تایوان
     "taiwan_strait": [24.0, 119.5],        # تنگه تایوان
-    "shanghai_gate": [31.2, 122.5],        # آب‌های دریای چین شرقی روبه‌روی شانگهای
-    "bohai_gate": [38.5, 119.5],           # خلیج بوهای و مدخل دریایی تیانجین/پکن
+    "taiwan_strait_north": [25.5, 120.5],  # مدخل شمالی تنگه تایوان
+    "shanghai_gate": [31.0, 122.8],        # آب‌های آزاد روبه‌روی شانگهای
+    "yellow_sea": [34.5, 123.5],           # دریای زرد
+    "bohai_strait": [38.4, 121.0],         # تنگه بوهای (بین شبه‌جزیره شاندونگ و لیائونینگ)
+    "bohai_gate": [38.8, 118.8],           # خلیج بوهای و مدخل تیانجین/پکن
     "tsushima": [34.40, 129.50],           # تنگه تسوشیما (کره/ژاپن)
-    "sea_of_japan_mid": [38.0, 134.0],     # مرکز دریای ژاپن
+    "sea_of_japan_south": [36.0, 131.5],   # جنوب دریای ژاپن
+    "sea_of_japan_mid": [39.0, 135.0],     # مرکز دریای ژاپن
     "laperouse": [45.70, 142.00],          # تنگه لاپروش (ژاپن/روسیه)
     "bering": [65.80, -168.90],            # تنگه برینگ
 }
 
 _MARITIME_CORRIDOR_EDGES: list[tuple[str, str, str | None, float]] = [
     # شبکه اقیانوس اطلس و قاره آمریکا
-    ("us_east", "mid_atlantic", None, 1.0),
+    ("us_east", "us_offshore", None, 1.0),
+    ("us_offshore", "mid_atlantic", None, 1.0),
     ("mid_atlantic", "azores_gate", None, 1.0),
     ("mid_atlantic", "north_atlantic", None, 1.0),
-    ("north_atlantic", "english_channel_west", None, 1.0),
-    ("azores_gate", "gibraltar", "gibraltar", 1.0),
+    ("north_atlantic", "celtic_sea", None, 1.0),
+    ("celtic_sea", "english_channel_west", None, 1.0),
+    ("azores_gate", "cadiz_bay", None, 1.0),
     ("azores_gate", "portugal_coast", None, 1.0),
     ("brazil_coast", "equator_atlantic", None, 1.0),
     ("equator_atlantic", "azores_gate", None, 1.5),
 
     # اروپای غربی، دریای شمال و بالتیک
-    ("portugal_coast", "gibraltar", "gibraltar", 1.0),
+    ("cadiz_bay", "gibraltar", "gibraltar", 1.0),
+    ("cadiz_bay", "portugal_coast", None, 1.0),
     ("portugal_coast", "bay_of_biscay", None, 1.0),
     ("bay_of_biscay", "english_channel_west", None, 1.0),
     ("english_channel_west", "dover", "dover", 1.0),
-    ("dover", "north_sea_mid", None, 1.0),
-    ("north_sea_mid", "oresund", "oresund", 1.0),
-    ("oresund", "baltic_mid", None, 1.0),
+    ("dover", "north_sea_south", None, 1.0),
+    ("north_sea_south", "north_sea_mid", None, 1.0),
+    ("north_sea_mid", "german_bight", None, 1.0),
+    ("north_sea_mid", "skagerrak", None, 1.0),
+    ("skagerrak", "kattegat", None, 1.0),
+    ("kattegat", "oresund", "oresund", 1.0),
+    ("oresund", "baltic_south", None, 1.0),
+    ("baltic_south", "baltic_mid", None, 1.0),
 
-    # دریای مدیترانه
-    ("gibraltar", "west_med", None, 1.0),
-    ("west_med", "central_med", None, 1.0),
-    ("central_med", "east_med", None, 1.0),
-    ("central_med", "messina", "messina", 1.0),
-    ("messina", "west_med", None, 1.0),
-    ("east_med", "suez_north", None, 1.0),
-    ("suez_north", "suez", "suez", 1.0),
-
-    # دریای سیاه
-    ("black_sea_mid", "bosphorus", "bosphorus", 1.0),
-    ("bosphorus", "dardanelles", "dardanelles", 1.0),
-    ("dardanelles", "east_med", None, 1.0),
+    # دریای مدیترانه و دریای سیاه
+    ("gibraltar", "alboran_sea", None, 1.0),
+    ("alboran_sea", "west_med", None, 1.0),
+    ("west_med", "balearic_sea", None, 1.0),
+    ("balearic_sea", "sardinia_south", None, 1.0),
+    ("sardinia_south", "sicily_strait", None, 1.0),
+    ("sicily_strait", "malta_south", None, 1.0),
+    ("malta_south", "ionian_sea", None, 1.0),
+    ("ionian_sea", "crete_south", None, 1.0),
+    ("crete_south", "levant_sea", None, 1.0),
+    ("levant_sea", "suez_med_approach", None, 1.0),
+    ("sardinia_south", "tyrrhenian_sea", None, 1.0),
+    ("tyrrhenian_sea", "messina", "messina", 1.0),
+    ("messina", "ionian_sea", None, 1.0),
+    ("crete_south", "aegean_south", None, 1.0),
+    ("aegean_south", "dardanelles_south", None, 1.0),
+    ("dardanelles_south", "dardanelles", "dardanelles", 1.0),
+    ("dardanelles", "marmara_sea", None, 1.0),
+    ("marmara_sea", "bosphorus", "bosphorus", 1.0),
+    ("bosphorus", "black_sea_south", None, 1.0),
+    ("black_sea_south", "black_sea_mid", None, 1.0),
     ("black_sea_mid", "kerch", "kerch", 1.0),
 
-    # دریای سرخ و باب‌المندب
-    ("suez", "red_sea_mid", None, 1.0),
-    ("red_sea_mid", "bab_el_mandeb", "bab_el_mandeb", 1.0),
-    ("bab_el_mandeb", "gulf_of_aden", None, 1.0),
-    ("gulf_of_aden", "arabian_sea_mid", None, 1.0),
+    # کانال سوئز و دریای سرخ (مسیر ناوبری دقیق آبراه)
+    ("suez_med_approach", "suez_port_said", None, 0.5),
+    ("suez_port_said", "suez_ismailia", None, 0.5),
+    ("suez_ismailia", "suez_bitter_lakes", None, 0.5),
+    ("suez_bitter_lakes", "suez", "suez", 0.5),
+    ("suez", "gulf_of_suez_mid", None, 1.0),
+    ("gulf_of_suez_mid", "gulf_of_suez_exit", None, 1.0),
+    ("gulf_of_suez_exit", "red_sea_north", None, 1.0),
+    ("red_sea_north", "red_sea_mid", None, 1.0),
+    ("red_sea_mid", "red_sea_south", None, 1.0),
+    ("red_sea_south", "bab_el_mandeb", "bab_el_mandeb", 1.0),
+    ("bab_el_mandeb", "gulf_of_aden_west", None, 1.0),
+    ("gulf_of_aden_west", "gulf_of_aden_east", None, 1.0),
+    ("gulf_of_aden_east", "socotra_passage", None, 1.0),
+    ("socotra_passage", "arabian_sea_mid", None, 1.0),
 
-    # خلیج فارس
-    ("persian_gulf_mid", "hormuz", "hormuz", 1.0),
-    ("hormuz", "gulf_of_oman", None, 1.0),
-    ("gulf_of_oman", "arabian_sea_mid", None, 1.0),
+    # خلیج فارس و دریای عمان (مسیر ناوبری دقیق آب‌های آزاد)
+    ("persian_gulf_west", "persian_gulf_mid", None, 1.0),
+    ("persian_gulf_mid", "persian_gulf_central", None, 1.0),
+    ("qatar_exit", "persian_gulf_central", None, 1.0),
+    ("persian_gulf_central", "persian_gulf_east", None, 1.0),
+    ("persian_gulf_east", "hormuz_west", None, 1.0),
+    ("hormuz_west", "hormuz", "hormuz", 1.0),
+    ("hormuz", "hormuz_east", None, 1.0),
+    ("hormuz_east", "gulf_of_oman", None, 1.0),
+    ("gulf_of_oman", "gulf_of_oman_exit", None, 1.0),
+    ("gulf_of_oman_exit", "arabian_sea_mid", None, 1.0),
 
-    # اقیانوس هند به آسیای شرقی
-    ("arabian_sea_mid", "sri_lanka_south", None, 1.0),
-    ("sri_lanka_south", "malacca_north", None, 1.0),
-    ("malacca_north", "singapore", None, 1.0),
-    ("singapore", "south_china_sea_mid", None, 1.0),
+    # اقیانوس هند به آسیای شرقی و تنگه مالاکا
+    ("arabian_sea_mid", "india_south", None, 1.0),
+    ("india_south", "sri_lanka_south", None, 1.0),
+    ("sri_lanka_south", "bay_of_bengal_south", None, 1.0),
+    ("bay_of_bengal_south", "six_degree_channel", None, 1.0),
+    ("six_degree_channel", "malacca_north", None, 1.0),
+    ("malacca_north", "malacca_mid", None, 1.0),
+    ("malacca_mid", "malacca_south", None, 1.0),
+    ("malacca_south", "singapore_strait_west", None, 1.0),
+    ("singapore_strait_west", "singapore", None, 1.0),
+    ("singapore", "singapore_strait_east", None, 1.0),
+    ("singapore_strait_east", "south_china_sea_sw", None, 1.0),
+    ("south_china_sea_sw", "south_china_sea_mid", None, 1.0),
+
+    # دریای چین، تنگه تایوان، دریای زرد و خلیج بوهای
     ("south_china_sea_mid", "south_china_sea_north", None, 1.0),
-    ("south_china_sea_north", "taiwan_strait", "taiwan_strait", 1.0),
-    ("taiwan_strait", "shanghai_gate", None, 1.0),
-    ("shanghai_gate", "bohai_gate", None, 1.0),
+    ("south_china_sea_north", "taiwan_strait_south", None, 1.0),
+    ("taiwan_strait_south", "taiwan_strait", "taiwan_strait", 1.0),
+    ("taiwan_strait", "taiwan_strait_north", None, 1.0),
+    ("taiwan_strait_north", "shanghai_gate", None, 1.0),
+    ("shanghai_gate", "yellow_sea", None, 1.0),
+    ("yellow_sea", "bohai_strait", None, 1.0),
+    ("bohai_strait", "bohai_gate", None, 1.0),
 
     # ژاپن و شبه‌جزیره کره
     ("shanghai_gate", "tsushima", "tsushima", 1.0),
-    ("tsushima", "sea_of_japan_mid", None, 1.0),
+    ("tsushima", "sea_of_japan_south", None, 1.0),
+    ("sea_of_japan_south", "sea_of_japan_mid", None, 1.0),
     ("sea_of_japan_mid", "laperouse", "laperouse", 1.0),
 ]
 
 # نگاشت کشورهای ساحلی به گره‌های ورودی/خروجی شبکه دریایی
 _COUNTRY_MARITIME_GATEWAYS: dict[str, list[str]] = {
     "China": ["bohai_gate", "shanghai_gate"],
-    "Japan": ["sea_of_japan_mid", "shanghai_gate"],
-    "SouthKorea": ["tsushima", "shanghai_gate"],
+    "Japan": ["sea_of_japan_mid", "tsushima"],
+    "SouthKorea": ["tsushima", "sea_of_japan_south"],
     "NorthKorea": ["sea_of_japan_mid"],
     "Australia": ["singapore", "sri_lanka_south"],
-    "India": ["sri_lanka_south", "arabian_sea_mid"],
-    "Iran": ["persian_gulf_mid"],
-    "Pakistan": ["arabian_sea_mid", "gulf_of_oman"],
-    "Oman": ["gulf_of_oman", "arabian_sea_mid"],
-    "SaudiArabia": ["persian_gulf_mid", "red_sea_mid"],
+    "India": ["india_south", "sri_lanka_south"],
+    "Iran": ["hormuz_west", "persian_gulf_mid"],
+    "Pakistan": ["gulf_of_oman_exit", "arabian_sea_mid"],
+    "Oman": ["gulf_of_oman", "gulf_of_oman_exit"],
+    "SaudiArabia": ["persian_gulf_west", "red_sea_mid"],
     "Azerbaijan": [],
-    "Qatar": ["persian_gulf_mid"],
-    "UAE": ["persian_gulf_mid"],
-    "Syria": ["east_med"],
-    "Iraq": ["persian_gulf_mid"],
-    "Egypt": ["suez_north", "red_sea_mid"],
-    "Yemen": ["bab_el_mandeb", "gulf_of_aden"],
+    "Qatar": ["qatar_exit"],
+    "UAE": ["persian_gulf_east", "hormuz_east"],
+    "Syria": ["levant_sea"],
+    "Iraq": ["persian_gulf_west"],
+    "Egypt": ["suez_med_approach", "gulf_of_suez_mid"],
+    "Yemen": ["gulf_of_aden_west", "bab_el_mandeb"],
     "Russia": ["black_sea_mid", "baltic_mid"],
-    "Britain": ["english_channel_west", "north_sea_mid"],
+    "Britain": ["english_channel_west", "north_sea_south"],
     "France": ["bay_of_biscay", "west_med", "english_channel_west"],
-    "Germany": ["north_sea_mid", "oresund"],
-    "Israel": ["east_med", "suez_north"],
-    "Turkey": ["dardanelles", "bosphorus", "east_med"],
-    "Italy": ["central_med"],
-    "Spain": ["gibraltar", "portugal_coast", "west_med"],
-    "Poland": ["baltic_mid"],
+    "Germany": ["german_bight", "north_sea_mid"],
+    "Israel": ["levant_sea"],
+    "Turkey": ["dardanelles_south", "black_sea_south"],
+    "Italy": ["tyrrhenian_sea", "sicily_strait"],
+    "Spain": ["cadiz_bay", "west_med"],
+    "Poland": ["baltic_south", "baltic_mid"],
     "Ukraine": ["black_sea_mid"],
     "Sweden": ["oresund", "baltic_mid"],
     "Switzerland": [],
-    "Greece": ["east_med"],
+    "Greece": ["aegean_south", "ionian_sea"],
     "USA": ["us_east"],
     "Brazil": ["brazil_coast"],
     "Mexico": ["us_east"],
     "Canada": ["us_east"],
     "Argentina": ["brazil_coast"],
     "Colombia": ["us_east"],
-    "Norway": ["north_sea_mid"],
+    "Norway": ["skagerrak", "north_sea_mid"],
     "Afghanistan": [],
     "Taiwan": ["taiwan_strait"],
 }

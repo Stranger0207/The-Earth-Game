@@ -1071,6 +1071,10 @@ async def cb_sale_accept(
     fee_payer = getattr(sale, "fee_payer", "SELLER") or "SELLER"
     t_fee = float(getattr(sale, "transport_fee", 0.0) or 0.0)
 
+    rtype = ResourceType(sale.resource)
+    rname = RESOURCE_FA[rtype]
+    unit_fa = RESOURCE_UNIT_FA[rtype]
+
     strait_tolls: dict[str, float] = {}
     strait_ids: list[str] = []
     if mode == "SEA" and seller and buyer:
@@ -1098,7 +1102,6 @@ async def cb_sale_accept(
     if mode == "SEA" and seller and buyer:
         minutes = geo.calculate_maritime_transit_minutes(seller.name_en, buyer.name_en)
     else:
-        rname = RESOURCE_FA[ResourceType(sale.resource)]
         eta_data = await evaluators.estimate_shipping_time(
             seller.name_fa if seller else "?", buyer.name_fa, rname, sale.amount
         )
@@ -1167,17 +1170,25 @@ async def cb_sale_accept(
         await send_to_admin_group(bot, AdminGroupType.SANCTION_BILL, f"🇺🇸 آمریکا {fa_money(duty)} بابت تعرفه اجرایی روی کشور {y} بدست آورد.")
 
     # خبر فوری ارسال محموله در کانال WTO: عکس تصادفی + فرمت جدید اطلاع‌رسانی
-    unit = RESOURCE_UNIT_FA[ResourceType(sale.resource)]
     seller_name = f"{seller.flag} {seller.name_fa}" if seller else "?"
     buyer_name = f"{buyer.flag} {buyer.name_fa}"
     is_gift = (sale.price <= 0)
 
     if settings.wto_channel_id is not None:
         c_type = "امدادی و اهدایی" if is_gift else "تجاری"
+        if mode == "SEA":
+            icon = "🚢"
+            verb = "دریانوردی"
+        elif mode == "AIR":
+            icon = "✈"
+            verb = "پرواز"
+        else:
+            icon = "🚛"
+            verb = "ترانزیت زمینی"
         caption = (
             "🔵 | اطلاع رسانی سازمان نقل و انتقالات جهانی\n\n"
-            f"✈ | یک محموله {c_type} کشور {seller_name} را به مقصد کشور {buyer_name} ترک کرد.\n"
-            f"⏳ | مدت زمان پرواز: {fa_number(minutes)} دقیقه"
+            f"{icon} | یک محموله {c_type} کشور {seller_name} را به مقصد کشور {buyer_name} ترک کرد.\n"
+            f"⏳ | مدت زمان {verb}: {fa_number(minutes)} دقیقه"
         )
         await send_photo_news(bot, settings.wto_channel_id, "wto", caption)
 
@@ -1190,12 +1201,17 @@ async def cb_sale_accept(
     ]])
     log_title = "🎁 <b>ارسال محموله هدیه</b>" if is_gift else "🧾 <b>گزارش تجارت</b>"
     price_tag = "رایگان (هدیه)" if is_gift else fa_money(sale.price)
+    try:
+        mode_text = TRANSPORT_MODE_FA.get(TransportMode(mode), mode)
+    except Exception:
+        mode_text = mode
     await send_log(
         bot,
         f"{log_title}\n"
         f"فروشنده: {seller_name}\n"
         f"خریدار: {buyer_name}\n"
-        f"منبع: {fa_number(sale.amount)} {unit} {rname}\n"
+        f"روش حمل: {mode_text}\n"
+        f"منبع: {fa_number(sale.amount)} {unit_fa} {rname}\n"
         f"قیمت: {price_tag}",
         reply_markup=deliver_kb,
     )

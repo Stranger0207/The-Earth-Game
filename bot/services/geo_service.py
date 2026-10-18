@@ -637,7 +637,7 @@ _COUNTRY_MARITIME_GATEWAYS: dict[str, list[str]] = {
     "SaudiArabia": ["persian_gulf_west", "red_sea_mid"],
     "Azerbaijan": [],
     "Qatar": ["qatar_exit"],
-    "UAE": ["persian_gulf_east", "hormuz_east"],
+    "UAE": ["persian_gulf_east"],
     "Syria": ["levant_sea"],
     "Iraq": ["persian_gulf_west"],
     "Egypt": ["suez_med_approach", "gulf_of_suez_mid"],

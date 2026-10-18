@@ -705,7 +705,102 @@ async def main():
         except strait_service.StraitError:
             check("شلیک به کشتی در حال عقب‌نشینی رد شد", True)
 
-    # -------------------------------------------------------------
+        # -------------------------------------------------------------
+        # [بخش ۹] تست محموله دریایی امارات به هند و هندلر پذیرش معامله (رفع باگ لاگ و متغیر rname)
+        # -------------------------------------------------------------
+        print("\n[بخش ۹] تست محموله دریایی امارات به هند و لاگ معامله در گروه لاگ:")
+        from bot.services import geo_service as geo_svc
+        from unittest.mock import patch, MagicMock
+
+        # ۱. تست گیت‌وی و عبور امارات به هند از تنگه هرمز
+        straits_uae_in = geo_svc.get_route_straits("UAE", "India")
+        check("مسیر دریایی امارات به هند شامل تنگه هرمز است", "hormuz" in straits_uae_in)
+
+        straits_in_uae = geo_svc.get_route_straits("India", "UAE")
+        check("مسیر دریایی هند به امارات شامل تنگه هرمز است", "hormuz" in straits_in_uae)
+
+        wp_uae_in = geo_svc.get_maritime_waypoints("UAE", "India")
+        check("وی‌پوینت‌های امارات به هند از مسیر آب‌های خلیج فارس عبور می‌کنند", len(wp_uae_in) >= 8)
+
+        # ۲. ایجاد رکورد فروش امارات به هند برای تست cb_sale_accept
+        u_uae = User(telegram_id=104, username="uae_leader", first_name="UAE Leader")
+        u_india = User(telegram_id=105, username="india_leader", first_name="India Leader")
+        session.add_all([u_uae, u_india])
+        await session.commit()
+
+        uae_c = Country(
+            name_en="UAE",
+            name_fa="امارات متحده عربی",
+            flag="🇦🇪",
+            region="middle_east",
+            owner_user_id=104,
+            budget=50_000_000.0,
+        )
+        india_c = Country(
+            name_en="India",
+            name_fa="هند",
+            flag="🇮🇳",
+            region="asia",
+            owner_user_id=105,
+            budget=50_000_000.0,
+        )
+        session.add_all([uae_c, india_c])
+        await session.commit()
+
+        # ذخایر نفت امارات
+        res_oil = Reserve(country_id=uae_c.id, resource=ResourceType.OIL.value, amount=5000.0)
+        session.add(res_oil)
+        await session.commit()
+
+        sale_sea = ResourceSale(
+            seller_country=uae_c.id,
+            buyer_country=india_c.id,
+            resource=ResourceType.OIL.value,
+            amount=1000.0,
+            price=15_000_000.0,
+            transport_mode="SEA",
+            fee_payer="SELLER",
+            transport_fee=2_000_000.0,
+            status=TradeStatus.PENDING,
+        )
+        session.add(sale_sea)
+        await session.commit()
+
+        from bot.handlers.economy import cb_sale_accept
+
+        call_mock = MagicMock()
+        call_mock.data = f"sale_accept:{sale_sea.id}"
+        call_mock.answer = AsyncMock()
+        call_mock.message = MagicMock()
+        call_mock.message.html_text = "پیشنهاد خرید نفت"
+
+        mock_send_log = AsyncMock()
+        mock_send_photo_news = AsyncMock()
+        mock_safe_edit = AsyncMock()
+
+        with patch("bot.handlers.economy.send_log", mock_send_log), \
+             patch("bot.handlers.economy.send_photo_news", mock_send_photo_news), \
+             patch("bot.handlers.economy.safe_edit", mock_safe_edit), \
+             patch("bot.handlers.economy.bot.send_message", AsyncMock()):
+            # فراخوانی هندلر با شیوه دریایی — نباید به خاطر متغیر rname یا unit_fa خطا دهد
+            await cb_sale_accept(call_mock, session, u_india)
+
+        await session.refresh(sale_sea)
+        check("وضعیت محموله دریایی به IN_TRANSIT تغییر یافت", sale_sea.status == TradeStatus.IN_TRANSIT)
+        check("تنگه هرمز در وضعیت تنگه‌ای محموله شناسایی شد", sale_sea.strait_status == "APPROACHING")
+        check("لاگ خرید به گروه لاگ ارسال شد (send_log فراخوانی شد)", mock_send_log.called)
+        
+        # بررسی محتوای لاگ ارسال‌شده
+        log_text = mock_send_log.call_args[0][1]
+        check("متن لاگ شامل عنوان گزارش تجارت است", "گزارش تجارت" in log_text)
+        check("متن لاگ شامل شیوه حمل دریایی است", "دریایی" in log_text)
+        check("متن لاگ شامل نام نفت و بشکه است", "نفت" in log_text and "بشکه" in log_text)
+
+        # بررسی کپشن سازمان WTO
+        check("خبر WTO فراخوانی شد", mock_send_photo_news.called)
+        wto_caption = mock_send_photo_news.call_args[0][3]
+        check("خبر WTO شامل ایموجی کشتی 🚢 است", "🚢" in wto_caption)
+        check("خبر WTO شامل واژه دریانوردی است", "دریانوردی" in wto_caption)
     # پایان تست‌ها و گزارش نهایی
     # -------------------------------------------------------------
     print("\n" + "=" * 65)

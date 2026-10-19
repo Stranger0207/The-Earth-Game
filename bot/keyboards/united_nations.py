@@ -151,14 +151,15 @@ def assembly_invite_kb(session_id: int) -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
-def assembly_ny_lobby_kb(session_id: int) -> InlineKeyboardMarkup:
+def assembly_ny_lobby_kb(session_id: int, is_closed: bool = False) -> InlineKeyboardMarkup:
     """محیط بیرونی / لابی شهر نیویورک پس از فرود هواپیما."""
     builder = InlineKeyboardBuilder()
-    builder.button(
-        text="🏛 ورود به ساختمان تالار مجمع بین‌المللی",
-        callback_data=f"asmb_enter_hall:{session_id}",
-        style=STYLE_OK,
-    )
+    if not is_closed:
+        builder.button(
+            text="🏛 ورود به ساختمان تالار مجمع بین‌المللی",
+            callback_data=f"asmb_enter_hall:{session_id}",
+            style=STYLE_OK,
+        )
     builder.button(
         text="🤝 دیدار در حاشیه اجلاس نیویورک",
         callback_data=f"asmb_sideline_meet:{session_id}",

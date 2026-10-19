@@ -259,6 +259,22 @@ async def run_all_tests():
 
         # پایان دادن و پاکسازی جلسه تست
         await un_repo.close_session(session, created_session.id)
+        
+        # بررسی وضعیت مشارکت‌کنندگان پس از پایان اجلاس
+        post_p_flight = await un_repo.get_participant(session, created_session.id, target_c.id)
+        assert post_p_flight.status == "left", "پروازهای ناتمام در پایان اجلاس باید به وضعیت left تغییر یابند!"
+        
+        post_p_hall = await un_repo.get_participant(session, created_session.id, iran.id)
+        assert post_p_hall.status == "in_new_york", "حاضران در تالار پس از پایان اجلاس باید به وضعیت in_new_york تغییر یابند!"
+
+        closed_s = await un_repo.get_session(session, created_session.id)
+        assert closed_s.status == "closed", "وضعیت اجلاس باید closed باشد!"
+        
+        # بررسی عدم وجود جلسه فعال پس از بستن
+        active_after = await un_repo.get_active_session(session)
+        assert active_after is None, "پس از بستن اجلاس، نباید هیچ جلسه فعالی وجود داشته باشد!"
+        print("  ✅ پاکسازی مشارکت‌کنندگان (لغو پروازها و خروج از تالار) در پایان جلسه با موفقیت تایید شد.")
+
         await session.commit()
         print("  ✅ پایان رسمی جلسه تست و ثبت لاگ‌ها.")
 

@@ -598,6 +598,27 @@ async def cb_asmb_fly(call: CallbackQuery, session: AsyncSession, db_user: User)
         await call.answer(NO_COUNTRY_TEXT, show_alert=True)
         return
 
+    # بررسی وضعیت جلسه مجمع عمومی
+    asmb = await un_repo.get_session(session, session_id)
+    if not asmb or asmb.status == "closed":
+        await call.answer("⚠️ این دوره از اجلاس مجمع عمومی به پایان رسیده است.", show_alert=True)
+        await safe_edit(
+            call,
+            "🏁 <b>این دوره از اجلاس مجمع عمومی سازمان ملل متحد به پایان رسیده است.</b>\n"
+            "امکان پذیرش دعوت یا پرواز به نیویورک دیگر وجود ندارد.",
+        )
+        return
+
+    # بررسی سابقه مشارکت و جلوگیری از پرواز مجدد
+    part = await un_repo.get_participant(session, session_id, country.id)
+    if part:
+        if part.status == "in_flight":
+            await call.answer("✈️ پرواز اختصاصی شما هم‌اکنون در مسیر نیویورک است.", show_alert=True)
+            return
+        elif part.status in ("in_new_york", "inside_hall"):
+            await call.answer("🗽 هیئت دیپلماتیک شما هم‌اکنون در نیویورک مستقر است.", show_alert=True)
+            return
+
     # محاسبه مدت زمان پرواز بر اساس مسافت پایتخت تا نیویورک
     flight_dur = geo.compute_flight_duration(country.name_en, "UN")
     now = _utcnow()
@@ -657,11 +678,31 @@ async def cb_asmb_fly(call: CallbackQuery, session: AsyncSession, db_user: User)
 @router.callback_query(F.data.startswith("asmb_decline:"))
 async def cb_asmb_decline(call: CallbackQuery, session: AsyncSession, db_user: User) -> None:
     """رد مودبانه دعوت مجمع عمومی."""
+    session_id = int(call.data.split(":")[1])
     country = await get_player_country(session, db_user)
+
+    asmb = await un_repo.get_session(session, session_id)
+    if not asmb or asmb.status == "closed":
+        await call.answer("این دوره از اجلاس به پایان رسیده است.")
+        await safe_edit(call, "🏁 این دوره از اجلاس مجمع عمومی سازمان ملل قبلاً به پایان رسیده است.")
+        return
+
     await call.answer("دعوت رد شد.")
     await safe_edit(call, "❌ شما از شرکت در اجلاس امسال مجمع عمومی انصراف دادید.")
 
     if country:
+        part = await un_repo.get_participant(session, session_id, country.id)
+        if part:
+            part.status = "left"
+            await session.flush()
+        else:
+            part = UNAssemblyParticipant(
+                session_id=session_id,
+                country_id=country.id,
+                status="left",
+            )
+            await un_repo.add_participant(session, part)
+
         un_country = await countries_repo.get_country_by_name(session, "UN")
         if un_country and un_country.owner_user_id:
             try:
@@ -719,8 +760,22 @@ async def cb_asmb_enter_hall(call: CallbackQuery, session: AsyncSession, db_user
     if not country:
         return
 
+    asmb = await un_repo.get_session(session, session_id)
+    if not asmb or asmb.status == "closed":
+        await call.answer("⚠️ این دوره از اجلاس مجمع عمومی به پایان رسیده است.", show_alert=True)
+        await safe_edit(
+            call,
+            "🏁 <b>این دوره از اجلاس مجمع عمومی به پایان رسیده است.</b>\nصحن علنی بسته شده است.",
+            reply_markup=assembly_ny_lobby_kb(session_id, is_closed=True),
+        )
+        return
+
+    if asmb.status == "pending":
+        await call.answer("⏳ صحن علنی تالار هنوز توسط دبیرکل رسماً افتتاح نشده است. لطفاً در لابی منتظر بمانید.", show_alert=True)
+        return
+
     part = await un_repo.get_participant(session, session_id, country.id)
-    if not part:
+    if not part or part.status == "left":
         await call.answer("شما در این اجلاس حضور ندارید.", show_alert=True)
         return
 
@@ -791,11 +846,13 @@ async def cb_asmb_exit_hall(call: CallbackQuery, session: AsyncSession, db_user:
             except Exception:
                 pass
 
+    asmb = await un_repo.get_session(session, session_id)
+    is_closed = (asmb is None or asmb.status == "closed")
     await safe_edit(
         call,
         "🗽 شما از تالار مجمع عمومی خارج شدید و هم‌اکنون در شهر نیویورک حضور دارید.\n"
         "پنل کشوری شما کاملاً باز است و پیام‌های داخل صحن برای شما ارسال نمی‌شود.",
-        reply_markup=assembly_ny_lobby_kb(session_id),
+        reply_markup=assembly_ny_lobby_kb(session_id, is_closed=is_closed),
     )
 
 
@@ -821,15 +878,28 @@ async def cb_asmb_return_home(call: CallbackQuery, session: AsyncSession, db_use
 
 
 @router.callback_query(F.data.startswith("asmb_lobby:"))
-async def cb_asmb_lobby(call: CallbackQuery) -> None:
+async def cb_asmb_lobby(call: CallbackQuery, session: AsyncSession) -> None:
     """نمایش لابی شهر نیویورک بدون اعلام خروج از صحن."""
     await call.answer()
     session_id = int(call.data.split(":")[1])
+    asmb = await un_repo.get_session(session, session_id)
+    is_closed = (asmb is None or asmb.status == "closed")
+
+    if is_closed:
+        txt = (
+            "🗽 <b>لابی شهر نیویورک (مقر سازمان ملل):</b>\n\n"
+            "🏁 این دوره از اجلاس سالانه مجمع عمومی به پایان رسیده است.\n"
+            "جهت بازگشت و از سرگیری مدیریت کشور خود، دکمه «🔙 بازگشت به کشور» را بزنید."
+        )
+    else:
+        txt = (
+            "🗽 شما در لابی شهر نیویورک حضور دارید.\n"
+            "برای ورود به صحن علنی، روی دکمه «🏛 ورود به ساختمان تالار مجمع» کلیک کنید."
+        )
     await safe_edit(
         call,
-        "🗽 شما در لابی شهر نیویورک حضور دارید.\n"
-        "برای ورود به صحن علنی، روی دکمه «🏛 ورود به ساختمان تالار مجمع» کلیک کنید.",
-        reply_markup=assembly_ny_lobby_kb(session_id),
+        txt,
+        reply_markup=assembly_ny_lobby_kb(session_id, is_closed=is_closed),
     )
 
 
@@ -1088,20 +1158,41 @@ async def cb_asmb_walkout(call: CallbackQuery, session: AsyncSession, db_user: U
 async def cb_un_asmb_close(call: CallbackQuery, session: AsyncSession) -> None:
     """پایان دادن رسمی به اجلاس سالانه مجمع عمومی توسط دبیرکل."""
     session_id = int(call.data.split(":")[1])
+    parts = await un_repo.list_participants(session, session_id)
+    in_flight_cids = [p.country_id for p in parts if p.status == "in_flight"]
+    hall_and_ny_cids = [p.country_id for p in parts if p.status in ("inside_hall", "in_new_york")]
+
     await un_repo.close_session(session, session_id)
 
-    # اطلاع به همه مشارکت‌کنندگان
-    parts = await un_repo.list_participants(session, session_id)
+    # اطلاع به مسافران در حال پرواز بابت لغو پرواز
+    for cid in in_flight_cids:
+        c = await countries_repo.get_country(session, cid)
+        if c and c.owner_user_id:
+            try:
+                await bot.send_message(
+                    c.owner_user_id,
+                    "🏁 <b>لغو پرواز به نیویورک:</b>\n\n"
+                    "اجلاس سالانه مجمع عمومی سازمان ملل متحد پیش از فرود هواپیمای شما رسماً به پایان رسید. "
+                    "هواپیمای ریاست‌جمهوری به پایتخت بازگشت.",
+                )
+            except Exception:
+                pass
+
+    # اطلاع به همه مشارکت‌کنندگان حاضر در نیویورک
     close_text = (
         "🏁 <b>پایان رسمی اجلاس سالانه مجمع عمومی سازمان ملل متحد (نیویورک):</b>\n\n"
         "دبیرکل محترم پایان رسمی مذاکرات صحن علنی امسال را اعلام نمودند.\n"
         "شما می‌توانید در صورت تمایل جهت مذاکرات دوجانبه در نیویورک بمانید، یا با دکمه «🔙 بازگشت به کشور» فوراً به پایتخت خود بازگردید."
     )
-    for p in parts:
-        c = await countries_repo.get_country(session, p.country_id)
+    for cid in hall_and_ny_cids:
+        c = await countries_repo.get_country(session, cid)
         if c and c.owner_user_id:
             try:
-                await bot.send_message(c.owner_user_id, close_text, reply_markup=assembly_ny_lobby_kb(session_id))
+                await bot.send_message(
+                    c.owner_user_id,
+                    close_text,
+                    reply_markup=assembly_ny_lobby_kb(session_id, is_closed=True),
+                )
             except Exception:
                 pass
 

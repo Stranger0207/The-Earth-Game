@@ -72,6 +72,14 @@ async def close_session(session: AsyncSession, session_id: int) -> None:
         s.current_speaker_country_id = None
         s.speech_ends_at = None
         s.voting_active = False
+
+        parts = await list_participants(session, session_id)
+        for p in parts:
+            if p.status == "in_flight":
+                p.status = "left"
+            elif p.status == "inside_hall":
+                p.status = "in_new_york"
+
         await session.flush()
 
 

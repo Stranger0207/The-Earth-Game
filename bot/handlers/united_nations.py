@@ -30,6 +30,7 @@ from ..database.models.united_nations import (
     UNAssemblyParticipant,
     UNAssemblySession,
     UNResolution,
+    UNResolutionVote,
     UNSpeechQueue,
 )
 from ..database.repositories import countries as countries_repo
@@ -54,6 +55,7 @@ from ..keyboards.united_nations import (
     un_iaea_menu_kb,
     un_iaea_summon_call_kb,
     un_main_menu_kb,
+    un_resolutions_menu_kb,
 )
 from ..loader import bot
 from ..services import geo_service as geo
@@ -128,6 +130,7 @@ async def cb_un_main(call: CallbackQuery, session: AsyncSession, db_user: User) 
 @router.callback_query(F.data == "un:iaea")
 async def cb_un_iaea(call: CallbackQuery, session: AsyncSession, db_user: User) -> None:
     """منوی آژانس بین‌المللی انرژی اتمی."""
+    await call.answer()
     country = await get_player_country(session, db_user)
     if not await assert_feature(call, session, country, "un.iaea"):
         return
@@ -143,6 +146,7 @@ async def cb_un_iaea(call: CallbackQuery, session: AsyncSession, db_user: User) 
 @router.callback_query(F.data == "un:iaea_send")
 async def cb_un_iaea_send(call: CallbackQuery, session: AsyncSession) -> None:
     """انتخاب کشور جهت اعزام تیم بازرسان آژانس."""
+    await call.answer()
     countries = await countries_repo.list_countries(session)
     valid_targets = [c for c in countries if c.name_en != "UN" and c.is_claimed]
     if not valid_targets:
@@ -402,6 +406,7 @@ async def cb_iaea_summon(call: CallbackQuery, session: AsyncSession) -> None:
 @router.callback_query(F.data.startswith("iaea_call_acquit:"))
 async def cb_iaea_call_acquit(call: CallbackQuery, session: AsyncSession) -> None:
     """تبرئه در بحث و مختومه کردن پرونده."""
+    await call.answer()
     target_id = int(call.data.split(":")[1])
     target = await countries_repo.get_country(session, target_id)
     prog = await nuc_repo.get_program(session, target_id)
@@ -441,6 +446,7 @@ async def cb_iaea_call_acquit(call: CallbackQuery, session: AsyncSession) -> Non
 @router.callback_query(F.data.startswith("iaea_call_court:"))
 async def cb_iaea_call_court(call: CallbackQuery, session: AsyncSession) -> None:
     """ارجاع به دادگاه بین‌الملل و پایان صحبت."""
+    await call.answer()
     target_id = int(call.data.split(":")[1])
     target = await countries_repo.get_country(session, target_id)
     un_country = await countries_repo.get_country_by_name(session, "UN")
@@ -498,6 +504,7 @@ async def cb_iaea_call_court(call: CallbackQuery, session: AsyncSession) -> None
 @router.callback_query(F.data == "un:assembly")
 async def cb_un_assembly(call: CallbackQuery, session: AsyncSession, db_user: User) -> None:
     """مدیریت مجمع عمومی در پنل دبیرکل."""
+    await call.answer()
     country = await get_player_country(session, db_user)
     if not await assert_feature(call, session, country, "un.assembly"):
         return
@@ -760,6 +767,7 @@ async def cb_asmb_enter_hall(call: CallbackQuery, session: AsyncSession, db_user
 @router.callback_query(F.data.startswith("asmb_exit_hall:"))
 async def cb_asmb_exit_hall(call: CallbackQuery, session: AsyncSession, db_user: User) -> None:
     """خروج از تالار مجمع به لابی شهر نیویورک (باز شدن پنل کشوری)."""
+    await call.answer("از تالار مجمع عمومی خارج شدید.")
     session_id = int(call.data.split(":")[1])
     country = await get_player_country(session, db_user)
     if not country:
@@ -794,6 +802,7 @@ async def cb_asmb_exit_hall(call: CallbackQuery, session: AsyncSession, db_user:
 @router.callback_query(F.data.startswith("asmb_return_home:"))
 async def cb_asmb_return_home(call: CallbackQuery, session: AsyncSession, db_user: User) -> None:
     """بازگشت درجا به کشور و خروج از نیویورک."""
+    await call.answer()
     session_id = int(call.data.split(":")[1])
     country = await get_player_country(session, db_user)
     if not country:
@@ -811,9 +820,23 @@ async def cb_asmb_return_home(call: CallbackQuery, session: AsyncSession, db_use
     )
 
 
+@router.callback_query(F.data.startswith("asmb_lobby:"))
+async def cb_asmb_lobby(call: CallbackQuery) -> None:
+    """نمایش لابی شهر نیویورک بدون اعلام خروج از صحن."""
+    await call.answer()
+    session_id = int(call.data.split(":")[1])
+    await safe_edit(
+        call,
+        "🗽 شما در لابی شهر نیویورک حضور دارید.\n"
+        "برای ورود به صحن علنی، روی دکمه «🏛 ورود به ساختمان تالار مجمع» کلیک کنید.",
+        reply_markup=assembly_ny_lobby_kb(session_id),
+    )
+
+
 @router.callback_query(F.data.startswith("asmb_sideline_meet:"))
 async def cb_asmb_sideline_meet(call: CallbackQuery, session: AsyncSession, db_user: User) -> None:
     """دیدار دوجانبه در حاشیه اجلاس نیویورک با کشورهای حاضر در نیویورک."""
+    await call.answer()
     session_id = int(call.data.split(":")[1])
     country = await get_player_country(session, db_user)
     if not country:
@@ -829,8 +852,8 @@ async def cb_asmb_sideline_meet(call: CallbackQuery, session: AsyncSession, db_u
     for cid in ny_country_ids:
         c = await countries_repo.get_country(session, cid)
         if c:
-            builder.button(text=f"🤝 {c.flag} {c.name_fa}", callback_data=f"call_to:{c.id}")
-    builder.button(text="🔙 بازگشت به لابی", callback_data=f"asmb_exit_hall:{session_id}")
+            builder.button(text=f"🤝 {c.flag} {c.name_fa}", callback_data=f"asmb_side_call:{c.id}")
+    builder.button(text="🔙 بازگشت به لابی", callback_data=f"asmb_lobby:{session_id}")
     builder.adjust(2)
 
     await safe_edit(
@@ -839,6 +862,51 @@ async def cb_asmb_sideline_meet(call: CallbackQuery, session: AsyncSession, db_u
         "کشورهای زیر هم‌اکنون در نیویورک حضور دارند و می‌توانید بدون اتلاف وقت و پرواز با آن‌ها تماس بگیرید یا دیدار کنید:",
         reply_markup=builder.as_markup(),
     )
+
+
+@router.callback_query(F.data.startswith("asmb_side_call:"))
+async def cb_asmb_side_call(call: CallbackQuery, session: AsyncSession, db_user: User) -> None:
+    """آغاز ارتباط فوری در حاشیه اجلاس نیویورک."""
+    await call.answer()
+    target_id = int(call.data.split(":")[1])
+    caller = await get_player_country(session, db_user)
+    target = await countries_repo.get_country(session, target_id)
+    if not caller or not target:
+        await call.answer("کشور هدف نامعتبر است.", show_alert=True)
+        return
+
+    existing = await dip_repo.get_active_call_for_country(session, caller.id)
+    if existing:
+        await call.answer("شما هم‌اکنون یک ارتباط فعال دارید.", show_alert=True)
+        return
+
+    from ..keyboards.diplomacy import end_call_kb
+    new_call = PhoneCall(
+        caller_country=caller.id,
+        receiver_country=target.id,
+        status=DiplomacyStatus.ACTIVE,
+        created_at=_utcnow(),
+    )
+    session.add(new_call)
+    await session.flush()
+
+    caller_txt = (
+        f"🤝 <b>دیدار رسمی در حاشیه اجلاس نیویورک:</b>\n\n"
+        f"ارتباط دیپلماتیک شما با رهبر کشور {target.flag} <b>{target.name_fa}</b> برقرار شد.\n"
+        "پیام‌های ارسالی شما مستقیماً برای طرف مقابل رله خواهد شد."
+    )
+    await safe_edit(call, caller_txt, reply_markup=end_call_kb())
+
+    if target.owner_user_id:
+        target_txt = (
+            f"🤝 <b>دیدار رسمی در حاشیه اجلاس نیویورک:</b>\n\n"
+            f"رهبر کشور {caller.flag} <b>{caller.name_fa}</b> در حاشیه اجلاس مجمع عمومی با شما وارد گفتگو شد.\n"
+            "پیام‌های ارسالی شما برای یکدیگر رله خواهد شد."
+        )
+        try:
+            await bot.send_message(target.owner_user_id, target_txt, reply_markup=end_call_kb())
+        except Exception:
+            pass
 
 
 # ============================================================
@@ -984,6 +1052,7 @@ async def cb_asmb_applaud(call: CallbackQuery, session: AsyncSession, db_user: U
 @router.callback_query(F.data.startswith("asmb_walkout:"))
 async def cb_asmb_walkout(call: CallbackQuery, session: AsyncSession, db_user: User) -> None:
     """ترک اعتراضی تالار (Walkout)."""
+    await call.answer("صحن تالار را به نشانه اعتراض ترک نمودید.")
     session_id = int(call.data.split(":")[1])
     country = await get_player_country(session, db_user)
     if not country:
@@ -1047,14 +1116,132 @@ async def cb_un_asmb_close(call: CallbackQuery, session: AsyncSession) -> None:
     )
 
 
+@router.callback_query(F.data.startswith("un_asmb_stats:"))
+async def cb_un_asmb_stats(call: CallbackQuery, session: AsyncSession) -> None:
+    """نمایش آمار تفصیلی حاضران، پروازها و صف نطق مجمع عمومی."""
+    await call.answer()
+    session_id = int(call.data.split(":")[1])
+    asmb = await un_repo.get_session(session, session_id)
+    if not asmb:
+        await safe_edit(call, "اجلاس یافت نشد.", reply_markup=un_main_menu_kb())
+        return
+
+    parts = await un_repo.list_participants(session, session_id)
+    in_hall = [p for p in parts if p.status == "inside_hall"]
+    in_ny = [p for p in parts if p.status == "in_new_york"]
+    in_flight = [p for p in parts if p.status == "in_flight"]
+    queue = await un_repo.get_speech_queue(session, session_id)
+
+    def _fmt_list(plist):
+        names = []
+        for p in plist:
+            c = p.country
+            if c:
+                names.append(f"{c.flag} {c.name_fa}")
+        return "، ".join(names) if names else "—"
+
+    txt = (
+        header("آمار رسمی اجلاس مجمع عمومی سازمان ملل", "👥") + "\n\n"
+        f"• 🏛 <b>داخل صحن علنی ({fa_number(len(in_hall))} کشور):</b>\n{_fmt_list(in_hall)}\n\n"
+        f"• 🗽 <b>در لابی و شهر نیویورک ({fa_number(len(in_ny))} کشور):</b>\n{_fmt_list(in_ny)}\n\n"
+        f"• ✈️ <b>در حال پرواز به نیویورک ({fa_number(len(in_flight))} کشور):</b>\n{_fmt_list(in_flight)}\n\n"
+        f"• 🎙 <b>تعداد در صف سخنرانی:</b> {fa_number(len(queue))} کشور\n"
+    )
+    builder = InlineKeyboardBuilder()
+    builder.button(text="🔙 بازگشت به مدیریت اجلاس", callback_data="un:assembly")
+    builder.adjust(1)
+    await safe_edit(call, txt, reply_markup=builder.as_markup())
+
+
+@router.callback_query(F.data.startswith("un_asmb_vote_prompt:"))
+async def cb_un_asmb_vote_prompt(call: CallbackQuery, state: FSMContext) -> None:
+    """درخواست ورود موضوع رای‌گیری فوری در صحن توسط دبیرکل."""
+    await call.answer()
+    session_id = int(call.data.split(":")[1])
+    await state.update_data(asmb_session_id=session_id)
+    await state.set_state(UNAssemblyForm.entering_vote_topic)
+    await safe_edit(
+        call,
+        "📊 <b>برگزاری رای‌گیری فوری در صحن مجمع عمومی:</b>\n\n"
+        "لطفاً <b>موضوع یا پرسش رای‌گیری</b> را بنویسید تا هم‌اکنون برای تمام نمایندگان مستقر در صحن علنی ارسال شود:",
+    )
+
+
+@router.message(UNAssemblyForm.entering_vote_topic)
+async def msg_asmb_vote_topic(message: Message, state: FSMContext, session: AsyncSession, db_user: User) -> None:
+    """آغاز رسمی رای‌گیری در صحن و فعال‌سازی گزینه‌های رای برای حاضران."""
+    data = await state.get_data()
+    await state.clear()
+    session_id = data["asmb_session_id"]
+    topic = (message.text or "").strip()
+
+    asmb = await un_repo.get_session(session, session_id)
+    if asmb:
+        asmb.voting_active = True
+        await session.flush()
+
+    # ارسال برگه رای‌گیری به کلیه کشورهای داخل تالار
+    in_hall_parts = await un_repo.list_participants_by_status(session, session_id, "inside_hall")
+    vote_text = (
+        f"📊 <b>رای‌گیری فوری در صحن علنی مجمع عمومی سازمان ملل:</b>\n\n"
+        f"موضوع: <b>{topic}</b>\n\n"
+        "لطفاً رای رسمی کشور خود را با استفاده از دکمه‌های زیر ثبت نمایید:"
+    )
+    for p in in_hall_parts:
+        c = await countries_repo.get_country(session, p.country_id)
+        if c and c.owner_user_id:
+            try:
+                await bot.send_message(
+                    c.owner_user_id,
+                    vote_text,
+                    reply_markup=assembly_hall_kb(session_id, voting_active=True),
+                )
+            except Exception:
+                pass
+
+    await message.answer(
+        f"✅ رای‌گیری با موضوع «{topic}» در صحن علنی آغاز شد و دکمه‌های رای‌گیری برای حاضران فعال گردید."
+    )
+
+
+@router.callback_query(F.data.startswith("asmb_v_"))
+async def cb_asmb_vote_cast(call: CallbackQuery, session: AsyncSession, db_user: User) -> None:
+    """ثبت رای کشور در صحن علنی مجمع عمومی."""
+    parts = call.data.split(":")
+    action = parts[0]  # asmb_v_yes, asmb_v_no, asmb_v_abs
+    session_id = int(parts[1])
+
+    vote_map = {
+        "asmb_v_yes": ("🟢 موافق", "yes"),
+        "asmb_v_no": ("🔴 مخالف", "no"),
+        "asmb_v_abs": ("⚪️ ممتنع", "abstain"),
+    }
+    label, _ = vote_map.get(action, ("—", "abstain"))
+    await call.answer(f"رای {label} شما با موفقیت در صحن ثبت شد.", show_alert=True)
+
+    country = await get_player_country(session, db_user)
+    if country:
+        un_c = await countries_repo.get_country_by_name(session, "UN")
+        if un_c and un_c.owner_user_id:
+            try:
+                await bot.send_message(
+                    un_c.owner_user_id,
+                    f"🗳 <b>رای جدید در صحن مجمع:</b>\nکشور {country.flag} {country.name_fa} رای <b>{label}</b> خود را ثبت کرد.",
+                )
+            except Exception:
+                pass
+
+
 # ============================================================
 #  ⚖️ دیوان بین‌المللی دادگستری (دادگاه لاهه - ICJ)
 # ============================================================
 
 
 @router.callback_query(F.data == "court:main")
-async def cb_court_main(call: CallbackQuery, session: AsyncSession, db_user: User) -> None:
+async def cb_court_main(call: CallbackQuery, state: FSMContext, session: AsyncSession, db_user: User) -> None:
     """ورود به دادگاه بین‌الملل از منوی دیپلماسی کشورها."""
+    await state.clear()
+    await call.answer()
     country = await get_player_country(session, db_user)
     if not await assert_feature(call, session, country, "un.court"):
         return
@@ -1067,9 +1254,51 @@ async def cb_court_main(call: CallbackQuery, session: AsyncSession, db_user: Use
     await safe_edit(call, text, reply_markup=court_main_kb())
 
 
+@router.callback_query(F.data == "court:my_cases")
+async def cb_court_my_cases(call: CallbackQuery, session: AsyncSession, db_user: User) -> None:
+    """فهرست پرونده‌های جاری کشور در دیوان لاهه."""
+    await call.answer()
+    country = await get_player_country(session, db_user)
+    if not country:
+        await safe_edit(call, NO_COUNTRY_TEXT)
+        return
+
+    cases = await un_repo.list_cases_for_country(session, country.id)
+    builder = InlineKeyboardBuilder()
+
+    if not cases:
+        txt = (
+            header("پرونده‌های من در دیوان لاهه", "⚖️") + "\n\n"
+            "شما هم‌اکنون هیچ پرونده باز یا تحت رسیدگی در دادگاه بین‌المللی ندارید."
+        )
+    else:
+        txt = header("پرونده‌های من در دیوان لاهه", "⚖️") + "\n\n"
+        for cs in cases:
+            role_badge = "خواهان (شاکی)" if cs.claimant_country_id == country.id else "خوانده (متهم)"
+            other_id = cs.defendant_country_id if cs.claimant_country_id == country.id else cs.claimant_country_id
+            other_c = await countries_repo.get_country(session, other_id)
+            other_name = f"{other_c.flag} {other_c.name_fa}" if other_c else "—"
+            st_fa = {
+                "pending": "در انتظار تعیین جلسه",
+                "trial": "جلسه دادرسی فعال",
+                "verdict_issued": "حکم نهایی صادر شده",
+            }.get(cs.status, cs.status)
+            txt += (
+                f"• <b>پرونده:</b> <code>{cs.case_number}</code> ({st_fa})\n"
+                f"  نقش: {role_badge} | طرف مقابل: {other_name}\n"
+                f"  موضوع: {cs.claim_title}\n"
+                f"  غرامت درخواستی: {fa_number(cs.demanded_compensation / 1e6)} میلیون دلار\n\n"
+            )
+
+    builder.button(text="🔙 بازگشت به دیوان", callback_data="court:main")
+    builder.adjust(1)
+    await safe_edit(call, txt, reply_markup=builder.as_markup())
+
+
 @router.callback_query(F.data == "court:new_claim")
 async def cb_court_new_claim(call: CallbackQuery, state: FSMContext, session: AsyncSession, db_user: User) -> None:
     """شروع ثبت دادخواست رسمی."""
+    await call.answer()
     country = await get_player_country(session, db_user)
     if not country:
         return
@@ -1088,6 +1317,7 @@ async def cb_court_new_claim(call: CallbackQuery, state: FSMContext, session: As
 @router.callback_query(CourtForm.choosing_defendant, F.data.startswith("court_def:"))
 async def cb_court_def_pick(call: CallbackQuery, state: FSMContext, session: AsyncSession) -> None:
     """انتخاب خوانده و سپس انتخاب موضوع شکایت."""
+    await call.answer()
     def_id = int(call.data.split(":")[1])
     await state.update_data(defendant_id=def_id)
     await state.set_state(CourtForm.choosing_issue)
@@ -1097,6 +1327,7 @@ async def cb_court_def_pick(call: CallbackQuery, state: FSMContext, session: Asy
 @router.callback_query(CourtForm.choosing_issue, F.data.startswith("court_issue:"))
 async def cb_court_issue_pick(call: CallbackQuery, state: FSMContext) -> None:
     """انتخاب موضوع و درخواست عنوان شکایت."""
+    await call.answer()
     issue = call.data.split(":")[1]
     await state.update_data(issue_type=issue)
     await state.set_state(CourtForm.entering_claim_title)
@@ -1183,6 +1414,7 @@ async def cb_un_court_admin(call: CallbackQuery, session: AsyncSession, db_user:
         await call.answer("دسترسی غیرمجاز.", show_alert=True)
         return
 
+    await call.answer()
     cases = await un_repo.list_court_cases(session)
     if not cases:
         await safe_edit(
@@ -1209,9 +1441,10 @@ async def cb_un_court_admin(call: CallbackQuery, session: AsyncSession, db_user:
     await safe_edit(call, "⚖️ <b>پرونده‌های دیوان بین‌المللی دادگستری (لاهه):</b>", reply_markup=builder.as_markup())
 
 
-@router.callback_query(F.data.startswith("court_admin_view:"))
+@router.callback_query(F.data.startswith("court_admin_view:") | F.data.startswith("court_view:"))
 async def cb_court_admin_view(call: CallbackQuery, session: AsyncSession) -> None:
     """مشاهده مشخصات پرونده توسط دبیرکل."""
+    await call.answer()
     case_id = int(call.data.split(":")[1])
     cs = await un_repo.get_court_case(session, case_id)
     if not cs:
@@ -1319,6 +1552,7 @@ async def cb_court_turn(call: CallbackQuery, session: AsyncSession) -> None:
 @router.callback_query(F.data.startswith("court_verdict_prompt:"))
 async def cb_court_verdict_prompt(call: CallbackQuery) -> None:
     """انتخاب نوع حکم نهایی دادگاه."""
+    await call.answer()
     case_id = int(call.data.split(":")[1])
     await safe_edit(
         call,
@@ -1330,6 +1564,7 @@ async def cb_court_verdict_prompt(call: CallbackQuery) -> None:
 @router.callback_query(F.data.startswith("court_v_acquit:"))
 async def cb_court_v_acquit(call: CallbackQuery, session: AsyncSession) -> None:
     """حکم تبرئه متهم و رد شکایت."""
+    await call.answer()
     case_id = int(call.data.split(":")[1])
     cs = await un_repo.get_court_case(session, case_id)
     if not cs:
@@ -1363,6 +1598,7 @@ async def cb_court_v_acquit(call: CallbackQuery, session: AsyncSession) -> None:
 @router.callback_query(F.data.startswith("court_v_fine:"))
 async def cb_court_v_fine(call: CallbackQuery, state: FSMContext) -> None:
     """درخواست مبلغ غرامت برای صدور حکم محکومیت مالی."""
+    await call.answer()
     case_id = int(call.data.split(":")[1])
     await state.update_data(case_id=case_id)
     await state.set_state(CourtForm.entering_fine_amount)
@@ -1422,6 +1658,7 @@ async def msg_court_fine_amount(message: Message, state: FSMContext, session: As
 @router.callback_query(F.data.startswith("court_v_release:"))
 async def cb_court_v_release(call: CallbackQuery, session: AsyncSession) -> None:
     """حکم آزادسازی اموال بلوکه‌شده در تنگه."""
+    await call.answer()
     case_id = int(call.data.split(":")[1])
     cs = await un_repo.get_court_case(session, case_id)
     if not cs:
@@ -1455,6 +1692,7 @@ async def cb_court_v_release(call: CallbackQuery, session: AsyncSession) -> None
 @router.callback_query(F.data.startswith("court_v_sanction:"))
 async def cb_court_v_sanction(call: CallbackQuery, session: AsyncSession) -> None:
     """صدور مجوز تحریم بین‌المللی علیه کشور خاطی."""
+    await call.answer()
     case_id = int(call.data.split(":")[1])
     cs = await un_repo.get_court_case(session, case_id)
     if not cs:
@@ -1485,6 +1723,7 @@ async def cb_court_v_sanction(call: CallbackQuery, session: AsyncSession) -> Non
 @router.callback_query(F.data == "un:humanitarian")
 async def cb_un_humanitarian(call: CallbackQuery, session: AsyncSession, db_user: User) -> None:
     """صندوق مالی و کمک‌های بشردوستانه سازمان ملل."""
+    await call.answer()
     un_country = await get_player_country(session, db_user)
     if un_country is None or un_country.name_en != "UN":
         return
@@ -1509,6 +1748,7 @@ async def cb_un_humanitarian(call: CallbackQuery, session: AsyncSession, db_user
 @router.callback_query(F.data.startswith("aid_to:"))
 async def cb_aid_to(call: CallbackQuery, state: FSMContext) -> None:
     """دریافت مبلغ کمک بشردوستانه."""
+    await call.answer()
     cid = int(call.data.split(":")[1])
     await state.update_data(recipient_id=cid)
     await state.set_state(HumanitarianForm.entering_aid_amount)
@@ -1566,3 +1806,204 @@ async def msg_aid_amount(message: Message, state: FSMContext, session: AsyncSess
         f"🕊 <b>تخصیص کمک‌های بشردوستانه سازمان ملل:</b>\n"
         f"دبیرکل سازمان ملل با تخصیص بسته حمایتی {fa_number(aid / 1e6)} میلیون دلاری به کشور {recip.flag} {recip.name_fa} موافقت نمود.",
     )
+
+
+# ============================================================
+#  📜 قطعنامه‌ها و رای‌گیری بین‌المللی (UN Resolutions)
+# ============================================================
+
+
+@router.callback_query(F.data == "un:resolutions")
+async def cb_un_resolutions(call: CallbackQuery, session: AsyncSession, db_user: User) -> None:
+    """منوی قطعنامه‌ها در پنل دبیرکل سازمان ملل."""
+    await call.answer()
+    un_country = await get_player_country(session, db_user)
+    if un_country is None or un_country.name_en != "UN":
+        await call.answer("دسترسی غیرمجاز.", show_alert=True)
+        return
+
+    active_res = await un_repo.list_resolutions(session, status="voting")
+    passed_res = await un_repo.list_resolutions(session, status="passed")
+
+    text = (
+        header("شورای صدور قطعنامه‌های بین‌المللی سازمان ملل", "📜") + "\n\n"
+        f"🔹 قطعنامه‌های در حال رای‌گیری: <b>{len(active_res)}</b>\n"
+        f"🔹 قطعنامه‌های تصویب‌شده: <b>{len(passed_res)}</b>\n\n"
+        "جهت تدوین پیش‌نویس قطعنامه جدید یا مشاهده وضعیت آرا، از گزینه‌های زیر استفاده نمایید:"
+    )
+    await safe_edit(call, text, reply_markup=un_resolutions_menu_kb())
+
+
+@router.callback_query(F.data == "un_res_create")
+async def cb_un_res_create(call: CallbackQuery, state: FSMContext, session: AsyncSession, db_user: User) -> None:
+    """آغاز تدوین پیش‌نویس قطعنامه جدید."""
+    await call.answer()
+    un_country = await get_player_country(session, db_user)
+    if un_country is None or un_country.name_en != "UN":
+        return
+
+    await state.set_state(ResolutionForm.entering_title)
+    await safe_edit(
+        call,
+        "📜 <b>تدوین پیش‌نویس قطعنامه جدید سازمان ملل:</b>\n\n"
+        "لطفاً <b>عنوان رسمی قطعنامه</b> را ارسال فرمایید:\n"
+        "(مثال: <i>قطعنامه توقف فوری مخاصمات و بازگشایی آبراهه‌های بین‌المللی</i>)",
+    )
+
+
+@router.message(ResolutionForm.entering_title)
+async def msg_res_title(message: Message, state: FSMContext) -> None:
+    """دریافت عنوان قطعنامه و درخواست متن اصلی."""
+    title = (message.text or "").strip()
+    if not title:
+        await message.answer("لطفاً یک عنوان معتبر وارد کنید.")
+        return
+
+    await state.update_data(res_title=title)
+    await state.set_state(ResolutionForm.entering_body)
+    await message.answer(
+        f"عنوان قطعنامه: <b>{title}</b>\n\n"
+        "اکنون <b>متن کامل و بندهای اجرایی قطعنامه</b> را ارسال کنید:"
+    )
+
+
+@router.message(ResolutionForm.entering_body)
+async def msg_res_body(message: Message, state: FSMContext, session: AsyncSession, db_user: User) -> None:
+    """ثبت قطعنامه، انتشار خبر و ارسال دعوت‌نامه رای‌گیری به کلیه کشورها."""
+    un_country = await get_player_country(session, db_user)
+    if not un_country or un_country.name_en != "UN":
+        await state.clear()
+        return
+
+    body = (message.text or "").strip()
+    if not body:
+        await message.answer("لطفاً متن قطعنامه را وارد کنید.")
+        return
+
+    data = await state.get_data()
+    title = data.get("res_title", "قطعنامه سازمان ملل")
+    await state.clear()
+
+    import uuid
+    res_num = f"RES-{uuid.uuid4().hex[:6].upper()}"
+
+    res = UNResolution(
+        resolution_number=res_num,
+        proposed_by_country_id=un_country.id,
+        title=title,
+        body=body,
+        status="voting",
+    )
+    await un_repo.create_resolution(session, res)
+    await session.flush()
+
+    all_countries = await countries_repo.list_countries(session)
+    res_announcement = (
+        f"📜 <b>پیش‌نویس قطعنامه جدید سازمان ملل متحد (#{res.resolution_number}):</b>\n\n"
+        f"🔹 <b>عنوان:</b> {res.title}\n\n"
+        f"📝 <b>متن قطعنامه:</b>\n{res.body}\n\n"
+        "نماینده محترم، لطفاً رای رسمی کشور خود را در خصوص این قطعنامه ثبت فرمایید:"
+    )
+
+    sent_count = 0
+    for c in all_countries:
+        if c.is_claimed and c.owner_user_id and c.name_en != "UN":
+            try:
+                await bot.send_message(
+                    c.owner_user_id,
+                    res_announcement,
+                    reply_markup=resolution_vote_kb(res.id),
+                )
+                sent_count += 1
+            except Exception:
+                pass
+
+    await message.answer(
+        f"✅ <b>قطعنامه با موفقیت صادر و به رای گذاشته شد:</b>\n\n"
+        f"شماره: <code>{res.resolution_number}</code>\n"
+        f"عنوان: <b>{res.title}</b>\n"
+        f"تعداد کشورهای دریافت‌کننده دعوت‌نامه رای‌گیری: {sent_count}",
+        reply_markup=un_main_menu_kb(),
+    )
+
+    await publish_news(
+        bot,
+        NewsCategory.DIPLOMACY,
+        f"📜 <b>صدور قطعنامه جدید در سازمان ملل متحد:</b>\n"
+        f"دبیرکل سازمان ملل پیش‌نویس قطعنامه شماره {res.resolution_number} با عنوان «{res.title}» را به رای‌گیری اعضای جامعه جهانی گذاشت.",
+    )
+    await send_log(
+        bot,
+        f"📜 صدور قطعنامه #{res.resolution_number} توسط دبیرکل سازمان ملل (ارسال به {sent_count} کشور)",
+    )
+
+
+@router.callback_query(F.data == "un_res_list")
+async def cb_un_res_list(call: CallbackQuery, session: AsyncSession) -> None:
+    """مشاهده لیست و وضعیت آرای قطعنامه‌ها."""
+    await call.answer()
+    resolutions = await un_repo.list_resolutions(session)
+    if not resolutions:
+        await safe_edit(
+            call,
+            "📜 در حال حاضر هیچ قطعنامه‌ای ثبت نشده است.",
+            reply_markup=un_resolutions_menu_kb(),
+        )
+        return
+
+    text = "📜 <b>فهرست آخرین قطعنامه‌های سازمان ملل:</b>\n\n"
+    for r in resolutions[:10]:
+        votes = await un_repo.get_resolution_votes(session, r.id)
+        st_icon = "🗳" if r.status == "voting" else ("✅" if r.status == "passed" else "❌")
+        text += (
+            f"{st_icon} <b>{r.resolution_number}</b>: {r.title}\n"
+            f"   وضعیت: {r.status} | موافق: {votes.get('yes', 0)} | مخالف: {votes.get('no', 0)} | ممتنع: {votes.get('abstain', 0)}\n\n"
+        )
+
+    builder = InlineKeyboardBuilder()
+    builder.button(text="🔙 بازگشت به منوی قطعنامه‌ها", callback_data="un:resolutions")
+    builder.adjust(1)
+    await safe_edit(call, text, reply_markup=builder.as_markup())
+
+
+@router.callback_query(F.data.startswith("res_vote:"))
+async def cb_res_vote(call: CallbackQuery, session: AsyncSession, db_user: User) -> None:
+    """ثبت رای یک کشور به قطعنامه سازمان ملل."""
+    parts = call.data.split(":")
+    res_id = int(parts[1])
+    vote_type = parts[2]  # yes | no | abstain
+
+    country = await get_player_country(session, db_user)
+    if not country:
+        await call.answer("کشوری برای شما ثبت نشده است.", show_alert=True)
+        return
+
+    res = await un_repo.get_resolution(session, res_id)
+    if not res:
+        await call.answer("قطعنامه یافت نشد.", show_alert=True)
+        return
+
+    if res.status != "voting":
+        await call.answer("رای‌گیری این قطعنامه به پایان رسیده است.", show_alert=True)
+        return
+
+    await un_repo.cast_resolution_vote(session, res_id, country.id, vote_type)
+    await session.flush()
+
+    vote_names = {"yes": "موافق 🟢", "no": "مخالف 🔴", "abstain": "ممتنع ⚪️"}
+    v_txt = vote_names.get(vote_type, vote_type)
+    await call.answer(f"رای شما ({v_txt}) به قطعنامه {res.resolution_number} با موفقیت ثبت شد.", show_alert=True)
+
+    # اطلاع به دبیرکل در صورت وجود
+    un_countries = await countries_repo.list_countries(session)
+    un_c = next((c for c in un_countries if c.name_en == "UN"), None)
+    if un_c and un_c.owner_user_id:
+        try:
+            await bot.send_message(
+                un_c.owner_user_id,
+                f"🗳 <b>رای جدید به قطعنامه {res.resolution_number}:</b>\n"
+                f"کشور: {country.flag} {country.name_fa}\n"
+                f"رای: {v_txt}",
+            )
+        except Exception:
+            pass

@@ -316,7 +316,7 @@ def un_court_verdict_choices_kb(case_id: int) -> InlineKeyboardMarkup:
         callback_data=f"court_v_sanction:{case_id}",
         style=STYLE_NO,
     )
-    builder.button(text="🔙 بازگشت به جلسه دادگاه", callback_data=f"court_view:{case_id}")
+    builder.button(text="🔙 بازگشت به جلسه دادگاه", callback_data=f"court_admin_view:{case_id}")
     builder.adjust(1)
     return builder.as_markup()
 
@@ -324,6 +324,24 @@ def un_court_verdict_choices_kb(case_id: int) -> InlineKeyboardMarkup:
 # ============================================================
 #  قطعنامه‌ها و رای‌گیری
 # ============================================================
+
+
+def un_resolutions_menu_kb() -> InlineKeyboardMarkup:
+    """منوی قطعنامه‌ها در پنل دبیرکل سازمان ملل."""
+    builder = InlineKeyboardBuilder()
+    builder.button(
+        text="✍️ تدوین و انتشار پیش‌نویس قطعنامه جدید",
+        callback_data="un_res_create",
+        style=STYLE_OK,
+    )
+    builder.button(
+        text="📋 فهرست قطعنامه‌های بین‌المللی",
+        callback_data="un_res_list",
+        style=STYLE_MAIN,
+    )
+    builder.button(text="🔙 بازگشت به پنل دبیرکل", callback_data="menu:main")
+    builder.adjust(1)
+    return builder.as_markup()
 
 
 def resolution_vote_kb(res_id: int) -> InlineKeyboardMarkup:

@@ -1,6 +1,9 @@
 """ثبت همه‌ی روترهای ربات روی دیسپچر."""
 
-from aiogram import Dispatcher
+import logging
+
+from aiogram import Dispatcher, Router
+from aiogram.types import CallbackQuery, ErrorEvent
 
 from . import (
     admin,
@@ -40,12 +43,38 @@ from . import (
     united_nations,
 )
 
+logger = logging.getLogger(__name__)
+
+fallback_router = Router(name="fallback")
+
+
+@fallback_router.callback_query()
+async def cb_unhandled_fallback(call: CallbackQuery) -> None:
+    """پاسخ‌دهی به هر دکمه شیشه‌ای ناشناخته یا فاقد هندلر برای جلوگیری از لودینگ دائم."""
+    logger.warning("UNHANDLED CALLBACK: data=%s user=%s", call.data, call.from_user.id)
+    await call.answer("⚠️ این دکمه در حال حاضر پاسخگو نیست یا منقضی شده است.", show_alert=True)
+
+
+async def global_error_handler(event: ErrorEvent) -> None:
+    """هندلر خطایاب سراسری برای جلوگیری از لودینگ دائم دکمه‌ها و ثبت دقیق خطاها."""
+    logger.exception("Global unhandled exception in update: %s", event.exception)
+    if event.update and event.update.callback_query:
+        try:
+            await event.update.callback_query.answer(
+                "⚠️ خطایی در اجرای این دکمه رخ داد. لطفاً مجدداً تلاش کنید.",
+                show_alert=True,
+            )
+        except Exception:
+            pass
+
 
 def register_all_routers(dp: Dispatcher) -> None:
     """
     ترتیب ثبت مهم است: روترهای اختصاصی‌تر (start/claim/admin) زودتر،
     سپس منو و بخش‌های بازی.
     """
+    dp.errors.register(global_error_handler)
+
     dp.include_router(start.router)
     dp.include_router(claim.router)
     dp.include_router(admin.router)
@@ -81,4 +110,8 @@ def register_all_routers(dp: Dispatcher) -> None:
     dp.include_router(straits.router)
     dp.include_router(deployment.router)
     dp.include_router(advisor.router)
+
+    # روتر فال‌بک در انتهای صف برای گرفتن کال‌بک‌های ثبت‌نشده یا منقضی
+    dp.include_router(fallback_router)
+
 

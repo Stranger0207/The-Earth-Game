@@ -153,6 +153,9 @@ def _home_kb() -> InlineKeyboardMarkup:
     builder.button(text="☢️ برنامه‌های هسته‌ای", callback_data="god:nuclear", style=STYLE_MAIN)
     builder.button(text="💥 سیستم تلفات", callback_data="god:casualty", style=STYLE_NO)
     builder.button(text="🤬 فیلتر فحش و کلمات رکیک", callback_data="god:profanity", style=STYLE_MAIN)
+    builder.button(text="📢 جوین اجباری کانال", callback_data="god:force_join", style=STYLE_MAIN)
+    builder.button(text="📁 تنظیم لینک فولدر", callback_data="god:set_folder", style=STYLE_MAIN)
+    builder.button(text="📢 ارسال پیام همگانی", callback_data="god:broadcast", style=STYLE_MAIN)
     builder.button(text="🔒 غیرفعال‌کردن آپشن", callback_data="god:locks", style=STYLE_NO)
     builder.button(text="⛔️ مدیریت بن کاربران", callback_data="god:ban_list", style=STYLE_NO)
     builder.button(text="🔴 پایان و ریست کامل فصل", callback_data="god:endseason", style=STYLE_NO)
@@ -214,6 +217,99 @@ async def cb_god_endseason(call: CallbackQuery, state: FSMContext) -> None:
         reply_markup=kb,
     )
 
+
+# ============================================================
+#  جوین اجباری، لینک فولدر و پیام همگانی از پنل گاد
+# ============================================================
+@router.callback_query(F.data == "god:force_join")
+async def cb_god_force_join(call: CallbackQuery, session: AsyncSession) -> None:
+    if not await _guard(call):
+        return
+    await call.answer()
+    from ..database.repositories import bot_state as bot_state_repo
+    bstate = await bot_state_repo.get_state(session)
+    status_text = "🟢 فعال" if bstate.force_join_enabled else "🔴 غیرفعال"
+    chat_id_text = bstate.force_join_chat_id or "تنظیم نشده"
+    link_text = bstate.force_join_invite_link or "تنظیم نشده"
+
+    toggle_text = "🔴 غیرفعال‌سازی جوین اجباری" if bstate.force_join_enabled else "🟢 فعال‌سازی جوین اجباری"
+    toggle_style = STYLE_NO if bstate.force_join_enabled else STYLE_OK
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text=toggle_text, callback_data="god:force_join_toggle", style=toggle_style)],
+            [
+                InlineKeyboardButton(text="✏️ تغییر آیدی/یوزرنیم کانال", callback_data="setchan:chat_id", style=STYLE_MAIN),
+                InlineKeyboardButton(text="🔗 تغییر لینک دعوت", callback_data="setchan:link", style=STYLE_MAIN),
+            ],
+            [InlineKeyboardButton(text="🔙 بازگشت به منوی گاد", callback_data="god:home", style=STYLE_MAIN)],
+        ]
+    )
+    text = (
+        header("مدیریت سیستم عضویت اجباری کانال", "📢")
+        + f"\n\n<b>وضعیت فعلی:</b> {status_text}\n"
+        f"<b>شناسه یا @یوزرنیم کانال:</b> <code>{chat_id_text}</code>\n"
+        f"<b>لینک ورود به کانال:</b> {link_text}\n\n"
+        "جهت تغییر تنظیمات از کلیدهای زیر استفاده کنید:"
+    )
+    await call.message.edit_text(text, reply_markup=kb)
+
+
+@router.callback_query(F.data == "god:force_join_toggle")
+async def cb_god_force_join_toggle(call: CallbackQuery, session: AsyncSession) -> None:
+    if not await _guard(call):
+        return
+    from ..database.repositories import bot_state as bot_state_repo
+    bstate = await bot_state_repo.get_state(session)
+    new_status = not bstate.force_join_enabled
+    await bot_state_repo.update_state(session, force_join_enabled=new_status)
+    await session.commit()
+    await call.answer("وضعیت تغییر کرد")
+    await cb_god_force_join(call, session)
+
+
+@router.callback_query(F.data == "god:set_folder")
+async def cb_god_set_folder(call: CallbackQuery, state: FSMContext, session: AsyncSession) -> None:
+    if not await _guard(call):
+        return
+    await call.answer()
+    from ..database.repositories import bot_state as bot_state_repo
+    from ..states import SetFolderForm
+    await state.clear()
+    await state.set_state(SetFolderForm.waiting_for_link)
+    bstate = await bot_state_repo.get_state(session)
+    curr = bstate.game_folder_link or "تنظیم نشده"
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="🔙 انصراف و بازگشت", callback_data="god:home", style=STYLE_NO)]
+        ]
+    )
+    await call.message.edit_text(
+        f"📁 <b>تنظیم لینک فولدر رسمی بازی</b>\n\n"
+        f"لینک فعلی: <code>{curr}</code>\n\n"
+        "لطفاً لینک جدید فولدر تلگرام (مانند <code>https://t.me/addlist/...</code>) را ارسال کنید:",
+        reply_markup=kb,
+    )
+
+
+@router.callback_query(F.data == "god:broadcast")
+async def cb_god_broadcast(call: CallbackQuery, state: FSMContext) -> None:
+    if not await _guard(call):
+        return
+    await call.answer()
+    from ..states import BroadcastForm
+    await state.clear()
+    await state.set_state(BroadcastForm.waiting_for_content)
+    cancel_kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="❌ انصراف", callback_data="god:home", style=STYLE_NO)]
+        ]
+    )
+    await call.message.edit_text(
+        "📢 <b>ارسال پیام همگانی به کل کاربران ربات</b>\n\n"
+        "لطفاً پیام خود را ارسال کنید. می‌توانید <b>فقط متن</b> بفرستید و یا "
+        "<b>یک عکس به همراه کپشن (متن زیر عکس)</b> ارسال کنید:",
+        reply_markup=cancel_kb,
+    )
 
 
 # ============================================================

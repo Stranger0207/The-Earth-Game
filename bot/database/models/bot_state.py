@@ -40,10 +40,19 @@ class BotState(Base):
     # سیستم سراسری فیلتر فحش و کلمات رکیک
     profanity_filter_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
+    # سیستم جوین اجباری در کانال رسمی
+    force_join_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    force_join_chat_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    force_join_invite_link: Mapped[str | None] = mapped_column(String(256), nullable=True)
+
+    # لینک فولدر کانال‌های بازی (/folder)
+    game_folder_link: Mapped[str | None] = mapped_column(String(256), nullable=True)
+
     def __repr__(self) -> str:
         return (
             f"<BotState maintenance={self.maintenance} "
             f"freeze={self.global_freeze} "
+            f"force_join={self.force_join_enabled} "
             f"profanity_filter={self.profanity_filter_enabled} "
             f"market_news={self.market_news_enabled} "
             f"auto={self.auto_off_enabled} {self.auto_off_start}-{self.auto_off_end}>"

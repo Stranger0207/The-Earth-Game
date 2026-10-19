@@ -229,3 +229,10 @@ async def get_expired_suspended_users(
     return list(result.scalars().all())
 
 
+async def list_all_user_telegram_ids(session: AsyncSession) -> list[int]:
+    """فهرست آیدی تلگرام تمام کاربرانی که تاکنون ربات را استارت کرده‌اند."""
+    stmt = select(User.telegram_id).order_by(User.telegram_id.asc())
+    result = await session.execute(stmt)
+    return list(result.scalars().all())
+
+

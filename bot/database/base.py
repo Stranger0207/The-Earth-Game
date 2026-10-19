@@ -110,6 +110,12 @@ _COLUMN_MIGRATIONS = [
     ("bot_state", "market_news_enabled", "BOOLEAN NOT NULL DEFAULT TRUE"),
     # سیستم سراسری فیلتر فحش و کلمات رکیک
     ("bot_state", "profanity_filter_enabled", "BOOLEAN NOT NULL DEFAULT TRUE"),
+    # سیستم جوین اجباری در کانال رسمی
+    ("bot_state", "force_join_enabled", "BOOLEAN NOT NULL DEFAULT FALSE"),
+    ("bot_state", "force_join_chat_id", "VARCHAR(128)"),
+    ("bot_state", "force_join_invite_link", "VARCHAR(256)"),
+    # لینک فولدر کانال‌های بازی (/folder)
+    ("bot_state", "game_folder_link", "VARCHAR(256)"),
 ]
 
 

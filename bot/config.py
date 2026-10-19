@@ -71,6 +71,12 @@ class Settings(BaseSettings):
     webapp_port: int = 8080
     webapp_base_url: str = ""                     # آدرس عمومی مینی‌اپ (مثلاً https://...ngrok-free.app)
 
+    # --- جوین اجباری و لینک فولدر بازی ---
+    force_join_enabled: bool = False
+    force_join_chat_id: str | None = None
+    force_join_invite_link: str | None = None
+    game_folder_link: str | None = None
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

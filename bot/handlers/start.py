@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from aiogram import F, Router
-from aiogram.filters import CommandObject, CommandStart
+from aiogram.filters import Command, CommandObject, CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.types import (
     InlineKeyboardButton,
@@ -153,3 +153,98 @@ async def cmd_menu(
         return
 
     await show_menu(message, "پنل مدیریت کشور:", main_menu_kb(), image_key="main")
+
+
+@router.callback_query(F.data == "check_force_join")
+async def cb_check_force_join(
+    call: CallbackQuery,
+    session: AsyncSession,
+    db_user: User,
+) -> None:
+    """بررسی عضویت کاربر در کانال رسمی پس از کلیک روی 'عضو شدم'."""
+    from ..database.repositories import bot_state as bot_state_repo
+    from ..loader import bot
+    from ..services.channel_service import check_user_channel_subscription
+
+    state = await bot_state_repo.get_state(session)
+    if state.force_join_enabled and state.force_join_chat_id:
+        is_member = await check_user_channel_subscription(
+            bot, state.force_join_chat_id, call.from_user.id
+        )
+        if not is_member:
+            await call.answer(
+                "❌ شما هنوز در کانال عضو نشده‌اید! لطفاً ابتدا وارد کانال شوید و سپس دوباره امتحان کنید.",
+                show_alert=True,
+            )
+            return
+
+    await call.answer("✅ عضویت شما تأیید شد!")
+    try:
+        await call.message.delete()
+    except Exception:
+        pass
+
+    country = await get_player_country(session, db_user)
+    if country is not None:
+        if country.name_en == "UN":
+            from ..keyboards.united_nations import un_main_menu_kb
+            from ..utils.ui import header
+
+            sec_gen_title = db_user.president_name or "دبیرکل محترم"
+            un_title = (
+                header("مقر فرماندهی دبیرکل سازمان ملل متحد", "🇺🇳")
+                + f"\n\n🇺🇳 خوش آمدید، {sec_gen_title}!\n\n"
+                "به مقر فرماندهی سازمان ملل متحد (نیویورک) خوش آمدید.\n"
+                "ارکان بین‌المللی، آژانس انرژی اتمی، دیوان دادگستری لاهه و مجمع عمومی در اختیار شما هستند."
+            )
+            await show_menu(call.message, un_title, un_main_menu_kb(), image_key="main")
+            return
+
+        await show_menu(
+            call.message,
+            f"👑 خوش آمدید، رهبر {country.flag} <b>{country.name_fa}</b>!\n\n"
+            "پنل مدیریت کشور:",
+            main_menu_kb(),
+            image_key="main",
+        )
+    else:
+        await call.message.answer(WELCOME_TEXT, reply_markup=_claim_kb())
+
+
+@router.message(Command("folder"))
+async def cmd_folder(
+    message: Message,
+    session: AsyncSession,
+) -> None:
+    """نمایش لینک فولدر کانال‌های رسمی بازی به کاربر."""
+    from ..database.repositories import bot_state as bot_state_repo
+    from ..utils.ui import STYLE_MAIN
+
+    state = await bot_state_repo.get_state(session)
+    folder_link = state.game_folder_link
+
+    if not folder_link:
+        await message.answer(
+            "📁 <b>فولدر کانال‌های بازی</b>\n\n"
+            "لینک فولدر کانال‌های بازی هنوز توسط مدیریت تنظیم نشده است و به‌زودی قرار خواهد گرفت."
+        )
+        return
+
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="📁 افزودن فولدر کانال‌های بازی به تلگرام",
+                    url=folder_link,
+                    style=STYLE_MAIN,
+                )
+            ]
+        ]
+    )
+    await message.answer(
+        "📁 <b>فولدر اختصاصی کانال‌های بازی کره زمین</b>\n\n"
+        "برای دسترسی سریع به تمام اخبار نظامی، اقتصادی، دیپلماسی، بیانیه‌ها و رخدادهای زنده، "
+        "با لمس دکمه زیر فولدر رسمی بازی را به تلگرام خود اضافه کنید:\n\n"
+        f"🔗 <b>لینک مستقیم:</b>\n{folder_link}",
+        reply_markup=kb,
+    )

@@ -102,6 +102,46 @@ class UserMiddleware(BaseMiddleware):
                         elif isinstance(event, CallbackQuery):
                             await event.answer(msg, show_alert=True)
                         return None
+
+            # بررسی عضویت اجباری در کانال رسمی (فقط چت خصوصی و برای کاربران غیرمدیر)
+            is_check_call = getattr(event, "data", None) == "check_force_join"
+            if not is_check_call:
+                is_private = False
+                chat = getattr(event, "chat", None)
+                if chat and getattr(chat, "type", "") == "private":
+                    is_private = True
+                else:
+                    msg_obj = getattr(event, "message", None)
+                    if msg_obj and getattr(msg_obj, "chat", None) and getattr(msg_obj.chat, "type", "") == "private":
+                        is_private = True
+
+                if is_private:
+                    from ..database.repositories import bot_state as bot_state_repo
+                    from ..loader import bot
+                    from ..services.channel_service import (
+                        FORCE_JOIN_TEXT,
+                        check_user_channel_subscription,
+                        force_join_kb,
+                    )
+
+                    state = await bot_state_repo.get_state(session)
+                    if state.force_join_enabled and state.force_join_chat_id:
+                        is_member = await check_user_channel_subscription(
+                            bot, state.force_join_chat_id, tg_user.id
+                        )
+                        if not is_member:
+                            is_callback = isinstance(event, CallbackQuery) or isinstance(getattr(event, "data", None), str)
+                            if not is_callback and hasattr(event, "answer"):
+                                await event.answer(
+                                    FORCE_JOIN_TEXT,
+                                    reply_markup=force_join_kb(state.force_join_invite_link),
+                                )
+                            elif is_callback and hasattr(event, "answer"):
+                                await event.answer(
+                                    "⚠️ برای ادامه باید در کانال رسمی بازی عضو شوید.",
+                                    show_alert=True,
+                                )
+                            return None
         else:
             # پاک‌سازی خودکار هرگونه فلگ اشتباهی بن یا تعلیق برای ادمین‌ها و مالکین
             if db_user.is_banned or getattr(db_user, "is_suspended", False):

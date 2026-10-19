@@ -351,5 +351,25 @@ class ProfanityAdminForm(StatesGroup):
     waiting_for_test_text = State()  # دریافت متن دلخواه برای تست فیلتر
 
 
+class SetFolderForm(StatesGroup):
+    """فرم تنظیم یا تغییر لینک فولدر رسمی بازی (/setfolder)."""
+
+    waiting_for_link = State()
+
+
+class SetChannelForm(StatesGroup):
+    """فرم تنظیم جوین اجباری در کانال رسمی (/setchannel)."""
+
+    waiting_for_chat_id = State()
+    waiting_for_invite_link = State()
+
+
+class BroadcastForm(StatesGroup):
+    """فرم ارسال پیام همگانی متنی/تصویری به تمام کاربران ربات (/broadcast)."""
+
+    waiting_for_content = State()
+    confirming = State()
+
+
 
 

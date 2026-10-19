@@ -108,15 +108,9 @@ async def cb_approve(
         from ..keyboards.united_nations import un_main_menu_kb
         welcome_kb = un_main_menu_kb() if is_un else main_menu_kb()
         welcome_text = (
-            f"🎉 تبریک! درخواست شما تأیید شد.\n"
-            f"شما اکنون دبیرکل سازمان ملل متحد {country.flag} <b>{country.name_fa}</b> هستید!\n\n"
-            "مقر فرماندهی دبیرکل سازمان ملل متحد:"
-            if is_un
-            else (
-                f"🎉 تبریک! درخواست شما تأیید شد.\n"
-                f"شما اکنون رهبر {country.flag} <b>{country.name_fa}</b> هستید.\n\n"
-                "پنل مدیریت کشور:"
-            )
+            f"🎉 <b>کشورگیری شما با موفقیت تایید شد!</b> (کشور: {country.flag} {country.name_fa})\n\n"
+            "📁 جهت عضویت در فولدر کانال‌های بازی، دستور /folder را بزنید.\n"
+            "🏛 جهت دیدن پنل کشور، دستور /start را بزنید."
         )
         await media.send_photo_news(
             bot,
@@ -239,15 +233,9 @@ async def cb_vip_claim_approve(
         from ..keyboards.united_nations import un_main_menu_kb
         welcome_kb = un_main_menu_kb() if is_un else main_menu_kb()
         welcome_text = (
-            f"🎉 تبریک! رسید واریز شما تأیید شد.\n"
-            f"شما اکنون دبیرکل سازمان ملل متحد {country.flag} <b>{country.name_fa}</b> هستید!\n\n"
-            "مقر فرماندهی دبیرکل سازمان ملل متحد:"
-            if is_un
-            else (
-                f"🎉 تبریک! رسید واریز شما تأیید شد.\n"
-                f"شما اکنون رهبر کشور ابرقدرت {country.flag} <b>{country.name_fa}</b> هستید!\n\n"
-                "پنل مدیریت کشور:"
-            )
+            f"🎉 <b>کشورگیری شما با موفقیت تایید شد!</b> (کشور: {country.flag} {country.name_fa})\n\n"
+            "📁 جهت عضویت در فولدر کانال‌های بازی، دستور /folder را بزنید.\n"
+            "🏛 جهت دیدن پنل کشور، دستور /start را بزنید."
         )
         await media.send_photo_news(
             bot,

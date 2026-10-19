@@ -12,6 +12,7 @@ from . import (
     alliance,
     auction,
     bank,
+    broadcast,
     claim,
     command_center,
     deployment,
@@ -78,6 +79,7 @@ def register_all_routers(dp: Dispatcher) -> None:
     dp.include_router(start.router)
     dp.include_router(claim.router)
     dp.include_router(admin.router)
+    dp.include_router(broadcast.router)
     dp.include_router(admin_roles.router)
     dp.include_router(kick.router)
     dp.include_router(switch.router)

@@ -32,7 +32,7 @@ from ..enums import (
     ResourceType,
     TradeStatus,
 )
-from ..services.news_service import publish_news  # noqa: F401 (سازگاری)
+from ..services.news_service import publish_news, send_log  # noqa: F401 (سازگاری)
 from ..utils.numbers import fa_number
 
 logger = logging.getLogger(__name__)
@@ -1448,7 +1448,7 @@ async def process_un_assembly(bot: Bot) -> None:
     from ..services.un_speech_service import analyze_and_publish_speech
 
     now = _utcnow()
-    arrivals: list[tuple[int, int, str]] = []  # (owner_user_id, session_id, country_name)
+    arrivals: list[tuple[int, int, str, str]] = []  # (owner_user_id, session_id, country_name, country_flag)
     speech_transitions: list[dict] = []
 
     async with async_session_factory() as session:
@@ -1469,7 +1469,7 @@ async def process_un_assembly(bot: Bot) -> None:
                 part.status = "in_new_york"
                 c = await countries_repo.get_country(session, part.country_id)
                 if c and c.owner_user_id:
-                    arrivals.append((c.owner_user_id, part.session_id, c.name_fa))
+                    arrivals.append((c.owner_user_id, part.session_id, c.name_fa, c.flag))
 
         # ۲) بررسی تایمر ۵ دقیقه‌ای سخنرانی
         if active_s.status == "active" and active_s.current_speaker_country_id:
@@ -1516,14 +1516,39 @@ async def process_un_assembly(bot: Bot) -> None:
         await session.commit()
 
     # ارسال اعلان‌های فرود پس از کامیت
-    for uid, sid, cname in arrivals:
+    for uid, sid, cname, cflag in arrivals:
         try:
             await bot.send_message(
                 uid,
                 f"🛬 <b>فرود در فرودگاه بین‌المللی JFK نیویورک:</b>\n\n"
-                f"هیئت رسمی کشور {cname} به سلامت در نیویورک فرود آمد.\n"
+                f"هیئت رسمی کشور {cflag} {cname} به سلامت در نیویورک فرود آمد.\n"
                 "شما هم‌اکنون در شهر نیویورک حضور دارید. برای ورود به صحن علنی، روی دکمه «🏛 ورود به ساختمان تالار مجمع» کلیک کنید.",
                 reply_markup=assembly_ny_lobby_kb(sid),
+            )
+        except Exception:
+            pass
+
+        # اطلاع‌رسانی به دبیرکل سازمان ملل متحد
+        try:
+            async with async_session_factory() as s_un:
+                un_c = await countries_repo.get_country_by_name(s_un, "UN")
+                if un_c and un_c.owner_user_id:
+                    await bot.send_message(
+                        un_c.owner_user_id,
+                        f"🛬 <b>ورود هیئت دیپلماتیک به نیویورک:</b>\n\n"
+                        f"هواپیمای هیئت عالی‌رتبه کشور {cflag} <b>{cname}</b> دقایقی پیش در فرودگاه JFK فرود آمد و وارد شهر نیویورک شد.",
+                    )
+        except Exception:
+            pass
+
+        # ثبت لاگ مدیریتی فرود
+        try:
+            await send_log(
+                bot,
+                f"🛬 <b>[مجمع عمومی سازمان ملل]</b> فرود در نیویورک:\n"
+                f"• کشور: {cflag} <b>{cname}</b>\n"
+                f"• اجلاس: #{sid}\n"
+                f"هواپیما به سلامت فرود آمد و در لابی نیویورک مستقر شد.",
             )
         except Exception:
             pass

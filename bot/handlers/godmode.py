@@ -49,6 +49,8 @@ from ..database.models import (
     ProfanityWord,
     ResourceSale,
     Sanction,
+    UNAssemblyParticipant,
+    UNAssemblySession,
     User,
 )
 from ..database.repositories import countries as countries_repo
@@ -59,6 +61,7 @@ from ..database.repositories import military as mil_repo
 from ..database.repositories import military_factory as milfac_repo
 from ..database.repositories import profanity as profanity_repo
 from ..database.repositories import reserves as reserves_repo
+from ..database.repositories import united_nations as un_repo
 from ..database.repositories import users as users_repo
 from ..enums import (
     FACILITY_FA,
@@ -72,6 +75,7 @@ from ..enums import (
     DiplomacyStatus,
     FacilityType,
     MilitaryFactoryType,
+    NewsCategory,
     ResourceType,
     SanctionType,
     TradeStatus,
@@ -79,7 +83,7 @@ from ..enums import (
 from ..loader import bot
 from ..services import profanity_service
 from ..services.economy_service import facility_yield_for
-from ..services.news_service import send_log, send_to_admin_group
+from ..services.news_service import publish_news, send_log, send_to_admin_group
 from ..utils.formatting import render_economy_panel, render_military_panel, render_reserves_panel
 from ..utils.numbers import fa_money, fa_number, parse_amount
 from ..utils.screens import safe_edit
@@ -141,6 +145,7 @@ def _home_kb() -> InlineKeyboardMarkup:
     builder.button(text="🏳 مدیریت کشورها", callback_data="god:countries", style=STYLE_MAIN)
     builder.button(text="🚚 محموله‌های در راه", callback_data="god:ship", style=STYLE_MAIN)
     builder.button(text="✈️ پروازهای دیپلماتیک", callback_data="god:flights", style=STYLE_MAIN)
+    builder.button(text="🇺🇳 مجمع عمومی سازمان ملل", callback_data="god:unasmb", style=STYLE_MAIN)
     builder.button(text="🚫 تحریم‌ها", callback_data="god:sanctions", style=STYLE_MAIN)
     builder.button(text="📈 سرمایه‌گذاری‌ها", callback_data="god:invest", style=STYLE_MAIN)
     builder.button(text="📊 نرخ بازار جهانی", callback_data="god:market", style=STYLE_MAIN)
@@ -1619,6 +1624,20 @@ async def _render_flights_list(call: CallbackQuery, session: AsyncSession) -> No
         )
         shown += 1
 
+    # پروازهای هیئت‌های دیپلماتیک به مجمع عمومی سازمان ملل متحد (نیویورک)
+    un_participants = (await session.execute(
+        select(UNAssemblyParticipant).where(UNAssemblyParticipant.status == "in_flight")
+    )).scalars().all()
+    for part in un_participants:
+        country = await countries_repo.get_country(session, part.country_id)
+        cname = f"{country.flag} {country.name_fa}" if country else f"کشور #{part.country_id}"
+        builder.button(
+            text=f"🇺🇳 {cname} → نیویورک",
+            callback_data=f"garrive:unasmb:{part.id}",
+            style=STYLE_OK,
+        )
+        shown += 1
+
     builder.button(text="🔙 بازگشت", callback_data="god:home", style=STYLE_MAIN)
     builder.adjust(1)
     if shown == 0:
@@ -1647,6 +1666,17 @@ async def cb_arrive_now(call: CallbackQuery, session: AsyncSession) -> None:
         from ..scheduler.jobs import process_meetings
 
         await process_meetings(bot)
+    elif kind == "unasmb":
+        part = await session.get(UNAssemblyParticipant, mid)
+        if part is None or part.status != "in_flight":
+            await call.answer("این پرواز دیگر معتبر نیست یا فرود آمده است.", show_alert=True)
+            return
+        part.travel_eta = now - timedelta(seconds=1)
+        await session.commit()
+        await call.answer("پرواز به نیویورک فرود آمد!", show_alert=True)
+        from ..scheduler.jobs import process_un_assembly
+
+        await process_un_assembly(bot)
     else:
         group = await session.get(GroupMeeting, mid)
         if group is None or group.status != DiplomacyStatus.PENDING:
@@ -1660,6 +1690,163 @@ async def cb_arrive_now(call: CallbackQuery, session: AsyncSession) -> None:
 
         await process_group_meetings(bot)
     await _render_flights_list(call, session)
+
+
+# ============================================================
+#  🇺🇳 مدیریت مجمع عمومی سازمان ملل (God Mode)
+# ============================================================
+@router.callback_query(F.data == "god:unasmb")
+async def cb_god_unasmb(call: CallbackQuery, session: AsyncSession) -> None:
+    """پنل مدیریت و پایش مجمع عمومی سازمان ملل متحد."""
+    if not await _guard(call):
+        return
+    await call.answer()
+    await _render_god_unasmb(call, session)
+
+
+async def _render_god_unasmb(call: CallbackQuery, session: AsyncSession) -> None:
+    active_s = await un_repo.get_active_session(session)
+    builder = InlineKeyboardBuilder()
+
+    if not active_s:
+        txt = (
+            "🇺🇳 <b>مدیریت مجمع عمومی سازمان ملل متحد (God Mode):</b>\n\n"
+            "⚠️ در حال حاضر هیچ اجلاسی در جریان نیست (یا بسته شده است)."
+        )
+        builder.button(text="🔙 بازگشت", callback_data="god:home", style=STYLE_MAIN)
+        builder.adjust(1)
+        await call.message.edit_text(txt, reply_markup=builder.as_markup())
+        return
+
+    # دریافت آمار حاضران
+    parts = await un_repo.list_participants(session, active_s.id)
+    in_flight = [p for p in parts if p.status == "in_flight"]
+    in_ny = [p for p in parts if p.status == "in_new_york"]
+    in_hall = [p for p in parts if p.status == "inside_hall"]
+
+    status_fa = {
+        "pending": "در انتظار ورود رهبران و پروازها (قبل از افتتاح)",
+        "active": "🟢 صحن علنی فعال و در حال برگزاری",
+        "closed": "پایان‌یافته",
+    }.get(active_s.status, active_s.status)
+
+    speaker_info = "—"
+    if active_s.current_speaker_country_id:
+        spk_c = await countries_repo.get_country(session, active_s.current_speaker_country_id)
+        if spk_c:
+            ends = _aware(active_s.speech_ends_at)
+            rem = ""
+            if ends:
+                diff = int((ends - _utcnow()).total_seconds())
+                if diff > 0:
+                    rem = f" ({diff // 60}:{diff % 60:02d} باقی‌مانده)"
+            speaker_info = f"{spk_c.flag} {spk_c.name_fa}{rem}"
+
+    txt = (
+        f"🇺🇳 <b>پنل نظارت مجمع عمومی سازمان ملل (God Mode):</b>\n\n"
+        f"• <b>اجلاس:</b> دوره‌ی #{fa_number(active_s.id)}\n"
+        f"• <b>عنوان:</b> {active_s.title}\n"
+        f"• <b>وضعیت صحن:</b> {status_fa}\n"
+        f"• <b>تریبون سخنران فعلی:</b> {speaker_info}\n\n"
+        f"👥 <b>آمار مشارکت‌کنندگان:</b>\n"
+        f"• ✈️ در حال پرواز به نیویورک: <b>{fa_number(len(in_flight))}</b>\n"
+        f"• 🗽 در لابی/شهر نیویورک: <b>{fa_number(len(in_ny))}</b>\n"
+        f"• 🏛 داخل تالار مجمع عمومی: <b>{fa_number(len(in_hall))}</b>\n"
+        f"• 🌐 مجموع هیئت‌ها: <b>{fa_number(len(parts))}</b>\n"
+    )
+
+    if in_flight:
+        builder.button(
+            text="🛬 فرود فوری تمام پروازها به نیویورک",
+            callback_data=f"god:unasmb_land_all:{active_s.id}",
+            style=STYLE_OK,
+        )
+    if active_s.status == "pending":
+        builder.button(
+            text="🏛 آغاز و افتتاح فوری صحن علنی",
+            callback_data=f"god:unasmb_force_act:{active_s.id}",
+            style=STYLE_MAIN,
+        )
+    if active_s.status in ["pending", "active"]:
+        builder.button(
+            text="🚪 پایان دادن فوری به این اجلاس",
+            callback_data=f"god:unasmb_force_close:{active_s.id}",
+            style=STYLE_NO,
+        )
+
+    builder.button(text="🔄 بروزرسانی وضعیت", callback_data="god:unasmb", style=STYLE_MAIN)
+    builder.button(text="🔙 بازگشت به پنل اصلی", callback_data="god:home", style=STYLE_MAIN)
+    builder.adjust(1)
+    await call.message.edit_text(txt, reply_markup=builder.as_markup())
+
+
+@router.callback_query(F.data.startswith("god:unasmb_land_all:"))
+async def cb_god_unasmb_land_all(call: CallbackQuery, session: AsyncSession) -> None:
+    """فرود فوری تمام پروازهای هیئت‌های دیپلماتیک به نیویورک."""
+    if not await _guard(call):
+        return
+    sid = int(call.data.split(":")[2])
+    now = _utcnow()
+    res = await session.execute(
+        select(UNAssemblyParticipant).where(
+            UNAssemblyParticipant.session_id == sid,
+            UNAssemblyParticipant.status == "in_flight",
+        )
+    )
+    count = 0
+    for part in res.scalars().all():
+        part.travel_eta = now - timedelta(seconds=1)
+        count += 1
+    await session.commit()
+
+    if count > 0:
+        from ..scheduler.jobs import process_un_assembly
+        await process_un_assembly(bot)
+        await call.answer(f"✅ {fa_number(count)} پرواز با موفقیت در نیویورک فرود آمدند!", show_alert=True)
+    else:
+        await call.answer("هیچ پروازی در حال حاضر در هوا نبود.")
+    await _render_god_unasmb(call, session)
+
+
+@router.callback_query(F.data.startswith("god:unasmb_force_act:"))
+async def cb_god_unasmb_force_act(call: CallbackQuery, session: AsyncSession) -> None:
+    """افتتاح و فعال‌سازی اجباری صحن علنی توسط گاد مود."""
+    if not await _guard(call):
+        return
+    sid = int(call.data.split(":")[2])
+    asmb = await un_repo.get_session(session, sid)
+    if asmb and asmb.status == "pending":
+        asmb.status = "active"
+        asmb.activated_at = _utcnow()
+        await session.commit()
+        await call.answer("🏛 صحن علنی مجمع عمومی رسماً افتتاح شد!", show_alert=True)
+        await publish_news(
+            bot,
+            NewsCategory.DIPLOMACY,
+            "🇺🇳 <b>آغاز صحن علنی مجمع عمومی سازمان ملل متحد در نیویورک:</b>\n"
+            "با حضور گسترده هیئت‌های دیپلماتیک و سران کشورها، چکش افتتاح اجلاس مجمع عمومی به صدا درآمد.",
+        )
+    else:
+        await call.answer("اجلاس یافت نشد یا از قبل فعال است.")
+    await _render_god_unasmb(call, session)
+
+
+@router.callback_query(F.data.startswith("god:unasmb_force_close:"))
+async def cb_god_unasmb_force_close(call: CallbackQuery, session: AsyncSession) -> None:
+    """پایان دادن اجباری به اجلاس توسط گاد مود."""
+    if not await _guard(call):
+        return
+    sid = int(call.data.split(":")[2])
+    await un_repo.close_session(session, sid)
+    await session.commit()
+    await call.answer("🚪 اجلاس مجمع عمومی خاتمه یافت.", show_alert=True)
+    await publish_news(
+        bot,
+        NewsCategory.DIPLOMACY,
+        "🇺🇳 <b>پایان رسمی اجلاس سالانه مجمع عمومی سازمان ملل متحد:</b>\n"
+        "دبیرکل سازمان ملل متحد پایان کار این دوره از نشست سالانه مجمع عمومی را رسماً اعلام نمود.",
+    )
+    await _render_god_unasmb(call, session)
 
 
 # ============================================================

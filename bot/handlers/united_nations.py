@@ -612,12 +612,66 @@ async def cb_asmb_fly(call: CallbackQuery, session: AsyncSession, db_user: User)
         "به محض فرود در نیویورک، اعلان رسمی دریافت خواهید کرد.",
     )
 
+    # ۱) اطلاع‌رسانی مستقیم به دبیرکل سازمان ملل متحد
+    un_country = await countries_repo.get_country_by_name(session, "UN")
+    if un_country and un_country.owner_user_id:
+        try:
+            await bot.send_message(
+                un_country.owner_user_id,
+                f"🔔 <b>پذیرش رسمی دعوت مجمع عمومی:</b>\n\n"
+                f"کشور {country.flag} <b>{country.name_fa}</b> دعوت شما برای شرکت در اجلاس سالانه مجمع عمومی را پذیرفت.\n"
+                f"هواپیمای هیئت دیپلماتیک این کشور عازم نیویورک شد.\n"
+                f"⏳ زمان تخمینی فرود در فرودگاه JFK: <b>{fa_number(flight_dur)} دقیقه دیگر</b>",
+            )
+        except Exception:
+            pass
+
+    # ۲) انتشار خبر رسمی در کانال دیپلماسی
+    await publish_news(
+        bot,
+        NewsCategory.DIPLOMACY,
+        f"✈️ <b>عزیمت هیئت دیپلماتیک به مجمع عمومی سازمان ملل:</b>\n\n"
+        f"هواپیمای ریاست‌جمهوری کشور {country.flag} <b>{country.name_fa}</b> پس از پذیرش دعوت رسمی دبیرکل، "
+        f"پایتخت را به مقصد مقر سازمان ملل در منهتن نیویورک ترک کرد.\n"
+        f"⏳ مدت زمان پرواز: <b>{fa_number(flight_dur)} دقیقه</b>",
+    )
+
+    # ۳) ثبت در لاگ مدیریتی بازی
+    await send_log(
+        bot,
+        f"🏛 <b>[مجمع عمومی سازمان ملل]</b> پذیرش دعوت و پرواز هیئت دیپلماتیک:\n"
+        f"• کشور: {country.flag} <b>{country.name_fa}</b>\n"
+        f"• کاربر: <code>{db_user.tg_id}</code> (@{db_user.username or '—'})\n"
+        f"• شناسه اجلاس: #{session_id}\n"
+        f"• مدت پرواز: {flight_dur} دقیقه | ETA: {eta.strftime('%H:%M:%S UTC')}",
+    )
+
 
 @router.callback_query(F.data.startswith("asmb_decline:"))
 async def cb_asmb_decline(call: CallbackQuery, session: AsyncSession, db_user: User) -> None:
     """رد مودبانه دعوت مجمع عمومی."""
+    country = await get_player_country(session, db_user)
     await call.answer("دعوت رد شد.")
     await safe_edit(call, "❌ شما از شرکت در اجلاس امسال مجمع عمومی انصراف دادید.")
+
+    if country:
+        un_country = await countries_repo.get_country_by_name(session, "UN")
+        if un_country and un_country.owner_user_id:
+            try:
+                await bot.send_message(
+                    un_country.owner_user_id,
+                    f"⚠️ <b>انصراف از حضور در مجمع عمومی:</b>\n\n"
+                    f"کشور {country.flag} <b>{country.name_fa}</b> از پذیرش دعوت و شرکت در اجلاس مجمع عمومی انصراف داد.",
+                )
+            except Exception:
+                pass
+        await send_log(
+            bot,
+            f"🏛 <b>[مجمع عمومی سازمان ملل]</b> رد دعوت اجلاس:\n"
+            f"• کشور: {country.flag} <b>{country.name_fa}</b>\n"
+            f"• کاربر: <code>{db_user.tg_id}</code> (@{db_user.username or '—'})\n"
+            f"از شرکت در اجلاس مجمع عمومی انصراف داد.",
+        )
 
 
 @router.callback_query(F.data.startswith("un_asmb_activate:"))

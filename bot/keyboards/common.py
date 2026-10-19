@@ -34,6 +34,7 @@ def countries_kb(
     columns: int = 2,
     back_data: str | None = None,
     style: str | None = STYLE_MAIN,
+    show_vip_star: bool = False,
 ) -> InlineKeyboardMarkup:
     """
     کیبورد انتخاب کشور از یک لیست (پیش‌فرض همه آبی).
@@ -41,8 +42,9 @@ def countries_kb(
     """
     builder = InlineKeyboardBuilder()
     for c in countries:
+        vip_star = "⭐️ " if (show_vip_star and getattr(c, "is_vip", False)) else ""
         builder.button(
-            text=f"{c.flag} {c.name_fa}",
+            text=f"{vip_star}{c.flag} {c.name_fa}",
             callback_data=f"{prefix}:{c.id}",
             style=style,
         )

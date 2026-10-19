@@ -47,7 +47,7 @@ async def _show_country_list(target: Message, session: AsyncSession) -> None:
     )
     await target.answer(
         "🌍 یک کشور را برای رهبری انتخاب کنید:" + vip_note,
-        reply_markup=countries_kb(countries, prefix="claim_pick", columns=2),
+        reply_markup=countries_kb(countries, prefix="claim_pick", columns=2, show_vip_star=True),
     )
 
 

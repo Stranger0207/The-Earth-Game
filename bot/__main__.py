@@ -33,6 +33,13 @@ async def main() -> None:
     logger.info("Initializing database...")
     await init_db()
 
+    # اطمینان از وجود تمام کشورهای پایه و نهادهای جدید (مانند UN) در دیتابیس
+    try:
+        from scripts.seed import seed_countries
+        await seed_countries()
+    except Exception as exc:
+        logger.warning("Could not auto-seed countries: %s", exc)
+
     # بارگذاری مدیران و مالکان پویا از دیتابیس در کش حافظه
     from .config import set_dynamic_team
     from .database.base import async_session_factory

@@ -77,6 +77,13 @@ from ..database.models import (
     Tweet,
     TweetLike,
     TwitterProfile,
+    CourtParty,
+    InternationalCourtCase,
+    UNAssemblyParticipant,
+    UNAssemblySession,
+    UNResolution,
+    UNResolutionVote,
+    UNSpeechQueue,
     User,
 )
 from ..database.repositories import countries as countries_repo
@@ -173,6 +180,14 @@ async def reset_season(session: AsyncSession) -> dict[str, int]:
     await session.execute(delete(BlockedCargo))
     await session.execute(delete(StraitBlockRule))
     await session.execute(delete(StraitConfig))
+    # --- سازمان ملل متحد، مجمع عمومی و دیوان لاهه (v2.10) ---
+    await session.execute(delete(UNResolutionVote))
+    await session.execute(delete(UNResolution))
+    await session.execute(delete(UNSpeechQueue))
+    await session.execute(delete(UNAssemblyParticipant))
+    await session.execute(delete(UNAssemblySession))
+    await session.execute(delete(CourtParty))
+    await session.execute(delete(InternationalCourtCase))
     # --- آپدیت شماره ۴: بازنشانی نرخ‌های بازار جهانی به قیمت پایه ---
     from ..constants import DEFAULT_BASE_PRICES
     from ..database.repositories import market as market_repo

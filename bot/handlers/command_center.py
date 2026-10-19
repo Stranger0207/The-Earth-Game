@@ -31,7 +31,7 @@ from ..services import geo_service as geo
 from ..utils.numbers import fa_number
 from ..utils.screens import safe_edit, show_menu
 from ..utils.ui import DIVIDER, STYLE_MAIN, header
-from .deps import NO_COUNTRY_TEXT, get_player_country
+from .deps import NO_COUNTRY_TEXT, check_hall_lock, get_player_country
 
 logger = logging.getLogger(__name__)
 router = Router(name="command_center")
@@ -45,9 +45,11 @@ async def cb_command_center(
     call: CallbackQuery, state: FSMContext, session: AsyncSession, db_user: User
 ) -> None:
     """منوی اصلی ستاد فرماندهی کل (عکس‌دار)."""
+    country = await get_player_country(session, db_user)
+    if await check_hall_lock(call, session, country):
+        return
     await call.answer()
     await state.clear()
-    country = await get_player_country(session, db_user)
     if country is None:
         await safe_edit(call, NO_COUNTRY_TEXT)
         return

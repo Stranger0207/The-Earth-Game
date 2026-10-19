@@ -59,6 +59,7 @@ from ..keyboards.diplomacy import (
     sanction_types_kb,
 )
 from ..loader import bot
+from ..services import geo_service as geo
 from ..services.letter_image_service import render_contract_image
 from ..services.media import send_photo_news, send_specific_photo
 from ..services.news_service import (
@@ -859,9 +860,9 @@ async def cb_gmeet_accept(call: CallbackQuery, session: AsyncSession, db_user: U
         return
 
     await call.answer("پذیرفته شد ✅")
-    # (v1.10.1) زمان پرواز ثابت ۳۰ دقیقه به کشور میزبان — دیگر AI نیست
+    # زمان پرواز مسافت‌محور به کشور میزبان
     host = await countries_repo.get_country(session, meeting.host_country)
-    minutes = FLIGHT_DURATION_MINUTES
+    minutes = geo.compute_flight_duration(country.name_en, host.name_en) if host else FLIGHT_DURATION_MINUTES
     participant.response = DiplomacyStatus.ACTIVE
     participant.travel_eta = _utcnow() + timedelta(minutes=minutes)
 
@@ -992,8 +993,8 @@ async def cb_meet_accept(call: CallbackQuery, session: AsyncSession) -> None:
     host = await countries_repo.get_country(session, meeting.host_country)
     await call.answer("سفر پذیرفته شد")
 
-    # (v1.10.1) زمان پرواز ثابت ۳۰ دقیقه — دیگر بر اساس فاصله/AI نیست
-    minutes = FLIGHT_DURATION_MINUTES
+    # زمان پرواز مسافت‌محور میان دو پایتخت
+    minutes = geo.compute_flight_duration(traveler.name_en, host.name_en) if (traveler and host) else FLIGHT_DURATION_MINUTES
     meeting.status = DiplomacyStatus.ACTIVE
     meeting.travel_eta = _utcnow() + timedelta(minutes=minutes)
     meeting.meeting_ends_at = meeting.travel_eta + timedelta(minutes=MEETING_DURATION_MINUTES)
@@ -2858,3 +2859,123 @@ async def relay_chat_message(message: Message, session: AsyncSession, db_user: U
                 f"👥 [{group.title}] {country.name_fa}: {text}",
             )
             return
+
+    # ۴) مجمع عمومی سازمان ملل متحد (صحن علنی تالار نیویورک)
+    from ..database.repositories import united_nations as un_repo
+    active_asmb = await un_repo.get_active_session(session)
+    if active_asmb is not None and active_asmb.status == "active":
+        is_un_sec = (country.name_en == "UN")
+        is_active_speaker = (active_asmb.current_speaker_country_id == country.id)
+
+        if is_active_speaker or is_un_sec:
+            active_q = await un_repo.get_active_speech(session, active_asmb.id)
+            if active_q and is_active_speaker:
+                await un_repo.append_speech_transcript(session, active_q.id, text)
+
+            speaker_title = "دبیرکل سازمان ملل متحد" if is_un_sec else f"رهبر {country.flag} {country.name_fa}"
+            hall_parts = await un_repo.list_participants_by_status(session, active_asmb.id, "inside_hall")
+
+            for p in hall_parts:
+                if p.country_id == country.id:
+                    continue
+                member = await countries_repo.get_country(session, p.country_id)
+                if member and member.owner_user_id:
+                    try:
+                        await bot.send_message(
+                            member.owner_user_id,
+                            f"🎙 <b>تریبون مجمع عمومی — {speaker_title}:</b>\n\n{prefix}{text}",
+                        )
+                    except Exception:
+                        pass
+
+            if not is_un_sec:
+                un_c = await countries_repo.get_country_by_name(session, "UN")
+                if un_c and un_c.owner_user_id:
+                    try:
+                        await bot.send_message(
+                            un_c.owner_user_id,
+                            f"🎙 <b>تریبون مجمع عمومی — {speaker_title}:</b>\n\n{prefix}{text}",
+                        )
+                    except Exception:
+                        pass
+
+            await send_log(bot, f"🏛 [مجمع عمومی] {country.name_fa}: {text}")
+            return
+
+    # ۵) دیوان بین‌المللی دادگستری (دادگاه لاهه)
+    court_pair = await un_repo.get_active_case_for_party(session, country.id)
+    if court_pair is not None:
+        case, party = court_pair
+        if party.can_speak or case.current_turn_country_id in (None, country.id):
+            court_parties = await un_repo.list_court_parties(session, case.id)
+            role_fa = "شاکی" if party.role == "claimant" else ("متهم" if party.role == "defendant" else "حاضر در دادگاه")
+            for cp in court_parties:
+                if cp.country_id == country.id:
+                    continue
+                c = await countries_repo.get_country(session, cp.country_id)
+                if c and c.owner_user_id:
+                    try:
+                        await bot.send_message(
+                            c.owner_user_id,
+                            f"⚖️ <b>جلسه دادگاه لاهه ({case.case_number}) — {country.flag} {country.name_fa} ({role_fa}):</b>\n\n{prefix}{text}",
+                        )
+                    except Exception:
+                        pass
+
+            un_c = await countries_repo.get_country_by_name(session, "UN")
+            if un_c and un_c.owner_user_id and un_c.id != country.id:
+                try:
+                    await bot.send_message(
+                        un_c.owner_user_id,
+                        f"⚖️ <b>جلسه دادگاه لاهه ({case.case_number}) — {country.flag} {country.name_fa} ({role_fa}):</b>\n\n{prefix}{text}",
+                    )
+                except Exception:
+                    pass
+            await send_log(bot, f"⚖️ [دادگاه {case.case_number}] {country.name_fa}: {text}")
+            return
+
+
+@router.message(StateFilter(None), F.photo)
+async def relay_speech_photo(message: Message, session: AsyncSession, db_user: User) -> None:
+    """رله عکس‌های ارسالی سخنران در حین سخنرانی ۵ دقیقه‌ای مجمع عمومی."""
+    country = await get_player_country(session, db_user)
+    if country is None:
+        return
+
+    from ..database.repositories import united_nations as un_repo
+    active_asmb = await un_repo.get_active_session(session)
+    if not active_asmb or active_asmb.status != "active":
+        return
+
+    is_un_sec = (country.name_en == "UN")
+    is_active_speaker = (active_asmb.current_speaker_country_id == country.id)
+    if not (is_active_speaker or is_un_sec):
+        return
+
+    caption = message.caption or ""
+    active_q = await un_repo.get_active_speech(session, active_asmb.id)
+    if active_q and is_active_speaker and caption:
+        await un_repo.append_speech_transcript(session, active_q.id, f"[تصویر با شرح]: {caption}")
+
+    photo_id = message.photo[-1].file_id
+    speaker_title = "دبیرکل سازمان ملل متحد" if is_un_sec else f"رهبر {country.flag} {country.name_fa}"
+    full_caption = f"🎙 <b>تریبون مجمع عمومی — {speaker_title}:</b>\n\n{caption}".strip()
+
+    hall_parts = await un_repo.list_participants_by_status(session, active_asmb.id, "inside_hall")
+    for p in hall_parts:
+        if p.country_id == country.id:
+            continue
+        member = await countries_repo.get_country(session, p.country_id)
+        if member and member.owner_user_id:
+            try:
+                await bot.send_photo(member.owner_user_id, photo_id, caption=full_caption)
+            except Exception:
+                pass
+
+    if not is_un_sec:
+        un_c = await countries_repo.get_country_by_name(session, "UN")
+        if un_c and un_c.owner_user_id:
+            try:
+                await bot.send_photo(un_c.owner_user_id, photo_id, caption=full_caption)
+            except Exception:
+                pass

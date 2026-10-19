@@ -54,6 +54,15 @@ from .strait import BlockedCargo, StraitBlockRule, StraitConfig
 from .tariff import TariffRate
 from .trade import ResourceSale
 from .twitter import Tweet, TweetLike, TwitterProfile
+from .united_nations import (
+    CourtParty,
+    InternationalCourtCase,
+    UNAssemblyParticipant,
+    UNAssemblySession,
+    UNResolution,
+    UNResolutionVote,
+    UNSpeechQueue,
+)
 from .user import User
 
 __all__ = [
@@ -112,6 +121,13 @@ __all__ = [
     "Tweet",
     "TweetLike",
     "TwitterProfile",
+    "CourtParty",
+    "InternationalCourtCase",
+    "UNAssemblyParticipant",
+    "UNAssemblySession",
+    "UNResolution",
+    "UNResolutionVote",
+    "UNSpeechQueue",
     "User",
     "VisaRequirement",
     "VisaWaiver",

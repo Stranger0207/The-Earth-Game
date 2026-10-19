@@ -597,6 +597,17 @@
         "east_china_sea",
         "south_china_sea"
       ]
+    },
+    "UN": {
+      "continent": "International",
+      "coords": [
+        40.7489,
+        -73.968
+      ],
+      "neighbors": [],
+      "seas": [
+        "atlantic"
+      ]
     }
   }
 }

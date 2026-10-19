@@ -47,6 +47,13 @@ from .operations import (
     InterceptionForm,
 )
 from .satellite import SatelliteForm
+from .united_nations import (
+    CourtForm,
+    HumanitarianForm,
+    IAEAForm,
+    ResolutionForm,
+    UNAssemblyForm,
+)
 
 __all__ = [
     "AdvisorForm",
@@ -90,4 +97,9 @@ __all__ = [
     "StraitForm",
     "SuspensionForm",
     "TeamManageForm",
+    "CourtForm",
+    "HumanitarianForm",
+    "IAEAForm",
+    "ResolutionForm",
+    "UNAssemblyForm",
 ]

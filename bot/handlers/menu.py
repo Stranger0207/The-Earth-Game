@@ -16,7 +16,7 @@ from ..services import geo_service as geo
 from ..utils.formatting import render_economy_panel
 from ..utils.screens import safe_edit, show_menu
 from ..utils.ui import header
-from .deps import NO_COUNTRY_TEXT, assert_feature, get_player_country
+from .deps import NO_COUNTRY_TEXT, assert_feature, check_hall_lock, get_player_country
 
 router = Router(name="menu")
 
@@ -28,16 +28,31 @@ PANEL_TITLE = header("پنل مدیریت کشور", "🌍")
 async def cb_main(
     call: CallbackQuery, state: FSMContext, session: AsyncSession, db_user: User
 ) -> None:
-    """بازگشت به پنل اصلی."""
+    """بازگشت به پنل اصلی (تشخیص ویژه سازمان ملل و قفل تالار)."""
     await state.clear()
     await call.answer()
+    country = await get_player_country(session, db_user)
+
+    # اگر کاربر دبیرکل سازمان ملل باشد، پنل اختصاصی دبیرکل باز می‌شود
+    if country and country.name_en == "UN":
+        from ..keyboards.united_nations import un_main_menu_kb
+        un_title = header("مقر فرماندهی دبیرکل سازمان ملل متحد", "🇺🇳") + "\n\nدبیرکل محترم، ارکان سازمان ملل متحد در خدمت شماست."
+        await show_menu(call, un_title, un_main_menu_kb(), image_key="main")
+        return
+
+    # بررسی قفل تالار مجمع عمومی
+    if await check_hall_lock(call, session, country):
+        return
+
     await show_menu(call, PANEL_TITLE, main_menu_kb(), image_key="main")
 
 
 @router.callback_query(F.data == "menu:economy")
 async def cb_economy(call: CallbackQuery, session: AsyncSession, db_user: User) -> None:
-    await call.answer()
     country = await get_player_country(session, db_user)
+    if await check_hall_lock(call, session, country):
+        return
+    await call.answer()
     is_usa = country is not None and country.name_en == "USA"
     has_straits = bool(country and geo.get_straits_for_country(country.name_en))
     await show_menu(
@@ -49,7 +64,10 @@ async def cb_economy(call: CallbackQuery, session: AsyncSession, db_user: User) 
 
 
 @router.callback_query(F.data == "menu:diplomacy")
-async def cb_diplomacy(call: CallbackQuery) -> None:
+async def cb_diplomacy(call: CallbackQuery, session: AsyncSession, db_user: User) -> None:
+    country = await get_player_country(session, db_user)
+    if await check_hall_lock(call, session, country):
+        return
     await call.answer()
     await show_menu(call, header("بخش دیپلماسی", "🤝"), diplomacy_menu_kb(), image_key="diplomacy")
 
@@ -63,8 +81,10 @@ async def cb_status(
     call: CallbackQuery, session: AsyncSession, db_user: User
 ) -> None:
     """نمایش خلاصه‌ی وضعیت کشور (اقتصاد + رضایت عمومی)."""
-    await call.answer()
     country = await get_player_country(session, db_user)
+    if await check_hall_lock(call, session, country):
+        return
+    await call.answer()
     if country is None:
         await safe_edit(call, NO_COUNTRY_TEXT)
         return

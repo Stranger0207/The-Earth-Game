@@ -37,6 +37,7 @@ from . import (
     switch,
     team,
     twitter,
+    united_nations,
 )
 
 
@@ -65,6 +66,7 @@ def register_all_routers(dp: Dispatcher) -> None:
     dp.include_router(joint.router)
     dp.include_router(governance.router)
     dp.include_router(diplomacy.router)
+    dp.include_router(united_nations.router)
     dp.include_router(mail.router)
     dp.include_router(alliance.router)
     dp.include_router(twitter.router)

@@ -72,3 +72,35 @@ async def assert_feature(
     else:
         await event.answer(text)
     return False
+
+
+async def check_hall_lock(
+    event: CallbackQuery | Message,
+    session: AsyncSession,
+    country: Country | None,
+) -> bool:
+    """
+    بررسی قفل بودن پنل کشور در اثر حضور در صحن علنی تالار مجمع عمومی سازمان ملل.
+    اگر کشور داخل تالار باشد، پیام هشدار نشان می‌دهد و True برمی‌گرداند.
+    """
+    if country is None or country.name_en == "UN":
+        return False
+    from ..database.repositories import united_nations as un_repo
+    part = await un_repo.get_active_participant_for_country(session, country.id)
+    if part and part.status == "inside_hall":
+        from ..keyboards.united_nations import assembly_hall_kb
+        text = (
+            "🏛 <b>شما هم‌اکنون در تالار مجمع عمومی سازمان ملل حضور دارید؛</b>\n\n"
+            "جهت حفظ تشریفات و نظم صحن علنی، برای مدیریت پنل کشور ابتدا باید با دکمه "
+            "«🚪 خروج از تالار مجمع» از صحن خارج شده و وارد لابی نیویورک شوید."
+        )
+        if isinstance(event, CallbackQuery):
+            await event.answer("دسترسی به پنل کشور در حین حضور در صحن مجمع قفل است.", show_alert=True)
+            try:
+                await event.message.answer(text, reply_markup=assembly_hall_kb(part.session_id))
+            except Exception:
+                pass
+        elif event is not None:
+            await event.answer(text, reply_markup=assembly_hall_kb(part.session_id))
+        return True
+    return False

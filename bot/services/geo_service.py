@@ -140,6 +140,18 @@ def distance_tier(a_en: str, b_en: str) -> str:
     return TIER_INTERCONTINENTAL
 
 
+def compute_flight_duration(a_en: str, b_en: str) -> int:
+    """
+    محاسبه مدت زمان پرواز دیپلماتیک مسافت‌محور (بین ۴۰ تا ۱۲۰ دقیقه).
+    متناسب با مسافت جغرافیایی واقعی ولی فشرده‌شده برای جذابیت گیم‌پلی.
+    """
+    if a_en == b_en:
+        return 0
+    km = distance_km(a_en, b_en)
+    dur = int(40 + (km / 1000.0) * 6.0)
+    return max(40, min(120, dur))
+
+
 def _is_between(origin_en: str, dest_en: str, candidate: str, total: float) -> bool:
     """
     آیا کشور سوم واقعاً روی مسیر مبدأ→مقصد است؟

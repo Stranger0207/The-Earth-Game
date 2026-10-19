@@ -28,6 +28,7 @@ from ..database.models import (
 from ..database.repositories import countries as countries_repo
 from ..database.repositories import feature_locks as locks_repo
 from ..database.repositories import straits as straits_repo
+from ..database.repositories import united_nations as un_repo
 from ..database.repositories import users as users_repo
 from ..enums import (
     DiplomacyStatus,
@@ -214,6 +215,88 @@ async def get_radar_state(
                 "arrives_at": eta.isoformat(),
                 "progress_pct": round(progress, 1),
             })
+
+    # پروازهای مجمع عمومی سازمان ملل متحد به نیویورک و وضعیت مقر UN
+    active_un_session = await un_repo.get_active_session(session)
+    speaker_dict = None
+    in_hall_countries: list[dict[str, Any]] = []
+    in_ny_countries: list[dict[str, Any]] = []
+
+    if active_un_session:
+        un_participants = await un_repo.list_participants(session, active_un_session.id)
+        un_c = country_en_map.get("UN")
+        un_to_country = {
+            "id": un_c.id if un_c else 0,
+            "name_en": "UN",
+            "name_fa": "سازمان ملل متحد",
+            "flag": "🇺🇳",
+            "coords": [40.7489, -73.9680],
+        }
+
+        for part in un_participants:
+            c = country_map.get(part.country_id)
+            if not c:
+                continue
+
+            p_summary = {
+                "id": c.id,
+                "name_en": c.name_en,
+                "name_fa": c.name_fa,
+                "flag": c.flag,
+            }
+            if part.status == "inside_hall":
+                in_hall_countries.append(p_summary)
+            elif part.status == "in_new_york":
+                in_ny_countries.append(p_summary)
+            elif part.status == "in_flight":
+                eta = _ensure_aware(part.travel_eta)
+                if eta and eta > now:
+                    started = _ensure_aware(part.created_at) or (eta - timedelta(minutes=40))
+                    total_sec = max(1.0, (eta - started).total_seconds())
+                    elapsed_sec = max(0.0, (now - started).total_seconds())
+                    progress = min(100.0, (elapsed_sec / total_sec) * 100.0)
+
+                    waypoints = geo.get_air_waypoints(c.name_en, "UN")
+                    diplomatic_flights.append({
+                        "id": f"un_flight_{part.id}",
+                        "type": "un_assembly",
+                        "title": f"پرواز رسمی هیئت {c.name_fa} به مقر سازمان ملل متحد (نیویورک)",
+                        "from_country": {
+                            "id": c.id,
+                            "name_en": c.name_en,
+                            "name_fa": c.name_fa,
+                            "flag": c.flag,
+                            "coords": waypoints[0],
+                        },
+                        "to_country": un_to_country,
+                        "waypoints": waypoints,
+                        "started_at": started.isoformat(),
+                        "arrives_at": eta.isoformat(),
+                        "progress_pct": round(progress, 1),
+                    })
+
+        if active_un_session.current_speaker_country_id:
+            sc = country_map.get(active_un_session.current_speaker_country_id)
+            if sc:
+                speaker_dict = {
+                    "id": sc.id,
+                    "name_en": sc.name_en,
+                    "name_fa": sc.name_fa,
+                    "flag": sc.flag,
+                }
+
+    un_hq_data = {
+        "coords": [40.7489, -73.9680],
+        "name_fa": "مقر سازمان ملل متحد (نیویورک)",
+        "is_assembly_active": bool(active_un_session and active_un_session.status == "active"),
+        "session_id": active_un_session.id if active_un_session else None,
+        "session_title": active_un_session.title if active_un_session else None,
+        "current_speaker": speaker_dict,
+        "speech_ends_at": active_un_session.speech_ends_at.isoformat() if (active_un_session and active_un_session.speech_ends_at) else None,
+        "voting_active": bool(active_un_session and active_un_session.voting_active),
+        "countries_in_hall": in_hall_countries,
+        "countries_in_ny": in_ny_countries,
+    }
 
     # ۴. محموله‌های در حال حرکت (منابع طبیعی و تجهیزات نظامی)
     shipments: list[dict[str, Any]] = []
@@ -488,5 +571,6 @@ async def get_radar_state(
         "shipments": shipments,
         "straits": straits_data,
         "maritime_network": geo.get_all_maritime_corridor_segments(),
+        "un_hq": un_hq_data,
         "server_time": now.isoformat(),
     }

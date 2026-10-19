@@ -1435,6 +1435,137 @@ async def broadcast_market_rates(bot: Bot, force: bool = False) -> bool:
     return True
 
 
+async def process_un_assembly(bot: Bot) -> None:
+    """
+    مدیریت پروازهای اجلاس مجمع عمومی به نیویورک و تایمر ۵ دقیقه‌ای نوبت سخنرانی.
+    """
+    from sqlalchemy import select
+    from ..constants import UN_ASSEMBLY_SPEECH_DURATION_MINUTES
+    from ..database.models.united_nations import UNAssemblyParticipant, UNAssemblySession, UNSpeechQueue
+    from ..database.repositories import countries as countries_repo
+    from ..database.repositories import united_nations as un_repo
+    from ..keyboards.united_nations import assembly_hall_kb, assembly_ny_lobby_kb
+    from ..services.un_speech_service import analyze_and_publish_speech
+
+    now = _utcnow()
+    arrivals: list[tuple[int, int, str]] = []  # (owner_user_id, session_id, country_name)
+    speech_transitions: list[dict] = []
+
+    async with async_session_factory() as session:
+        active_s = await un_repo.get_active_session(session)
+        if not active_s:
+            return
+
+        # ۱) بررسی پروازهای رسیده به نیویورک
+        res = await session.execute(
+            select(UNAssemblyParticipant).where(
+                UNAssemblyParticipant.session_id == active_s.id,
+                UNAssemblyParticipant.status == "in_flight",
+            )
+        )
+        for part in res.scalars().all():
+            eta = _aware(part.travel_eta)
+            if eta and eta <= now:
+                part.status = "in_new_york"
+                c = await countries_repo.get_country(session, part.country_id)
+                if c and c.owner_user_id:
+                    arrivals.append((c.owner_user_id, part.session_id, c.name_fa))
+
+        # ۲) بررسی تایمر ۵ دقیقه‌ای سخنرانی
+        if active_s.status == "active" and active_s.current_speaker_country_id:
+            speech_end = _aware(active_s.speech_ends_at)
+            if speech_end and speech_end <= now:
+                curr = await un_repo.get_active_speech(session, active_s.id)
+                if curr:
+                    await un_repo.set_speaker_done(session, curr.id)
+                    old_c = await countries_repo.get_country(session, curr.country_id)
+                    pname = old_c.name_fa if old_c else "—"
+                    if old_c and old_c.owner_user_id:
+                        from ..database.repositories import users as users_repo
+                        u = await users_repo.get_user(session, old_c.owner_user_id)
+                        if u and u.president_name:
+                            pname = u.president_name
+
+                    speech_transitions.append({
+                        "type": "ended",
+                        "country_fa": old_c.name_fa if old_c else "",
+                        "president_name": pname,
+                        "transcript": curr.speech_transcript,
+                        "is_vip": old_c.is_vip if old_c else False,
+                    })
+
+                nxt = await un_repo.get_next_speaker(session, active_s.id)
+                if nxt:
+                    nxt.status = "speaking"
+                    nxt.started_at = now
+                    nxt.ends_at = now + timedelta(minutes=UN_ASSEMBLY_SPEECH_DURATION_MINUTES)
+                    active_s.current_speaker_country_id = nxt.country_id
+                    active_s.speech_ends_at = nxt.ends_at
+                    nxt_c = await countries_repo.get_country(session, nxt.country_id)
+                    speech_transitions.append({
+                        "type": "started",
+                        "session_id": active_s.id,
+                        "speaker_country_id": nxt.country_id,
+                        "speaker_name": nxt_c.name_fa if nxt_c else "",
+                        "speaker_flag": nxt_c.flag if nxt_c else "",
+                    })
+                else:
+                    active_s.current_speaker_country_id = None
+                    active_s.speech_ends_at = None
+
+        await session.commit()
+
+    # ارسال اعلان‌های فرود پس از کامیت
+    for uid, sid, cname in arrivals:
+        try:
+            await bot.send_message(
+                uid,
+                f"🛬 <b>فرود در فرودگاه بین‌المللی JFK نیویورک:</b>\n\n"
+                f"هیئت رسمی کشور {cname} به سلامت در نیویورک فرود آمد.\n"
+                "شما هم‌اکنون در شهر نیویورک حضور دارید. برای ورود به صحن علنی، روی دکمه «🏛 ورود به ساختمان تالار مجمع» کلیک کنید.",
+                reply_markup=assembly_ny_lobby_kb(sid),
+            )
+        except Exception:
+            pass
+
+    # پردازش تغییرات سخنرانی و ارسال خبر
+    for tr in speech_transitions:
+        if tr["type"] == "ended":
+            try:
+                await analyze_and_publish_speech(
+                    bot,
+                    country_fa=tr["country_fa"],
+                    president_name=tr["president_name"],
+                    speech_transcript=tr["transcript"],
+                    is_vip=tr["is_vip"],
+                )
+            except Exception:
+                pass
+        elif tr["type"] == "started":
+            try:
+                async with async_session_factory() as s2:
+                    hall_parts = await un_repo.list_participants_by_status(s2, tr["session_id"], "inside_hall")
+                    txt = (
+                        f"🎙 <b>تریبون مجمع عمومی سازمان ملل متحد:</b>\n\n"
+                        f"هم‌اکنون نوبت سخنرانی ۵ دقیقه‌ای کشور {tr['speaker_flag']} <b>{tr['speaker_name']}</b> آغاز شد.\n"
+                        "ارسال متن و تصویر توسط سخنران برای کلیه حاضران رله خواهد شد."
+                    )
+                    for p in hall_parts:
+                        c = await countries_repo.get_country(s2, p.country_id)
+                        if c and c.owner_user_id:
+                            is_spk = (c.id == tr["speaker_country_id"])
+                            try:
+                                await bot.send_message(
+                                    c.owner_user_id,
+                                    txt,
+                                    reply_markup=assembly_hall_kb(tr["session_id"], is_speaker=is_spk),
+                                )
+                            except Exception:
+                                pass
+            except Exception:
+                pass
+
+
 async def _tick(bot: Bot) -> None:
     """جاب اصلی که هر دقیقه همه‌ی پردازش‌های زمان‌دار را اجرا می‌کند.
 
@@ -1459,6 +1590,7 @@ async def _tick(bot: Bot) -> None:
         ("process_protests", lambda: process_protests(bot)),
         ("process_timed_suspensions", lambda: process_timed_suspensions(bot)),
         ("process_market_decay", lambda: process_market_decay()),
+        ("process_un_assembly", lambda: process_un_assembly(bot)),
     )
     for name, run in jobs:
         try:

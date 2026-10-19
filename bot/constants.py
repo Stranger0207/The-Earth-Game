@@ -243,8 +243,12 @@ TWEET_COOLDOWN_HOURS = 1             # انتشار توییت در توییتر
 # ============================================================
 PHONE_CALL_DURATION_MINUTES = 10     # حداکثر مدت تماس تلفنی (۱۰ دقیقه)
 MEETING_DURATION_MINUTES = 60       # مدت دیدار حضوری (یک ساعت)
-# v1.10.1: زمان پرواز دیپلماتیک ثابت شد (دیگر بر اساس فاصله/AI نیست) — از هر کشور به هر کشور
-FLIGHT_DURATION_MINUTES = 45        # مدت پرواز تا کشور مقصد (۴۵ دقیقه برای بازی واقعی و تاکتیکی)
+# زمان پرواز دیپلماتیک مسافت‌محور (بین ۴۰ تا ۱۲۰ دقیقه متناسب با مسافت، نه زمان واقعی ولی عادلانه و تاکتیکی)
+FLIGHT_DURATION_MINUTES = 45        # مدت پیش‌فرض/کف پرواز
+DIPLOMATIC_FLIGHT_MIN_MINUTES: int = 40      # کف مدت پرواز دیپلماتیک (دقیقه)
+DIPLOMATIC_FLIGHT_MAX_MINUTES: int = 120     # سقف مدت پرواز دیپلماتیک (دقیقه)
+DIPLOMATIC_FLIGHT_KM_RATE: float = 6.0       # ۶ دقیقه به ازای هر ۱۰۰۰ کیلومتر
+UN_ASSEMBLY_SPEECH_DURATION_MINUTES: int = 5 # مدت سخنرانی هر کشور در مجمع عمومی (۵ دقیقه)
 # اگر در طول نشست فعال این مدت هیچ پیامی میان طرفین ردوبدل نشود، ربات خودکار نشست را می‌بندد
 MEETING_IDLE_TIMEOUT_MINUTES = 10   # تایم‌اوت سکوت نشست
 
@@ -715,7 +719,11 @@ LOCKABLE_FEATURES: dict[str, tuple[str, str]] = {
     "gov.system": ("🏛 تغییر نظام حاکمیتی", FEATURE_CAT_GOVERNANCE),
     "gov.tax": ("💵 مالیات", FEATURE_CAT_GOVERNANCE),
     "gov.legislation": ("📋 قانونگذاری", FEATURE_CAT_GOVERNANCE),
-    # 🏛 کابینه دولت آمریکا (v2.6)
+    # 🇺🇳 سازمان ملل متحد
+    "un.iaea": ("☢️ آژانس انرژی اتمی", FEATURE_CAT_DIPLOMACY),
+    "un.assembly": ("🏛 مجمع عمومی سازمان ملل", FEATURE_CAT_DIPLOMACY),
+    "un.court": ("⚖️ دادگاه بین‌المللی لاهه", FEATURE_CAT_DIPLOMACY),
+    "un.resolution": ("📜 قطعنامه‌های بین‌المللی", FEATURE_CAT_DIPLOMACY),
 }
 
 # آیدی کانال رسمی توییتر جهانی (X)

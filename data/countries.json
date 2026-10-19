@@ -11354,6 +11354,61 @@
           "count": 45
         }
       ]
+    },
+    {
+      "name_en": "UN",
+      "name_fa": "سازمان ملل متحد",
+      "flag": "🇺🇳",
+      "region": "international",
+      "is_vip": true,
+      "population": 0,
+      "economy": {
+        "economic_power": 99.0,
+        "budget": 500000000.0,
+        "growth": "flat",
+        "inflation": 0.0,
+        "unemployment": 0.0,
+        "energy_status": "good",
+        "foreign_trade": "balanced",
+        "govt_debt": 0.0,
+        "public_satisfaction": 85.0,
+        "stability": 90.0
+      },
+      "reserves": {
+        "coal": {
+          "amount": 0,
+          "can_extract": false
+        },
+        "aluminum": {
+          "amount": 0,
+          "can_extract": false
+        },
+        "iron": {
+          "amount": 0,
+          "can_extract": false
+        },
+        "steel": {
+          "amount": 0,
+          "can_extract": false
+        },
+        "oil": {
+          "amount": 0,
+          "can_extract": false
+        },
+        "gas": {
+          "amount": 0,
+          "can_extract": false
+        },
+        "gold": {
+          "amount": 0,
+          "can_extract": false
+        },
+        "uranium": {
+          "amount": 0,
+          "can_extract": false
+        }
+      },
+      "military": []
     }
   ]
 }

@@ -332,6 +332,32 @@
       cursor: pointer;
     }
 
+    .un-hq-marker {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      position: relative;
+    }
+
+    .un-pulse-ring {
+      position: absolute;
+      width: 56px;
+      height: 56px;
+      top: -12px;
+      left: -12px;
+      border-radius: 50%;
+      border: 3px solid #38bdf8;
+      box-shadow: 0 0 18px rgba(56, 189, 248, 0.9), inset 0 0 10px rgba(245, 158, 11, 0.6);
+      animation: un-pulse 2s infinite ease-out;
+      pointer-events: none;
+    }
+
+    @keyframes un-pulse {
+      0% { transform: scale(0.4); opacity: 1; }
+      100% { transform: scale(1.7); opacity: 0; }
+    }
+
     .strait-marker {
       width: 22px;
       height: 22px;
@@ -776,6 +802,7 @@
       if (data.countries) {
         data.countries.forEach(c => {
           if (!c.coords || (c.coords[0] === 0 && c.coords[1] === 0)) return;
+          if (c.name_en === 'UN') return; // مقر سازمان ملل جداگانه با نشان اختصاصی رسم می‌شود
           const icon = L.divIcon({
             className: 'capital-marker',
             html: `<span>${c.flag}</span>`,
@@ -786,6 +813,25 @@
           m.on('click', () => showCapitalInfo(c));
           layerGroups.capitals.addLayer(m);
         });
+      }
+
+      // ۱.۵. رسم مقر سازمان ملل متحد (UN Headquarters - New York)
+      if (data.un_hq && data.un_hq.coords) {
+        const isAssemblyActive = Boolean(data.un_hq.is_assembly_active);
+        const unIcon = L.divIcon({
+          className: 'un-hq-marker',
+          html: `
+            <div style="position: relative; width: 34px; height: 34px; display: flex; align-items: center; justify-content: center;">
+              ${isAssemblyActive ? '<div class="un-pulse-ring"></div>' : ''}
+              <span style="font-size: 22px; filter: drop-shadow(0 2px 6px rgba(0,0,0,0.9));">🇺🇳</span>
+            </div>
+          `,
+          iconSize: [34, 34],
+          iconAnchor: [17, 17]
+        });
+        const unMarker = L.marker(data.un_hq.coords, { icon: unIcon, zIndexOffset: 600 });
+        unMarker.on('click', () => showUNInfo(data.un_hq));
+        layerGroups.capitals.addLayer(unMarker);
       }
 
       // ۲. رسم تنگه‌های استراتژیک
@@ -814,17 +860,21 @@
         data.diplomatic_flights.forEach(f => {
           if (!f.waypoints || f.waypoints.length < 2) return;
 
-          // خط مسیر طلایی
+          const isUN = (f.type === 'un_assembly');
+          const lineColor = isUN ? '#38bdf8' : '#f59e0b';
+          const planeColor = isUN ? '#38bdf8' : '#f59e0b';
+
+          // خط مسیر پرواز
           const line = L.polyline(f.waypoints, {
-            color: '#f59e0b',
-            weight: 2.5,
-            dashArray: '6, 8',
-            opacity: 0.85
+            color: lineColor,
+            weight: isUN ? 3.0 : 2.5,
+            dashArray: isUN ? '8, 6' : '6, 8',
+            opacity: 0.9
           });
           layerGroups.flights.addLayer(line);
 
           // مارکر هواپیمای دیپلماتیک
-          const icon = createPlaneIcon('#f59e0b', false);
+          const icon = createPlaneIcon(planeColor, isUN);
           const marker = L.marker(f.waypoints[0], { icon });
           marker.on('click', () => showFlightInfo(f));
           layerGroups.flights.addLayer(marker);
@@ -1115,8 +1165,20 @@
       const now = Date.now() + serverTimeDelta;
       const etaTime = f.arrives_at ? new Date(f.arrives_at).getTime() : 0;
       const remain = etaTime - now;
+      const isUN = (f.type === 'un_assembly');
+
+      let unBadge = '';
+      if (isUN) {
+        unBadge = `
+          <div class="info-row" style="background: rgba(56, 189, 248, 0.15); border-radius: 8px; padding: 6px 10px; margin-bottom: 6px;">
+            <span class="info-label" style="color: #38bdf8; font-weight: bold;">رویداد بین‌المللی:</span>
+            <span class="info-value" style="color: #38bdf8; font-weight: bold;">🇺🇳 اعزام هیئت ریاست‌جمهوری به اجلاس نیویورک</span>
+          </div>
+        `;
+      }
 
       const html = `
+        ${unBadge}
         <div class="info-row">
           <span class="info-label">عنوان سفر:</span>
           <span class="info-value">${f.title}</span>
@@ -1127,7 +1189,7 @@
         </div>
         <div class="info-row">
           <span class="info-label">پیشرفت پرواز:</span>
-          <span class="info-value" style="color: #f59e0b;">${f.progress_pct}%</span>
+          <span class="info-value" style="color: ${isUN ? '#38bdf8' : '#f59e0b'};">${f.progress_pct}%</span>
         </div>
         <div class="info-row">
           <span class="info-label">زمان تا فرود:</span>
@@ -1135,7 +1197,7 @@
         </div>
       `;
 
-      openSheet(`✈️ پرواز دیپلماتیک`, html);
+      openSheet(isUN ? `🇺🇳 پرواز مجمع عمومی ملل متحد` : `✈️ پرواز دیپلماتیک`, html);
     }
 
     function showStraitInfo(s, statusText) {
@@ -1171,7 +1233,75 @@
       openSheet(`⚓ ${s.name_fa}`, html);
     }
 
+    function showUNInfo(un) {
+      const isActive = Boolean(un && un.is_assembly_active);
+      const statusBadge = isActive
+        ? '<span style="color: #10b981; font-weight: bold;">🟢 اجلاس سالانه مجمع عمومی در حال برگزاری است</span>'
+        : '<span style="color: #94a3b8;">⚪ اجلاس فعال نیست</span>';
+
+      let speakerRow = '';
+      if (un && un.current_speaker) {
+        const endsMs = un.speech_ends_at ? (new Date(un.speech_ends_at).getTime() - (Date.now() + serverTimeDelta)) : 0;
+        speakerRow = `
+          <div class="info-row" style="background: rgba(56, 189, 248, 0.12); border-radius: 8px; padding: 8px 10px;">
+            <span class="info-label" style="color: #38bdf8; font-weight: bold;">🎤 سخنران پشت تریبون:</span>
+            <span class="info-value" style="color: #fff; font-weight: bold;">${un.current_speaker.flag} ${un.current_speaker.name_fa} (⏳ ${formatTimeRemaining(endsMs)})</span>
+          </div>
+        `;
+      }
+
+      let hallList = 'هیچ کشوری حاضر نیست';
+      if (un && un.countries_in_hall && un.countries_in_hall.length > 0) {
+        hallList = un.countries_in_hall.map(c => `${c.flag} ${c.name_fa}`).join(' ، ');
+      }
+
+      let nyList = 'هیچ کشوری در لابی نیست';
+      if (un && un.countries_in_ny && un.countries_in_ny.length > 0) {
+        nyList = un.countries_in_ny.map(c => `${c.flag} ${c.name_fa}`).join(' ، ');
+      }
+
+      let votingBadge = '';
+      if (un && un.voting_active) {
+        votingBadge = `
+          <div class="info-row" style="background: rgba(245, 158, 11, 0.15); border-radius: 8px; padding: 6px 10px;">
+            <span class="info-label" style="color: #f59e0b;">رای‌گیری صحن:</span>
+            <span class="info-value" style="color: #f59e0b; font-weight: bold;">🗳 رای‌گیری مجمع عمومی در جریان است</span>
+          </div>
+        `;
+      }
+
+      const html = `
+        <div class="info-row">
+          <span class="info-label">وضعیت مجمع:</span>
+          <span class="info-value">${statusBadge}</span>
+        </div>
+        ${un && un.session_title ? `
+          <div class="info-row">
+            <span class="info-label">موضوع اجلاس:</span>
+            <span class="info-value" style="color: #f59e0b;">${un.session_title}</span>
+          </div>
+        ` : ''}
+        ${speakerRow}
+        ${votingBadge}
+        <div class="info-row" style="flex-direction: column; align-items: flex-start; gap: 4px;">
+          <span class="info-label">🏛 کشورهای داخل تالار مجمع (${un && un.countries_in_hall ? un.countries_in_hall.length : 0}):</span>
+          <span class="info-value" style="font-size: 12px; line-height: 1.5; color: #cbd5e1;">${hallList}</span>
+        </div>
+        <div class="info-row" style="flex-direction: column; align-items: flex-start; gap: 4px;">
+          <span class="info-label">🗽 هیئت‌های مستقر در نیویورک (${un && un.countries_in_ny ? un.countries_in_ny.length : 0}):</span>
+          <span class="info-value" style="font-size: 12px; line-height: 1.5; color: #94a3b8;">${nyList}</span>
+        </div>
+      `;
+
+      openSheet(`🇺🇳 مقر سازمان ملل متحد (نیویورک)`, html);
+    }
+
     function showCapitalInfo(c) {
+      if (c.name_en === 'UN') {
+        showUNInfo(radarData?.un_hq || { coords: c.coords, name_fa: c.name_fa });
+        return;
+      }
+
       const html = `
         <div class="info-row">
           <span class="info-label">کشور:</span>

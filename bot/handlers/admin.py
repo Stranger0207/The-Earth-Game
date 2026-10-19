@@ -104,14 +104,26 @@ async def cb_approve(
         return
 
     try:
+        is_un = country.name_en == "UN"
+        from ..keyboards.united_nations import un_main_menu_kb
+        welcome_kb = un_main_menu_kb() if is_un else main_menu_kb()
+        welcome_text = (
+            f"🎉 تبریک! درخواست شما تأیید شد.\n"
+            f"شما اکنون دبیرکل سازمان ملل متحد {country.flag} <b>{country.name_fa}</b> هستید!\n\n"
+            "مقر فرماندهی دبیرکل سازمان ملل متحد:"
+            if is_un
+            else (
+                f"🎉 تبریک! درخواست شما تأیید شد.\n"
+                f"شما اکنون رهبر {country.flag} <b>{country.name_fa}</b> هستید.\n\n"
+                "پنل مدیریت کشور:"
+            )
+        )
         await media.send_photo_news(
             bot,
             claim.user_id,
             "ui_main",
-            f"🎉 تبریک! درخواست شما تأیید شد.\n"
-            f"شما اکنون رهبر {country.flag} <b>{country.name_fa}</b> هستید.\n\n"
-            "پنل مدیریت کشور:",
-            reply_markup=main_menu_kb(),
+            welcome_text,
+            reply_markup=welcome_kb,
         )
     except Exception:  # noqa: BLE001
         pass
@@ -223,14 +235,26 @@ async def cb_vip_claim_approve(
         return
 
     try:
+        is_un = country.name_en == "UN"
+        from ..keyboards.united_nations import un_main_menu_kb
+        welcome_kb = un_main_menu_kb() if is_un else main_menu_kb()
+        welcome_text = (
+            f"🎉 تبریک! رسید واریز شما تأیید شد.\n"
+            f"شما اکنون دبیرکل سازمان ملل متحد {country.flag} <b>{country.name_fa}</b> هستید!\n\n"
+            "مقر فرماندهی دبیرکل سازمان ملل متحد:"
+            if is_un
+            else (
+                f"🎉 تبریک! رسید واریز شما تأیید شد.\n"
+                f"شما اکنون رهبر کشور ابرقدرت {country.flag} <b>{country.name_fa}</b> هستید!\n\n"
+                "پنل مدیریت کشور:"
+            )
+        )
         await media.send_photo_news(
             bot,
             claim.user_id,
             "ui_main",
-            f"🎉 تبریک! رسید واریز شما تأیید شد.\n"
-            f"شما اکنون رهبر کشور ابرقدرت {country.flag} <b>{country.name_fa}</b> هستید!\n\n"
-            "پنل مدیریت کشور:",
-            reply_markup=main_menu_kb(),
+            welcome_text,
+            reply_markup=welcome_kb,
         )
     except Exception:  # noqa: BLE001
         pass

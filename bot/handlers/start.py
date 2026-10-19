@@ -101,6 +101,20 @@ async def cmd_start(
 
     country = await get_player_country(session, db_user)
     if country is not None:
+        if country.name_en == "UN":
+            from ..keyboards.united_nations import un_main_menu_kb
+            from ..utils.ui import header
+
+            sec_gen_title = db_user.president_name or "دبیرکل محترم"
+            un_title = (
+                header("مقر فرماندهی دبیرکل سازمان ملل متحد", "🇺🇳")
+                + f"\n\n🇺🇳 خوش آمدید، {sec_gen_title}!\n\n"
+                "به مقر فرماندهی سازمان ملل متحد (نیویورک) خوش آمدید.\n"
+                "ارکان بین‌المللی، آژانس انرژی اتمی، دیوان دادگستری لاهه و مجمع عمومی در اختیار شما هستند."
+            )
+            await show_menu(message, un_title, un_main_menu_kb(), image_key="main")
+            return
+
         await show_menu(
             message,
             f"👑 خوش آمدید، رهبر {country.flag} <b>{country.name_fa}</b>!\n\n"
@@ -123,4 +137,19 @@ async def cmd_menu(
     if country is None:
         await message.answer("ابتدا باید کشوری بگیرید. /claim", reply_markup=_claim_kb())
         return
+
+    if country.name_en == "UN":
+        from ..keyboards.united_nations import un_main_menu_kb
+        from ..utils.ui import header
+
+        sec_gen_title = db_user.president_name or "دبیرکل محترم"
+        un_title = (
+            header("مقر فرماندهی دبیرکل سازمان ملل متحد", "🇺🇳")
+            + f"\n\n🇺🇳 خوش آمدید، {sec_gen_title}!\n\n"
+            "به مقر فرماندهی سازمان ملل متحد (نیویورک) خوش آمدید.\n"
+            "ارکان بین‌المللی، آژانس انرژی اتمی، دیوان دادگستری لاهه و مجمع عمومی در اختیار شما هستند."
+        )
+        await show_menu(message, un_title, un_main_menu_kb(), image_key="main")
+        return
+
     await show_menu(message, "پنل مدیریت کشور:", main_menu_kb(), image_key="main")

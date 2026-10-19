@@ -88,6 +88,11 @@ async def cb_status(
     if country is None:
         await safe_edit(call, NO_COUNTRY_TEXT)
         return
+    if country.name_en == "UN":
+        from ..keyboards.united_nations import un_main_menu_kb
+        un_title = header("مقر فرماندهی دبیرکل سازمان ملل متحد", "🇺🇳") + "\n\nدبیرکل محترم، ارکان سازمان ملل متحد در خدمت شماست."
+        await show_menu(call, un_title, un_main_menu_kb(), image_key="main")
+        return
     await show_menu(call, render_economy_panel(country), main_menu_kb(), image_key="status")
 
 
@@ -109,13 +114,20 @@ async def cb_radar_info(
         "با راه‌اندازی Ngrok یا ثبت آدرس معتبر HTTPS در فایل <code>.env</code>، این کلید مستقیماً نقشه زنده را باز خواهد کرد."
     )
     await call.answer()
-    await safe_edit(call, text, reply_markup=main_menu_kb())
+    back_markup = un_main_menu_kb() if (country and country.name_en == "UN") else main_menu_kb()
+    await safe_edit(call, text, reply_markup=back_markup)
 
 
 @router.callback_query(F.data == "cancel")
-async def cb_cancel(call: CallbackQuery, state: FSMContext) -> None:
+async def cb_cancel(call: CallbackQuery, state: FSMContext, session: AsyncSession, db_user: User) -> None:
     """لغو فرایند جاری و بازگشت به پنل."""
     await state.clear()
     await call.answer("لغو شد")
+    country = await get_player_country(session, db_user)
+    if country and country.name_en == "UN":
+        from ..keyboards.united_nations import un_main_menu_kb
+        un_title = header("مقر فرماندهی دبیرکل سازمان ملل متحد", "🇺🇳") + "\n\nدبیرکل محترم، ارکان سازمان ملل متحد در خدمت شماست."
+        await show_menu(call, un_title, un_main_menu_kb(), image_key="main")
+        return
     await show_menu(call, PANEL_TITLE, main_menu_kb(), image_key="main")
 

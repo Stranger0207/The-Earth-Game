@@ -54,7 +54,7 @@ def get_admin_group_id(group_type: AdminGroupType) -> int | None:
 async def publish_news(
     bot: Bot, category: NewsCategory, text: str
 ) -> Message | None:
-    """ارسال یک خبر به کانال دسته‌ی موردنظر. در صورت نبود کانال، فقط لاگ می‌شود."""
+    """ارسال یک خبر به کانال دسته‌ی موردنظر (به‌صورت عکس‌دار با فال‌بک متنی)."""
     channel_id = _CATEGORY_CHANNEL.get(category)
     header = _CATEGORY_HEADER.get(category, "📰 خبر")
     message = f"{header}\n\n{text}"
@@ -62,6 +62,28 @@ async def publish_news(
     if channel_id is None:
         logger.info("News channel not configured for %s. News: %s", category, text)
         return None
+
+    # انتخاب دسته‌ی عکس متناسب با دسته‌ی خبر
+    category_map = {
+        NewsCategory.MILITARY: "news_military",
+        NewsCategory.DIPLOMACY: "news_diplomacy",
+        NewsCategory.ECONOMY: "news_economy",
+        NewsCategory.WTO: "wto",
+    }
+    media_cat = category_map.get(category, "news_military")
+
+    # اگر طول خبر تا سقف کپشن تلگرام (۱۰۲۴ کاراکتر) باشد، تلاش برای ارسال عکس
+    if len(message) <= 1024:
+        try:
+            from . import media
+            photo, upload_path = media._resolve_random_photo(media_cat)
+            if photo is not None:
+                sent = await bot.send_photo(channel_id, photo=photo, caption=message)
+                if upload_path is not None and sent.photo:
+                    media._append_cache(media_cat, sent.photo[-1].file_id, upload_path.name)
+                return sent
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Failed to publish photo news to %s (%s): %s", channel_id, media_cat, exc)
 
     try:
         return await bot.send_message(channel_id, message)

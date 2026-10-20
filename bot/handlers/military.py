@@ -67,7 +67,7 @@ from ..utils.formatting import military_branch_pages, render_military_branch
 from ..utils.numbers import fa_money, fa_number, parse_amount
 from ..utils.ui import STYLE_MAIN, STYLE_NO, STYLE_OK, header
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from ..utils.screens import safe_edit
+from ..utils.screens import safe_edit, show_menu
 from .deps import NO_COUNTRY_TEXT, assert_feature, get_player_country
 
 router = Router(name="military")
@@ -172,9 +172,11 @@ async def cb_factory_menu(
     country = await get_player_country(session, db_user)
     if not await assert_feature(call, session, country, "military.factory"):
         return
-    await safe_edit(call,
+    await show_menu(
+        call,
         header("کارخانه نظامی", "🏭") + "\n\nبا احداث کارخانه می‌توانید تجهیزات موجود کشورتان را بازتولید کنید.",
         reply_markup=military_factory_menu_kb(),
+        image_key="factories",
     )
 
 
@@ -625,7 +627,12 @@ async def cb_sell(call: CallbackQuery, state: FSMContext, session: AsyncSession,
     builder.button(text="🔙 بازگشت", callback_data="menu:military", style="primary")
     builder.adjust(2)
     await state.update_data(sell_categories=categories)
-    await safe_edit(call,"💰 قصد فروش کدام دسته از تجهیزات را دارید؟", reply_markup=builder.as_markup())
+    await show_menu(
+        call,
+        "💰 قصد فروش کدام دسته از تجهیزات را دارید؟",
+        reply_markup=builder.as_markup(),
+        image_key="industry",
+    )
 
 
 @router.callback_query(MilitarySaleForm.choosing_category, F.data.startswith("milsell_cat:"))

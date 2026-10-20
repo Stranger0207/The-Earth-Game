@@ -30,7 +30,7 @@ from ..loader import bot
 from ..services.news_service import send_log
 from ..states import InvestForm
 from ..utils.numbers import fa_money, fa_number, parse_amount
-from ..utils.screens import safe_edit
+from ..utils.screens import safe_edit, show_menu
 from ..utils.ui import STYLE_MAIN, STYLE_NO, STYLE_OK
 from .deps import NO_COUNTRY_TEXT, assert_feature, get_player_country
 
@@ -136,11 +136,13 @@ _INVEST_CAP_TEXT = (
 async def cb_invest(call: CallbackQuery, state: FSMContext) -> None:
     await state.clear()
     await call.answer()
-    await safe_edit(call,
+    await show_menu(
+        call,
         "📈 <b>سرمایه‌گذاری</b>\n\n"
         "می‌توانید روی توسعه‌ی کشور خودتان یا یک کشور خارجی سرمایه‌گذاری کنید.\n"
         "سود سرمایه هر ۲۴ ساعت به خزانه‌ی شما واریز می‌شود.",
         reply_markup=invest_menu_kb(),
+        image_key="investment",
     )
 
 

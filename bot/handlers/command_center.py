@@ -164,7 +164,12 @@ async def cb_commanders(call: CallbackQuery, session: AsyncSession, db_user: Use
             "\n<i>هر فرمانده به شاخه‌ی تخصصی خودش بونوس قدرت می‌دهد.</i>"
         )
 
-    await safe_edit(call, "\n".join(lines), reply_markup=back_kb("menu:military"))
+    await show_menu(
+        call,
+        "\n".join(lines),
+        reply_markup=back_kb("menu:military"),
+        image_key="commanders",
+    )
 
 
 # ============================================================
@@ -178,5 +183,5 @@ async def cb_industry_menu(call: CallbackQuery) -> None:
         header("صنایع نظامی", "🏭") + "\n\n"
         "تولید، فروش و استقرار تجهیزات نظامی کشور."
     )
-    await safe_edit(call, text, reply_markup=industry_menu_kb())
+    await show_menu(call, text, reply_markup=industry_menu_kb(), image_key="industry")
 

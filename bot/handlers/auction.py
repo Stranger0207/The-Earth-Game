@@ -46,7 +46,7 @@ from ..services.ai import evaluators
 from ..services.news_service import publish_news, send_log
 from ..states import AuctionBidForm, AuctionCreateForm
 from ..utils.numbers import fa_money, fa_number, parse_amount
-from ..utils.screens import safe_edit
+from ..utils.screens import safe_edit, show_menu
 from ..utils.ui import STYLE_MAIN, STYLE_NO, STYLE_OK
 from .deps import NO_COUNTRY_TEXT, assert_feature, get_player_country
 
@@ -359,7 +359,7 @@ async def cb_auction_menu(
         "• پس از پایان مزایده، مبلغ به حساب فروشنده واریز و منبع با محموله رسمی WTO برای برنده ارسال می‌گردد.\n"
         "• تا زمانی که پیشنهادی ثبت نشده باشد، فروشنده حق لغو مزایده را دارد."
     )
-    await safe_edit(call, text, reply_markup=auction_menu_kb())
+    await show_menu(call, text, reply_markup=auction_menu_kb(), image_key="auction")
 
 
 # ============================================================

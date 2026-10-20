@@ -38,6 +38,7 @@ from ..services.media import send_specific_photo
 from ..services.news_service import send_log
 from ..states import DeploymentForm
 from ..utils.numbers import fa_number, parse_amount
+from ..utils.screens import safe_edit, show_menu
 from ..utils.ui import STYLE_MAIN, STYLE_NO, STYLE_OK, header
 from .deps import NO_COUNTRY_TEXT, assert_feature, get_player_country
 
@@ -69,20 +70,23 @@ async def cb_deploy_menu(call: CallbackQuery, state: FSMContext, session: AsyncS
     await state.clear()
     country = await get_player_country(session, db_user)
     if country is None:
-        await call.message.edit_text(NO_COUNTRY_TEXT)
+        await safe_edit(call, NO_COUNTRY_TEXT)
         return
     if not await assert_feature(call, session, country, "military.deploy"):
         return
     if not country.is_vip:
-        await call.message.edit_text(
+        await safe_edit(
+            call,
             header("استقرار نیرو", "🪖") + "\n\n" + _NOT_VIP_TEXT,
             reply_markup=military_menu_kb(),
         )
         return
-    await call.message.edit_text(
+    await show_menu(
+        call,
         header("استقرار نیرو", "🪖")
         + "\n\nمی‌توانید نیرو به یک منطقه اعزام کنید یا نیروهای مستقر خود را مدیریت کنید.",
         reply_markup=deploy_menu_kb(),
+        image_key="deployment",
     )
 
 

@@ -30,7 +30,7 @@ from ..services.combat import CommittedAsset
 from ..services.news_service import send_log
 from ..states import EscortForm, InterceptionForm
 from ..utils.numbers import fa_number, parse_amount
-from ..utils.screens import safe_edit
+from ..utils.screens import safe_edit, show_menu
 from ..utils.ui import DIVIDER, header
 from .deps import NO_COUNTRY_TEXT, assert_feature, get_player_country
 
@@ -116,8 +116,11 @@ async def cb_intercept_start(
         "",
         "<i>محموله‌ی موردنظر را انتخاب کنید:</i>",
     ]
-    await safe_edit(
-        call, "\n".join(lines), reply_markup=shipments_kb(shipments, "cc:home")
+    await show_menu(
+        call,
+        "\n".join(lines),
+        reply_markup=shipments_kb(shipments, "cc:home"),
+        image_key="interception",
     )
 
 

@@ -782,6 +782,47 @@ python -m scripts.test_factory_pause_and_svg   # ۱۶ تست جامع: توقف 
 
 ---
 
+## 📸 آپدیت سیستم تصویری جامع ۸۰٪ منوها و کانال‌های خبری (v2.10)
+
+### ۱. پوشش تصویری جامع بیش از ۸۰٪ منوهای ربات
+- ارتقای زیرساخت رسانه‌ای در `bot/services/media.py` و تعریف ۲۷ دسته‌ی تصویری برای کلیه منوهای اصلی و فرعی.
+- ایجاد پوشه‌های اختصاصی در مسیر `D:\PictureDB\UI\` برای:
+  - `governance` (حاکمیت، نظام، اعتراضات، قوانین، ویزا)
+  - `un` (مقر سازمان ملل متحد و دبیرکل)
+  - `industry` (صنایع نظامی)
+  - `factories` (کارخانه‌های نظامی)
+  - `bases` (پایگاه‌های نظامی)
+  - `satellite` (ماهواره‌های فضایی نظامی و اقتصادی)
+  - `nuclear` (برنامه و تأسیسات هسته‌ای)
+  - `deployment` (استقرار نیرو)
+  - `interception` (رهگیری محموله)
+  - `commanders` (فرماندهان ارتش)
+  - `facilities` (احداث تأسیسات و تأسیسات من)
+  - `investment` (سرمایه‌گذاری)
+  - `straits` (تنگه‌های استراتژیک)
+  - `auction` (مزایده و حراجی)
+  - `letters` (نامه‌نگاری و صندوق پستی)
+  - `alliances` (اتحادها)
+  - `sanctions` (تحریم‌ها)
+  - `contracts` (معاهدات و قراردادها)
+  - `twitter` (توییتر جهانی سران)
+  - `security_roles` (پروژه‌های امنیتی)
+  - `military_roles` (عملیات‌های نظامی)
+- **مکانیسم فالبک هوشمند والد (`CATEGORY_FALLBACKS`):** در صورتی که پوشه‌ی اختصاصی یک زیرمنو هنوز خالی باشد، سیستم خودکار از تصاویر باکیفیت دسته‌ی مادر (`ui_military`, `ui_economy`, `ui_diplomacy`, `ui_main`) استفاده می‌کند تا هیچ منویی بدون عکس نماند و با قرار گرفتن عکس در پوشه، اولویت به عکس اختصاصی داده می‌شود.
+
+### ۲. عکس‌دار شدن خودکار کلیه اخبار کانال‌ها
+- ارتقای متد `publish_news` در `bot/services/news_service.py` جهت ارسال عکس متناسب با هر دسته‌ی خبری همراه با کپشن در کانال‌های رسمی:
+  - کانال نظامی (`NewsCategory.MILITARY`): از `D:\PictureDB\News\military` (با فالبک به `D:\PictureDB\Military`)
+  - کانال دیپلماسی (`NewsCategory.DIPLOMACY`): از `D:\PictureDB\News\diplomacy` (با فالبک به `D:\PictureDB\Diplomaci`)
+  - کانال اقتصاد (`NewsCategory.ECONOMY`): از `D:\PictureDB\News\economy` (با فالبک به `ui_economy`)
+  - کانال WTO (`NewsCategory.WTO`): از `D:\PictureDB\WTO`
+- پوشه‌های `D:\PictureDB\News\military`, `diplomacy`, `economy` ساخته شدند و آماده دریافت عکس هستند.
+
+### ۳. پیش‌کش برای VPS
+- پشتیبانی کامل در `scripts/cache_media.py` جهت کش‌کردن یک‌باره شناسه‌های `file_id` کلیه دسته‌های جدید در `File.md`.
+
+---
+
 ## قواعد ظاهری UI (v1.8)
 
 - رنگ دکمه‌ها از طریق فیلد `style` در `InlineKeyboardButton` (Bot API 9.4+) اعمال می‌شود.

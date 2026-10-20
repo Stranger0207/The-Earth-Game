@@ -34,7 +34,11 @@ MEDIA_DIRS: dict[str, str] = {
     "military": r"D:\PictureDB\Military",
     # عکس‌های برنامه‌ی هسته‌ای (v1.10.4) — کشف برنامه، آزمایش هسته‌ای
     "nuclear": r"D:\PictureDB\Nuclear",
-    # عکس‌های منوهای اصلی (سیستم تصویری UI) — هر منو یک فولدر با چند عکس تصادفی
+    # اخبار کانال‌ها (عمومی)
+    "news_military": r"D:\PictureDB\News\military",
+    "news_diplomacy": r"D:\PictureDB\News\diplomacy",
+    "news_economy": r"D:\PictureDB\News\economy",
+    # عکس‌های منوهای اصلی و زیرمنوها (سیستم تصویری جامع UI)
     "ui_main": r"D:\PictureDB\UI\main",
     "ui_economy": r"D:\PictureDB\UI\economy",
     "ui_diplomacy": r"D:\PictureDB\UI\diplomacy",
@@ -42,9 +46,31 @@ MEDIA_DIRS: dict[str, str] = {
     "ui_advisor": r"D:\PictureDB\UI\advisor",
     "ui_status": r"D:\PictureDB\UI\status",
     "ui_bank": r"D:\PictureDB\UI\bank",
+    # زیرمنوهای افزوده شده (پوشش ۸۰٪+ منوها)
+    "ui_governance": r"D:\PictureDB\UI\governance",
+    "ui_un": r"D:\PictureDB\UI\un",
+    "ui_industry": r"D:\PictureDB\UI\industry",
+    "ui_factories": r"D:\PictureDB\UI\factories",
+    "ui_bases": r"D:\PictureDB\UI\bases",
+    "ui_satellite": r"D:\PictureDB\UI\satellite",
+    "ui_nuclear": r"D:\PictureDB\UI\nuclear",
+    "ui_deployment": r"D:\PictureDB\UI\deployment",
+    "ui_interception": r"D:\PictureDB\UI\interception",
+    "ui_commanders": r"D:\PictureDB\UI\commanders",
+    "ui_facilities": r"D:\PictureDB\UI\facilities",
+    "ui_investment": r"D:\PictureDB\UI\investment",
+    "ui_straits": r"D:\PictureDB\UI\straits",
+    "ui_auction": r"D:\PictureDB\UI\auction",
+    "ui_letters": r"D:\PictureDB\UI\letters",
+    "ui_alliances": r"D:\PictureDB\UI\alliances",
+    "ui_sanctions": r"D:\PictureDB\UI\sanctions",
+    "ui_contracts": r"D:\PictureDB\UI\contracts",
+    "ui_twitter": r"D:\PictureDB\UI\twitter",
+    "ui_security_roles": r"D:\PictureDB\UI\security_roles",
+    "ui_military_roles": r"D:\PictureDB\UI\military_roles",
 }
 
-# دسته‌های UI (منوهای اصلی) — برای پیش‌کش‌کردن در scripts/cache_media.py
+# دسته‌های UI (منوهای اصلی و فرعی) — برای پیش‌کش‌کردن در scripts/cache_media.py
 UI_CATEGORIES: tuple[str, ...] = (
     "ui_main",
     "ui_economy",
@@ -53,7 +79,62 @@ UI_CATEGORIES: tuple[str, ...] = (
     "ui_advisor",
     "ui_status",
     "ui_bank",
+    "ui_governance",
+    "ui_un",
+    "ui_industry",
+    "ui_factories",
+    "ui_bases",
+    "ui_satellite",
+    "ui_nuclear",
+    "ui_deployment",
+    "ui_interception",
+    "ui_commanders",
+    "ui_facilities",
+    "ui_investment",
+    "ui_straits",
+    "ui_auction",
+    "ui_letters",
+    "ui_alliances",
+    "ui_sanctions",
+    "ui_contracts",
+    "ui_twitter",
+    "ui_security_roles",
+    "ui_military_roles",
 )
+
+# نگاشت فالبک هوشمند: در صورتی که برای زیرمنویی هنوز عکسی گذاشته نشده باشد،
+# از عکس‌های باکیفیت دسته‌ی مادر استفاده می‌شود تا منو بدون عکس نماند.
+CATEGORY_FALLBACKS: dict[str, str] = {
+    # زیرمنوهای نظامی -> ui_military
+    "ui_industry": "ui_military",
+    "ui_factories": "ui_military",
+    "ui_bases": "ui_military",
+    "ui_satellite": "ui_military",
+    "ui_nuclear": "ui_military",
+    "ui_deployment": "ui_military",
+    "ui_interception": "ui_military",
+    "ui_commanders": "ui_military",
+    "ui_security_roles": "ui_military",
+    "ui_military_roles": "ui_military",
+    # زیرمنوهای اقتصاد -> ui_economy
+    "ui_facilities": "ui_economy",
+    "ui_investment": "ui_economy",
+    "ui_straits": "ui_economy",
+    "ui_auction": "ui_economy",
+    # زیرمنوهای دیپلماسی -> ui_diplomacy
+    "ui_letters": "ui_diplomacy",
+    "ui_alliances": "ui_diplomacy",
+    "ui_sanctions": "ui_diplomacy",
+    "ui_contracts": "ui_diplomacy",
+    "ui_twitter": "ui_diplomacy",
+    # سازمان ملل و حاکمیت
+    "ui_un": "ui_main",
+    "ui_governance": "ui_main",
+    # اخبار کانال‌ها
+    "news_military": "military",
+    "news_diplomacy": "diplomacy_travel",
+    "news_economy": "ui_economy",
+}
 
 _IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp"}
 
@@ -187,7 +268,7 @@ def _local_images(category: str) -> list[Path]:
     ]
 
 
-def _resolve_random_photo(category: str) -> tuple[object | None, Path | None]:
+def _resolve_random_photo(category: str, allow_fallback: bool = True) -> tuple[object | None, Path | None]:
     """یک عکس تصادفی برای یک دسته انتخاب می‌کند (بدون ارسال).
 
     خروجی: (photo, upload_path)
@@ -196,6 +277,7 @@ def _resolve_random_photo(category: str) -> tuple[object | None, Path | None]:
 
     اولویت‌ها (v1.10.5): ابتدا فایل‌های محلیِ هنوز کش‌نشده (تا به‌مرور همه کش شوند)،
     سپس file_idهای کش‌شده‌ی تصادفی (روی VPS بدون فولدر)، در نهایت هر فایل محلی.
+    در صورت نبود عکس، به دسته‌ی مادر fallback می‌کند.
     """
     cache = _load_cache()
     cached_ids = cache.get(category, [])
@@ -211,6 +293,12 @@ def _resolve_random_photo(category: str) -> tuple[object | None, Path | None]:
     if local:
         path = random.choice(local)
         return FSInputFile(str(path)), path
+
+    # در صورت نبود عکس، بررسی فالبک به دسته‌ی مادر
+    if allow_fallback and category in CATEGORY_FALLBACKS:
+        parent_cat = CATEGORY_FALLBACKS[category]
+        return _resolve_random_photo(parent_cat, allow_fallback=False)
+
     return None, None
 
 

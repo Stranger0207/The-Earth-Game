@@ -43,7 +43,7 @@ from ..services.news_service import send_log, send_to_admin_group
 from ..services.security_role_service import validate_role_page
 from ..states.forms import MilitaryCasualtyForm, MilitaryRoleDraftForm
 from ..utils.numbers import fa_number
-from ..utils.screens import safe_edit
+from ..utils.screens import safe_edit, show_menu
 from ..utils.ui import DIVIDER, STYLE_MAIN, STYLE_NO, STYLE_OK, header
 from .deps import NO_COUNTRY_TEXT, assert_feature, get_player_country
 
@@ -86,7 +86,7 @@ async def cb_military_roles_home(
         "تلفات طرفین را ثبت و پایان عملیات را اعلام می‌نماید.\n\n"
         "گزینه مورد نظر را انتخاب کنید:"
     )
-    await safe_edit(call, text, reply_markup=military_roles_home_kb())
+    await show_menu(call, text, reply_markup=military_roles_home_kb(), image_key="military_roles")
 
 
 # ============================================================

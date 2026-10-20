@@ -72,7 +72,7 @@ from ..services.news_service import publish_news, send_log, send_to_admin_group
 from ..states import FacilityForm, SaleForm, TariffForm
 from ..utils.formatting import render_economy_panel, render_reserves_panel
 from ..utils.numbers import fa_money, fa_number, parse_amount
-from ..utils.screens import safe_edit
+from ..utils.screens import safe_edit, show_menu
 
 from ..utils.ui import STYLE_MAIN, STYLE_NO, STYLE_OK, header
 from .deps import NO_COUNTRY_TEXT, assert_feature, get_player_country
@@ -209,9 +209,11 @@ async def cb_build(
     if not await assert_feature(call, session, country, "econ.facility"):
         return
     await state.set_state(FacilityForm.choosing_type)
-    await safe_edit(call,
+    await show_menu(
+        call,
         "🏗 نوع تأسیساتی که می‌خواهید احداث کنید را انتخاب کنید:",
         reply_markup=facility_types_kb(),
+        image_key="facilities",
     )
 
 
@@ -245,13 +247,14 @@ async def cb_my_facilities(call: CallbackQuery, session: AsyncSession, db_user: 
         if country.is_vip
         else f"📌 سقف هر نوع تأسیسات: {fa_number(FACILITY_TOTAL_LIMIT_NON_VIP)} عدد."
     )
-    await safe_edit(
+    await show_menu(
         call,
         header("تأسیسات من", "🏭") + "\n\n"
         f"مجموع تأسیسات: <b>{fa_number(len(facilities))}</b>\n"
         f"{limit_note}\n\n"
         "<i>برای دیدن فهرست هر نوع، روی آن بزنید:</i>",
         reply_markup=my_facilities_menu_kb(counts),
+        image_key="facilities",
     )
 
 
@@ -549,9 +552,11 @@ async def cb_facility_back_type(call: CallbackQuery, state: FSMContext) -> None:
     """بازگشت به انتخاب نوع تأسیسات."""
     await call.answer()
     await state.set_state(FacilityForm.choosing_type)
-    await safe_edit(call,
+    await show_menu(
+        call,
         "🏗 نوع تأسیساتی که می‌خواهید احداث کنید را انتخاب کنید:",
         reply_markup=facility_types_kb(),
+        image_key="facilities",
     )
 
 
@@ -692,8 +697,11 @@ async def cb_sell(
         return
 
     await state.set_state(SaleForm.choosing_resource)
-    await safe_edit(call,
-        "💱 کدام منبع را می‌خواهید بفروشید؟", reply_markup=sell_resources_kb()
+    await show_menu(
+        call,
+        "💱 کدام منبع را می‌خواهید بفروشید؟",
+        reply_markup=sell_resources_kb(),
+        image_key="economy",
     )
 
 
@@ -732,8 +740,11 @@ async def cb_sale_back_resource(call: CallbackQuery, state: FSMContext) -> None:
     """بازگشت به انتخاب منبع فروش."""
     await call.answer()
     await state.set_state(SaleForm.choosing_resource)
-    await safe_edit(call,
-        "💱 کدام منبع را می‌خواهید بفروشید؟", reply_markup=sell_resources_kb()
+    await show_menu(
+        call,
+        "💱 کدام منبع را می‌خواهید بفروشید؟",
+        reply_markup=sell_resources_kb(),
+        image_key="economy",
     )
 
 
@@ -1342,7 +1353,7 @@ async def cb_tariffs(call: CallbackQuery, session: AsyncSession, db_user: User) 
                 lines.append(f"• {tc.flag} {tc.name_fa}: {fa_number(t.percent)}٪")
     else:
         lines.append("هیچ تعرفه‌ی فعالی وجود ندارد.")
-    await safe_edit(call,"\n".join(lines), reply_markup=_tariff_menu_kb())
+    await show_menu(call, "\n".join(lines), reply_markup=_tariff_menu_kb(), image_key="economy")
 
 
 @router.callback_query(F.data == "tariff:add")

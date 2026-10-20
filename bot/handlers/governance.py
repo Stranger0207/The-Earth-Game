@@ -64,7 +64,7 @@ from ..enums import AdminGroupType
 from ..services.news_service import send_log, send_to_admin_group
 from ..states import AdminLawResultForm, GovernanceForm, LawForm
 from ..utils.numbers import fa_money, fa_number, parse_amount
-from ..utils.screens import safe_edit
+from ..utils.screens import safe_edit, show_menu
 from ..utils.ui import STYLE_MAIN, STYLE_NO, STYLE_OK, header
 from .deps import NO_COUNTRY_TEXT, assert_feature, get_player_country
 
@@ -80,7 +80,6 @@ settings = get_settings()
 async def cb_governance_menu(call: CallbackQuery, state: FSMContext) -> None:
     await state.clear()
     await call.answer()
-    from ..utils.screens import show_menu
     await show_menu(
         call, header("بخش حاکمیت", "🏛"), governance_menu_kb(), image_key="governance"
     )
@@ -119,9 +118,10 @@ async def cb_system_menu(
 
     lines.append(f"\n🔄 تغییرات باقی‌مانده: <b>{fa_number(changes_left)}</b> از ۲")
 
-    await safe_edit(
+    await show_menu(
         call, "\n".join(lines),
         reply_markup=government_system_kb(has_govt, changes_left),
+        image_key="governance",
     )
 
 
@@ -280,7 +280,7 @@ async def cb_select_government(
 @router.callback_query(F.data == "gov:protests")
 async def cb_protest_menu(call: CallbackQuery) -> None:
     await call.answer()
-    await safe_edit(call, header("اعتراضات و رفراندوم", "✊"), reply_markup=protest_menu_kb())
+    await show_menu(call, header("اعتراضات و رفراندوم", "✊"), reply_markup=protest_menu_kb(), image_key="governance")
 
 
 @router.callback_query(F.data == "gov:active_protests")
@@ -522,7 +522,7 @@ async def cb_legislation(
     country = await get_player_country(session, db_user)
     if not await assert_feature(call, session, country, "gov.legislation"):
         return
-    await safe_edit(call, header("قانونگذاری", "📜"), reply_markup=legislation_menu_kb())
+    await show_menu(call, header("قانونگذاری", "📜"), reply_markup=legislation_menu_kb(), image_key="governance")
 
 
 # ---------- مالیات ----------
@@ -704,7 +704,7 @@ async def cb_visa_law(call: CallbackQuery, session: AsyncSession, db_user: User)
 
     data = await _build_visa_dashboard_data(session, country)
     text = _format_visa_dashboard_text(country, data)
-    await safe_edit(call, text, reply_markup=visa_law_dashboard_kb())
+    await show_menu(call, text, reply_markup=visa_law_dashboard_kb(), image_key="governance")
 
 
 @router.callback_query(F.data == "gov:visa_status")

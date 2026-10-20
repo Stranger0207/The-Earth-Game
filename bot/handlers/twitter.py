@@ -38,7 +38,7 @@ from ..services.news_service import send_log, send_log_photo
 from ..services.tweet_image_service import render_tweet_image
 from ..states.forms import TweetForm, TwitterOnboardingForm
 from ..utils.numbers import fa_number
-from ..utils.screens import safe_edit
+from ..utils.screens import safe_edit, show_menu
 from ..utils.ui import STYLE_MAIN, STYLE_NO, STYLE_OK
 from .deps import NO_COUNTRY_TEXT, assert_feature, get_player_country
 
@@ -110,7 +110,7 @@ async def cb_twitter_main(
         f"📊 <b>تعداد توییت‌های فصل:</b> {fa_number(t_count)}\n\n"
         "<i>از این بخش می‌توانید پیام‌ها، بیانیه‌ها و مواضع دیپلماتیک خود را در قالب اسکرین‌شات گرافیکی رسمی در کانال توییتر جهانی منتشر کنید.</i>"
     )
-    await safe_edit(call, text, reply_markup=_twitter_home_kb())
+    await show_menu(call, text, reply_markup=_twitter_home_kb(), image_key="twitter")
 
 
 # ============================================================

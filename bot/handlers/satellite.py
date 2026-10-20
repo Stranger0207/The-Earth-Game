@@ -42,7 +42,7 @@ from ..services import satellite_service
 from ..services.news_service import send_log, send_log_photo, send_photo_to_admin_group
 from ..states.satellite import SatelliteForm
 from ..utils.numbers import fa_money, fa_number
-from ..utils.screens import safe_edit
+from ..utils.screens import safe_edit, show_menu
 from ..utils.ui import header, STYLE_NO, STYLE_OK
 from .deps import NO_COUNTRY_TEXT, assert_feature, get_player_country
 
@@ -75,7 +75,7 @@ async def cb_sat_hub(call: CallbackQuery, state: FSMContext, session: AsyncSessi
         "به مرکز توسعه و پرتاب ماهواره‌های فضایی خوش آمدید.\n"
         "می‌توانید وارد بخش ماهواره‌های نظامی (ویژه VIP) یا ماهواره‌های اقتصادی-تجاری شوید:"
     )
-    await safe_edit(call, text, reply_markup=satellite_hub_kb())
+    await show_menu(call, text, reply_markup=satellite_hub_kb(), image_key="satellite")
 
 
 # ============================================================
@@ -110,7 +110,7 @@ async def cb_sat_mil_menu(call: CallbackQuery, state: FSMContext, session: Async
         f"💵 **هزینه هر بار رصد:** {fa_money(MIL_SAT_RECON_COST)}\n"
         f"⏳ **کول‌داون رصد:** هر {MIL_SAT_SCAN_COOLDOWN_HOURS} ساعت یک‌بار"
     )
-    await safe_edit(call, text, reply_markup=military_satellite_kb())
+    await show_menu(call, text, reply_markup=military_satellite_kb(), image_key="satellite")
 
 
 @router.callback_query(F.data.in_(["sat:launch", "sat:mil_launch"]))
@@ -374,7 +374,7 @@ async def cb_sat_econ_menu(call: CallbackQuery, state: FSMContext, session: Asyn
             "💎 **هزینه فعالسازی دائمی این آپشن:** ۵۰ هزار تومان\n\n"
             "آیا می‌خواهید با پرداخت کارت‌به‌کارت این آپشن را برای کشورتان فعال کنید؟"
         )
-        await safe_edit(call, text, reply_markup=economic_satellite_kb(is_unlocked=False))
+        await show_menu(call, text, reply_markup=economic_satellite_kb(is_unlocked=False), image_key="satellite")
         return
 
     # آپشن فعال است؛ بررسی ماهواره فعال کشور
@@ -391,10 +391,11 @@ async def cb_sat_econ_menu(call: CallbackQuery, state: FSMContext, session: Asyn
             f" • نفت سوخت موشک: {ECON_SAT_OIL_COST} میلیون بشکه\n\n"
             f"💰 **سود تضمینی سطح ۱:** ۱۰۰ میلیون دلار هر ۷۲ ساعت"
         )
-        await safe_edit(
+        await show_menu(
             call,
             text,
             reply_markup=economic_satellite_kb(is_unlocked=True, has_active_sat=False),
+            image_key="satellite",
         )
         return
 

@@ -112,7 +112,7 @@ async def cmd_start(
                 "به مقر فرماندهی سازمان ملل متحد (نیویورک) خوش آمدید.\n"
                 "ارکان بین‌المللی، آژانس انرژی اتمی، دیوان دادگستری لاهه و مجمع عمومی در اختیار شما هستند."
             )
-            await show_menu(message, un_title, un_main_menu_kb(), image_key="main")
+            await show_menu(message, un_title, un_main_menu_kb(), image_key="un")
             return
 
         await show_menu(
@@ -197,7 +197,7 @@ async def cb_check_force_join(
                 "به مقر فرماندهی سازمان ملل متحد (نیویورک) خوش آمدید.\n"
                 "ارکان بین‌المللی، آژانس انرژی اتمی، دیوان دادگستری لاهه و مجمع عمومی در اختیار شما هستند."
             )
-            await show_menu(call.message, un_title, un_main_menu_kb(), image_key="main")
+            await show_menu(call.message, un_title, un_main_menu_kb(), image_key="un")
             return
 
         await show_menu(

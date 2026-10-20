@@ -32,7 +32,7 @@ from ..services.news_service import send_log, send_log_photo
 from ..services.letter_image_service import render_diplomatic_letter_image
 from ..states import MailForm
 from ..utils.numbers import fa_number
-from ..utils.screens import safe_edit
+from ..utils.screens import safe_edit, show_menu
 from ..utils.ui import DIVIDER, PICK_OFF, PICK_ON, STYLE_MAIN, STYLE_OK
 from .deps import NO_COUNTRY_TEXT, assert_feature, get_player_country
 
@@ -97,7 +97,12 @@ async def cb_mail(
     country = await get_player_country(session, db_user)
     if not await assert_feature(call, session, country, "dip.letter"):
         return
-    await safe_edit(call,"✉️ <b>سیستم نامه‌رسان</b>\n\nیک گزینه را انتخاب کنید:", reply_markup=_mail_menu_kb())
+    await show_menu(
+        call,
+        "✉️ <b>سیستم نامه‌رسان</b>\n\nیک گزینه را انتخاب کنید:",
+        reply_markup=_mail_menu_kb(),
+        image_key="letters",
+    )
 
 
 # ----- نامه به یک کشور -----

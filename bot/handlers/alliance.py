@@ -20,7 +20,7 @@ from ..loader import bot
 from ..services.news_service import send_log
 from ..states import AllianceForm
 from ..utils.numbers import fa_number
-from ..utils.screens import safe_edit
+from ..utils.screens import safe_edit, show_menu
 from ..utils.ui import PICK_OFF, PICK_ON, STYLE_MAIN, STYLE_NO, STYLE_OK
 from .deps import NO_COUNTRY_TEXT, assert_feature, get_player_country
 
@@ -64,9 +64,11 @@ async def cb_alliance(
     country = await get_player_country(session, db_user)
     if not await assert_feature(call, session, country, "dip.alliance"):
         return
-    await safe_edit(call,
+    await show_menu(
+        call,
         "🤝 <b>اتحادها</b>\n\nیک گزینه را انتخاب کنید:",
         reply_markup=_alliance_menu_kb(),
+        image_key="alliances",
     )
 
 

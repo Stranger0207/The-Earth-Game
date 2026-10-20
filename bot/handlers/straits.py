@@ -39,7 +39,7 @@ from ..services.news_service import publish_news, send_log
 from ..config import get_settings
 from ..states.forms import StraitForm
 from ..utils.numbers import fa_money, fa_number, parse_amount
-from ..utils.screens import safe_edit
+from ..utils.screens import safe_edit, show_menu
 from ..utils.ui import STYLE_MAIN, STYLE_NO, STYLE_OK
 from .deps import NO_COUNTRY_TEXT, assert_feature, get_player_country
 
@@ -87,7 +87,7 @@ async def cb_menu_straits(
         f"کشور: {country.flag} {country.name_fa}\n\n"
         "در این بخش می‌توانید وضعیت تردد کشتی‌ها، عوارض عبور و مسدودسازی تنگه‌های تحت کنترل کشورتان را مدیریت کنید:\n"
     )
-    await safe_edit(call, text, reply_markup=straits_menu_kb(straits))
+    await show_menu(call, text, reply_markup=straits_menu_kb(straits), image_key="straits")
 
 
 # ============================================================

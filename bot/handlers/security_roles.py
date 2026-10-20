@@ -35,7 +35,7 @@ from ..services.security_role_service import (
 )
 from ..states.forms import SecurityRoleDraftForm, SecurityRoleRejectForm
 from ..utils.numbers import fa_money, fa_number
-from ..utils.screens import safe_edit
+from ..utils.screens import safe_edit, show_menu
 from ..utils.ui import DIVIDER, STYLE_MAIN, STYLE_NO, STYLE_OK, header
 from .deps import NO_COUNTRY_TEXT, assert_feature, get_player_country
 
@@ -76,7 +76,7 @@ async def cb_security_roles_home(
         "• در صورت رد رول توسط مدیریت، کل مبلغ ۲۰ میلیون دلار به خزانه کشور بازگردانده می‌شود.\n\n"
         "گزینه مورد نظر را انتخاب کنید:"
     )
-    await safe_edit(call, text, reply_markup=security_roles_home_kb())
+    await show_menu(call, text, reply_markup=security_roles_home_kb(), image_key="security_roles")
 
 
 # ============================================================

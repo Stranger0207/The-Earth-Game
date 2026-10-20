@@ -60,7 +60,7 @@ from ..services import nuclear_service
 from ..services.news_service import send_log
 from ..states.nuclear import NuclearForm
 from ..utils.numbers import fa_money, fa_number
-from ..utils.screens import safe_edit
+from ..utils.screens import safe_edit, show_menu
 from ..utils.ui import STYLE_MAIN, STYLE_NO, STYLE_OK, header
 from .deps import NO_COUNTRY_TEXT, assert_feature, get_player_country
 
@@ -120,7 +120,7 @@ async def cb_nuclear_menu(call: CallbackQuery, state: FSMContext, session: Async
         "هر اقدام «شاخص افشا» را بالا می‌برد — اگر برنامه کشف شود منتظر واکنش جهانی باشید!\n\n"
         f"🚩 وضعیت فعلی: <b>{NUCLEAR_PHASE_FA[phase]}</b>"
     )
-    await safe_edit(call, text, reply_markup=nuclear_main_menu_kb())
+    await show_menu(call, text, reply_markup=nuclear_main_menu_kb(), image_key="nuclear")
 
 
 @router.callback_query(F.data == "nuc:status")

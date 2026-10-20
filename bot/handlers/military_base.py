@@ -28,7 +28,7 @@ from ..services import base_service
 from ..services.news_service import send_log
 from ..states.military_base import MilitaryBaseForm
 from ..utils.numbers import fa_money, fa_number, parse_amount
-from ..utils.screens import safe_edit
+from ..utils.screens import safe_edit, show_menu
 from ..utils.ui import STYLE_NO, STYLE_OK, header
 from .deps import NO_COUNTRY_TEXT, assert_feature, get_player_country
 
@@ -53,7 +53,7 @@ async def cb_base_menu(call: CallbackQuery, state: FSMContext, session: AsyncSes
         + "\n\nپایگاه‌های نظامی محل استقرار نیروها و خط مقدم پشتیبانی نبردها هستند.\n"
         "کشورهای VIP می‌توانند در کشور خود یا با موافقت کشور میزبان، پایگاه نظامی بسازند."
     )
-    await safe_edit(call, text, reply_markup=base_main_menu_kb())
+    await show_menu(call, text, reply_markup=base_main_menu_kb(), image_key="bases")
 
 
 @router.callback_query(F.data == "mbase:build")

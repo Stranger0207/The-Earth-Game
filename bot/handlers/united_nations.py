@@ -178,7 +178,7 @@ async def cb_un_main(call: CallbackQuery, session: AsyncSession, db_user: User) 
         f"بودجه صندوق بشردوستانه: <b>{fa_number(country.budget / 1e6)} میلیون دلار</b>\n\n"
         "بخش مورد نظر را انتخاب نمایید:"
     )
-    await safe_edit(call, text, reply_markup=un_main_menu_kb())
+    await show_menu(call, text, reply_markup=un_main_menu_kb(), image_key="un")
 
 
 # ============================================================

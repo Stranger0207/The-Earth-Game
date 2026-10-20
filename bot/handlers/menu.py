@@ -37,7 +37,7 @@ async def cb_main(
     if country and country.name_en == "UN":
         from ..keyboards.united_nations import un_main_menu_kb
         un_title = header("مقر فرماندهی دبیرکل سازمان ملل متحد", "🇺🇳") + "\n\nدبیرکل محترم، ارکان سازمان ملل متحد در خدمت شماست."
-        await show_menu(call, un_title, un_main_menu_kb(), image_key="main")
+        await show_menu(call, un_title, un_main_menu_kb(), image_key="un")
         return
 
     # بررسی قفل تالار مجمع عمومی
@@ -91,7 +91,7 @@ async def cb_status(
     if country.name_en == "UN":
         from ..keyboards.united_nations import un_main_menu_kb
         un_title = header("مقر فرماندهی دبیرکل سازمان ملل متحد", "🇺🇳") + "\n\nدبیرکل محترم، ارکان سازمان ملل متحد در خدمت شماست."
-        await show_menu(call, un_title, un_main_menu_kb(), image_key="main")
+        await show_menu(call, un_title, un_main_menu_kb(), image_key="un")
         return
     await show_menu(call, render_economy_panel(country), main_menu_kb(), image_key="status")
 
@@ -127,7 +127,7 @@ async def cb_cancel(call: CallbackQuery, state: FSMContext, session: AsyncSessio
     if country and country.name_en == "UN":
         from ..keyboards.united_nations import un_main_menu_kb
         un_title = header("مقر فرماندهی دبیرکل سازمان ملل متحد", "🇺🇳") + "\n\nدبیرکل محترم، ارکان سازمان ملل متحد در خدمت شماست."
-        await show_menu(call, un_title, un_main_menu_kb(), image_key="main")
+        await show_menu(call, un_title, un_main_menu_kb(), image_key="un")
         return
     await show_menu(call, PANEL_TITLE, main_menu_kb(), image_key="main")
 

@@ -73,7 +73,7 @@ from ..services.sanction_service import apply_sanction_effects
 from ..database.repositories import users as users_repo
 from ..states import CallForm, ContractForm, MeetingForm, SanctionForm, SpeechForm
 from ..utils.numbers import fa_number
-from ..utils.screens import safe_edit
+from ..utils.screens import safe_edit, show_menu
 from ..utils.ui import STYLE_MAIN, STYLE_NO, STYLE_OK, header
 from .deps import NO_COUNTRY_TEXT, assert_feature, get_player_country
 
@@ -1573,7 +1573,7 @@ async def cb_contracts(call: CallbackQuery, session: AsyncSession, db_user: User
             )
     builder.adjust(1)
     builder.row(InlineKeyboardButton(text="🔙 بازگشت به دیپلماسی", callback_data="menu:diplomacy", style=STYLE_MAIN))
-    await safe_edit(call, "\n".join(lines), reply_markup=builder.as_markup())
+    await show_menu(call, "\n".join(lines), reply_markup=builder.as_markup(), image_key="contracts")
 
 
 @router.callback_query(F.data.startswith("contract_view:"))
@@ -2288,8 +2288,11 @@ async def cb_sanction(
     country = await get_player_country(session, db_user)
     if not await assert_feature(call, session, country, "dip.sanction"):
         return
-    await safe_edit(call,
-        header("تحریم", "🚫") + "\n\nیک گزینه را انتخاب کنید:", reply_markup=sanction_menu_kb()
+    await show_menu(
+        call,
+        header("تحریم", "🚫") + "\n\nیک گزینه را انتخاب کنید:",
+        reply_markup=sanction_menu_kb(),
+        image_key="sanctions",
     )
 
 

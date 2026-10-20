@@ -632,6 +632,7 @@ async def cb_asmb_fly(call: CallbackQuery, session: AsyncSession, db_user: User)
     )
     await un_repo.add_participant(session, part)
 
+    await call.answer("✈️ پرواز اختصاصی به مقصد نیویورک آغاز شد.")
     await safe_edit(
         call,
         f"✈️ <b>پرواز رسمی به مقصد نیویورک آغاز شد:</b>\n\n"
@@ -669,7 +670,7 @@ async def cb_asmb_fly(call: CallbackQuery, session: AsyncSession, db_user: User)
         bot,
         f"🏛 <b>[مجمع عمومی سازمان ملل]</b> پذیرش دعوت و پرواز هیئت دیپلماتیک:\n"
         f"• کشور: {country.flag} <b>{country.name_fa}</b>\n"
-        f"• کاربر: <code>{db_user.tg_id}</code> (@{db_user.username or '—'})\n"
+        f"• کاربر: <code>{db_user.telegram_id}</code> (@{db_user.username or '—'})\n"
         f"• شناسه اجلاس: #{session_id}\n"
         f"• مدت پرواز: {flight_dur} دقیقه | ETA: {eta.strftime('%H:%M:%S UTC')}",
     )
@@ -717,7 +718,7 @@ async def cb_asmb_decline(call: CallbackQuery, session: AsyncSession, db_user: U
             bot,
             f"🏛 <b>[مجمع عمومی سازمان ملل]</b> رد دعوت اجلاس:\n"
             f"• کشور: {country.flag} <b>{country.name_fa}</b>\n"
-            f"• کاربر: <code>{db_user.tg_id}</code> (@{db_user.username or '—'})\n"
+            f"• کاربر: <code>{db_user.telegram_id}</code> (@{db_user.username or '—'})\n"
             f"از شرکت در اجلاس مجمع عمومی انصراف داد.",
         )
 

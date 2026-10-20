@@ -2894,6 +2894,7 @@ async def relay_chat_message(message: Message, session: AsyncSession, db_user: U
 
     # ۴) مجمع عمومی سازمان ملل متحد (صحن علنی تالار نیویورک)
     from ..database.repositories import united_nations as un_repo
+    from ..keyboards.united_nations import speech_reactions_kb
     active_asmb = await un_repo.get_active_session(session)
     if active_asmb is not None and active_asmb.status == "active":
         is_un_sec = (country.name_en == "UN")
@@ -2907,6 +2908,8 @@ async def relay_chat_message(message: Message, session: AsyncSession, db_user: U
             speaker_title = "دبیرکل سازمان ملل متحد" if is_un_sec else f"رهبر {country.flag} {country.name_fa}"
             hall_parts = await un_repo.list_participants_by_status(session, active_asmb.id, "inside_hall")
 
+            reactions_kb = speech_reactions_kb(active_asmb.id) if is_active_speaker else None
+
             for p in hall_parts:
                 if p.country_id == country.id:
                     continue
@@ -2916,6 +2919,7 @@ async def relay_chat_message(message: Message, session: AsyncSession, db_user: U
                         await bot.send_message(
                             member.owner_user_id,
                             f"🎙 <b>تریبون مجمع عمومی — {speaker_title}:</b>\n\n{prefix}{text}",
+                            reply_markup=reactions_kb,
                         )
                     except Exception:
                         pass
@@ -2989,9 +2993,12 @@ async def relay_speech_photo(message: Message, session: AsyncSession, db_user: U
     if active_q and is_active_speaker and caption:
         await un_repo.append_speech_transcript(session, active_q.id, f"[تصویر با شرح]: {caption}")
 
+    from ..keyboards.united_nations import speech_reactions_kb
+
     photo_id = message.photo[-1].file_id
     speaker_title = "دبیرکل سازمان ملل متحد" if is_un_sec else f"رهبر {country.flag} {country.name_fa}"
     full_caption = f"🎙 <b>تریبون مجمع عمومی — {speaker_title}:</b>\n\n{caption}".strip()
+    reactions_kb = speech_reactions_kb(active_asmb.id) if is_active_speaker else None
 
     hall_parts = await un_repo.list_participants_by_status(session, active_asmb.id, "inside_hall")
     for p in hall_parts:
@@ -3000,7 +3007,9 @@ async def relay_speech_photo(message: Message, session: AsyncSession, db_user: U
         member = await countries_repo.get_country(session, p.country_id)
         if member and member.owner_user_id:
             try:
-                await bot.send_photo(member.owner_user_id, photo_id, caption=full_caption)
+                await bot.send_photo(
+                    member.owner_user_id, photo_id, caption=full_caption, reply_markup=reactions_kb
+                )
             except Exception:
                 pass
 

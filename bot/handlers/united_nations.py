@@ -4,8 +4,10 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import random
+import time
 from datetime import datetime, timedelta, timezone
 
 from aiogram import F, Router
@@ -47,7 +49,9 @@ from ..keyboards.united_nations import (
     court_issues_kb,
     court_main_kb,
     iaea_inspection_action_kb,
+    resolution_admin_kb,
     resolution_vote_kb,
+    speech_reactions_kb,
     un_assembly_admin_kb,
     un_court_admin_kb,
     un_court_verdict_choices_kb,
@@ -97,6 +101,61 @@ async def _get_pres_name(session: AsyncSession, country: Country | None) -> str:
         if u and u.president_name:
             return u.president_name
     return country.name_fa
+
+
+# کول‌داون ۳۰ ثانیه‌ای تشویق برای هر کشور در طول جلسه: (session_id, country_id) -> timestamp
+_applause_cooldown: dict[tuple[int, int], float] = {}
+
+
+async def broadcast_to_assembly(
+    session: AsyncSession,
+    session_id: int,
+    text: str,
+    reply_markup=None,
+    photo_file_id: str | None = None,
+    include_lobby: bool = False,
+    include_un_sec: bool = True,
+    exclude_country_id: int | None = None,
+) -> int:
+    """ارسال پیام یا تصویر به تمام مشارکت‌کنندگان مجمع عمومی و دبیرکل سازمان ملل به صورت امن و غیرمسدودکننده."""
+    target_statuses = ["inside_hall"]
+    if include_lobby:
+        target_statuses.extend(["in_new_york", "in_flight"])
+
+    stmt = select(UNAssemblyParticipant).where(
+        UNAssemblyParticipant.session_id == session_id,
+        UNAssemblyParticipant.status.in_(target_statuses),
+    )
+    if exclude_country_id is not None:
+        stmt = stmt.where(UNAssemblyParticipant.country_id != exclude_country_id)
+
+    parts = (await session.execute(stmt)).scalars().all()
+    user_ids: set[int] = set()
+
+    for p in parts:
+        c = await countries_repo.get_country(session, p.country_id)
+        if c and c.owner_user_id:
+            user_ids.add(c.owner_user_id)
+
+    if include_un_sec:
+        un_country = await countries_repo.get_country_by_name(session, "UN")
+        if un_country and un_country.owner_user_id:
+            if exclude_country_id is None or un_country.id != exclude_country_id:
+                user_ids.add(un_country.owner_user_id)
+
+    sent_count = 0
+    for uid in user_ids:
+        try:
+            if photo_file_id:
+                await bot.send_photo(uid, photo_file_id, caption=text, reply_markup=reply_markup)
+            else:
+                await bot.send_message(uid, text, reply_markup=reply_markup)
+            sent_count += 1
+            await asyncio.sleep(0.02)
+        except Exception as exc:
+            logger.warning("broadcast_to_assembly failed for uid %s: %s", uid, exc)
+
+    return sent_count
 
 
 # ============================================================
@@ -548,7 +607,11 @@ async def cb_un_assembly(call: CallbackQuery, session: AsyncSession, db_user: Us
     await safe_edit(
         call,
         text,
-        reply_markup=un_assembly_admin_kb(active_session.id, is_active=(active_session.status == "active")),
+        reply_markup=un_assembly_admin_kb(
+            active_session.id,
+            is_active=(active_session.status == "active"),
+            voting_active=active_session.voting_active,
+        ),
     )
 
 
@@ -784,32 +847,16 @@ async def cb_asmb_enter_hall(call: CallbackQuery, session: AsyncSession, db_user
     part.joined_hall_at = _utcnow()
     await session.flush()
 
-    pres_name = await _get_pres_name(session, country)
-
-    # اعلان ورود به تمام افرادی که از قبل داخل تالار هستند و دبیرکل
-    in_hall_parts = await un_repo.list_participants_by_status(session, session_id, "inside_hall")
-    for p in in_hall_parts:
-        if p.country_id != country.id:
-            c = await countries_repo.get_country(session, p.country_id)
-            if c and c.owner_user_id:
-                try:
-                    await bot.send_message(
-                        c.owner_user_id,
-                        f"🔔 <b>رئیس‌جمهور محترم کشور {country.flag} {country.name_fa} ({pres_name}) وارد تالار مجمع عمومی شد.</b>",
-                    )
-                except Exception:
-                    pass
-
-    # اطلاع به دبیرکل
-    un_c = await countries_repo.get_country_by_name(session, "UN")
-    if un_c and un_c.owner_user_id:
-        try:
-            await bot.send_message(
-                un_c.owner_user_id,
-                f"🔔 <b>ورود به صحن:</b> رهبر کشور {country.flag} {country.name_fa} وارد تالار مجمع شد.",
-            )
-        except Exception:
-            pass
+    # اعلان ورود به تمام افرادی که داخل تالار هستند و دبیرکل
+    enter_txt = f"🔔 <b>رئیس‌جمهور محترم کشور {country.flag} {country.name_fa} وارد تالار مجمع عمومی شد.</b>"
+    await broadcast_to_assembly(
+        session,
+        session_id,
+        enter_txt,
+        include_lobby=False,
+        include_un_sec=True,
+        exclude_country_id=country.id,
+    )
 
     text = (
         header("تالار مجمع عمومی سازمان ملل متحد", "🏛") + "\n\n"
@@ -834,18 +881,25 @@ async def cb_asmb_exit_hall(call: CallbackQuery, session: AsyncSession, db_user:
         part.status = "in_new_york"
         await session.flush()
 
-    # اعلام خروج به حاضران تالار
-    in_hall_parts = await un_repo.list_participants_by_status(session, session_id, "inside_hall")
-    for p in in_hall_parts:
-        c = await countries_repo.get_country(session, p.country_id)
-        if c and c.owner_user_id:
-            try:
-                await bot.send_message(
-                    c.owner_user_id,
-                    f"🔕 <b>رئیس‌جمهور کشور {country.flag} {country.name_fa} از تالار مجمع خارج شد.</b>",
-                )
-            except Exception:
-                pass
+    # اگر کشوری که خارج می‌شود سخنران فعلی بود، تریبون آزاد شود
+    asmb = await un_repo.get_session(session, session_id)
+    if asmb and asmb.current_speaker_country_id == country.id:
+        asmb.current_speaker_country_id = None
+        asmb.speech_ends_at = None
+        curr = await un_repo.get_active_speech(session, session_id)
+        if curr and curr.country_id == country.id:
+            await un_repo.set_speaker_done(session, curr.id)
+
+    # اعلام خروج به حاضران تالار و دبیرکل
+    exit_txt = f"🔕 <b>رئیس‌جمهور محترم کشور {country.flag} {country.name_fa} از تالار مجمع خارج شد.</b>"
+    await broadcast_to_assembly(
+        session,
+        session_id,
+        exit_txt,
+        include_lobby=False,
+        include_un_sec=True,
+        exclude_country_id=country.id,
+    )
 
     asmb = await un_repo.get_session(session, session_id)
     is_closed = (asmb is None or asmb.status == "closed")
@@ -999,7 +1053,10 @@ async def cb_asmb_req_speech(call: CallbackQuery, session: AsyncSession, db_user
         status="waiting",
         requested_at=_utcnow(),
     )
-    await un_repo.add_speech_request(session, q)
+    res_q = await un_repo.add_speech_request(session, q)
+    if res_q.id != q.id:
+        await call.answer("شما قبلاً در صف سخنرانی مجمع اعلام حضور کرده‌اید.", show_alert=True)
+        return
 
     # اطلاع به دبیرکل
     un_c = await countries_repo.get_country_by_name(session, "UN")
@@ -1018,6 +1075,7 @@ async def cb_asmb_req_speech(call: CallbackQuery, session: AsyncSession, db_user
 @router.callback_query(F.data.startswith("un_asmb_next:"))
 async def cb_un_asmb_next(call: CallbackQuery, session: AsyncSession) -> None:
     """اعطای تریبون به نفر بعدی صف سخنرانی توسط دبیرکل."""
+    await call.answer()
     session_id = int(call.data.split(":")[1])
     asmb = await un_repo.get_session(session, session_id)
     if not asmb:
@@ -1025,20 +1083,28 @@ async def cb_un_asmb_next(call: CallbackQuery, session: AsyncSession) -> None:
 
     # بستن سخنران فعلی در صورت وجود
     curr = await un_repo.get_active_speech(session, session_id)
+    old_spk = None
     if curr:
         await un_repo.set_speaker_done(session, curr.id)
-        # آنالیز سخنرانی قبلی
         old_spk = await countries_repo.get_country(session, curr.country_id)
         if old_spk:
             pname = await _get_pres_name(session, old_spk)
-            await analyze_and_publish_speech(bot, old_spk.name_fa, pname, curr.speech_transcript, old_spk.is_vip)
+            asyncio.create_task(
+                analyze_and_publish_speech(bot, old_spk.name_fa, pname, curr.speech_transcript, old_spk.is_vip)
+            )
 
     nxt = await un_repo.get_next_speaker(session, session_id)
     if not nxt:
         asmb.current_speaker_country_id = None
         asmb.speech_ends_at = None
         await session.flush()
-        await call.answer("هیچ کشوری در صف نوبت سخنرانی نیست.", show_alert=True)
+        await call.answer("⚠️ در حال حاضر هیچ کشوری در صف سخنرانی اعلام حضور نکرده است.", show_alert=True)
+        await safe_edit(
+            call,
+            "⚠️ <b>در حال حاضر هیچ کشوری در صف سخنرانی اعلام حضور نکرده است.</b>\n\n"
+            "تریبون صحن علنی موقتاً در حالت استراحت قرار گرفت. کشورها می‌توانند با دکمه «✋ اعلام حضور» نوبت بگیرند.",
+            reply_markup=un_assembly_admin_kb(session_id, is_active=True, voting_active=asmb.voting_active),
+        )
         return
 
     now = _utcnow()
@@ -1052,27 +1118,50 @@ async def cb_un_asmb_next(call: CallbackQuery, session: AsyncSession) -> None:
     spk_country = await countries_repo.get_country(session, nxt.country_id)
     pname = await _get_pres_name(session, spk_country)
 
-    # اطلاع به همه حاضران تالار
-    in_hall_parts = await un_repo.list_participants_by_status(session, session_id, "inside_hall")
-    broadcast_txt = (
-        f"🎙 <b>تریبون مجمع عمومی سازمان ملل متحد:</b>\n\n"
-        f"هم‌اکنون نوبت سخنرانی جناب آقای <b>{pname}</b> رهبر محترم کشور {spk_country.flag} <b>{spk_country.name_fa}</b> آغاز شد.\n"
-        f"⏳ مدت زمان سخنرانی: <b>۵ دقیقه</b> (ارسال متن و عکس مجاز است)."
-    )
-    for p in in_hall_parts:
-        c = await countries_repo.get_country(session, p.country_id)
-        if c and c.owner_user_id:
-            try:
-                is_spk = (c.id == spk_country.id)
-                await bot.send_message(
-                    c.owner_user_id,
-                    broadcast_txt,
-                    reply_markup=assembly_hall_kb(session_id, is_speaker=is_spk),
-                )
-            except Exception:
-                pass
+    # ساخت پیام رسمی تغییر تریبون
+    if curr and old_spk:
+        broadcast_txt = (
+            f"🎙 <b>تغییر تریبون مجمع عمومی سازمان ملل</b>\n\n"
+            f"نوبت سخنرانی کشور {old_spk.flag} <b>{old_spk.name_fa}</b> به اتمام رسید "
+            f"و هم‌اکنون تریبون به کشور {spk_country.flag} <b>{spk_country.name_fa}</b> داده می‌شود! (مهلت سخنرانی: ۵ دقیقه)"
+        )
+    else:
+        broadcast_txt = (
+            f"🎙 <b>تریبون مجمع عمومی سازمان ملل</b> به کشور {spk_country.flag} <b>{spk_country.name_fa}</b> واگذار شد! "
+            f"(مهلت سخنرانی: ۵ دقیقه)"
+        )
 
-    await call.answer("تریبون به سخنران بعدی داده شد.")
+    # جامعه هدف: ارسال به تمام حاضرین داخل صحن + لابی نیویورک + پلیر سازمان ملل
+    await broadcast_to_assembly(
+        session,
+        session_id,
+        broadcast_txt,
+        include_lobby=True,
+        include_un_sec=True,
+        exclude_country_id=spk_country.id,
+    )
+
+    # ارسال پیام اختصاصی به همراه کیبورد سخنران برای خود کشور سخنران جدید
+    if spk_country and spk_country.owner_user_id:
+        try:
+            await bot.send_message(
+                spk_country.owner_user_id,
+                "🎙 <b>تریبون در اختیار شماست!</b>\n\n"
+                "به مدت ۵ دقیقه هر پیام متنی یا عکسی که بفرستید در صحن علنی مجمع منتشر می‌شود.",
+                reply_markup=assembly_hall_kb(session_id, is_speaker=True, voting_active=asmb.voting_active),
+            )
+        except Exception:
+            pass
+
+    # فیدبک و به‌روزرسانی پنل دبیرکل
+    await call.answer(f"تریبون به کشور {spk_country.name_fa} واگذار شد.")
+    await safe_edit(
+        call,
+        f"🎙 <b>تریبون صحن علنی واگذار شد:</b>\n\n"
+        f"• سخنران فعال: {spk_country.flag} <b>{spk_country.name_fa}</b> ({pname})\n"
+        f"• زمان پایان نطق: {nxt.ends_at.strftime('%H:%M:%S UTC')}",
+        reply_markup=un_assembly_admin_kb(session_id, is_active=True, voting_active=asmb.voting_active),
+    )
 
 
 @router.callback_query(F.data.startswith("asmb_end_speech:"))
@@ -1092,7 +1181,20 @@ async def cb_asmb_end_speech(call: CallbackQuery, session: AsyncSession, db_user
             asmb.speech_ends_at = None
 
         pname = await _get_pres_name(session, country)
-        await analyze_and_publish_speech(bot, country.name_fa, pname, curr.speech_transcript, country.is_vip)
+        asyncio.create_task(
+            analyze_and_publish_speech(bot, country.name_fa, pname, curr.speech_transcript, country.is_vip)
+        )
+
+        # اعلان پایان نطق به تالار و سازمان ملل
+        end_txt = f"⏹ <b>پایان سخنرانی:</b> سخنرانی کشور {country.flag} <b>{country.name_fa}</b> خاتمه یافت."
+        await broadcast_to_assembly(
+            session,
+            session_id,
+            end_txt,
+            include_lobby=False,
+            include_un_sec=True,
+            exclude_country_id=country.id,
+        )
 
     await call.answer("سخنرانی شما پایان یافت و نطق شما توسط هوش مصنوعی آنالیز شد.", show_alert=True)
     await safe_edit(call, "⏹ سخنرانی شما خاتمه یافت.", reply_markup=assembly_hall_kb(session_id, is_speaker=False))
@@ -1106,24 +1208,36 @@ async def cb_asmb_applaud(call: CallbackQuery, session: AsyncSession, db_user: U
     if not country:
         return
 
-    in_hall_parts = await un_repo.list_participants_by_status(session, session_id, "inside_hall")
-    for p in in_hall_parts:
-        c = await countries_repo.get_country(session, p.country_id)
-        if c and c.owner_user_id and c.id != country.id:
-            try:
-                await bot.send_message(
-                    c.owner_user_id,
-                    f"👏 هیئت دیپلماتیک کشور {country.flag} {country.name_fa} سخنران را تشویق کرد.",
-                )
-            except Exception:
-                pass
-    await call.answer("تشویق ارسال شد.")
+    now_ts = time.time()
+    last_ts = _applause_cooldown.get((session_id, country.id), 0.0)
+    if now_ts - last_ts < 30.0:
+        rem_sec = int(30.0 - (now_ts - last_ts))
+        await call.answer(f"⏳ لطفاً {rem_sec} ثانیه دیگر برای تشویق مجدد صبر کنید.", show_alert=True)
+        return
+    _applause_cooldown[(session_id, country.id)] = now_ts
+
+    asmb = await un_repo.get_session(session, session_id)
+    spk_name = "سخنران"
+    if asmb and asmb.current_speaker_country_id:
+        spk_c = await countries_repo.get_country(session, asmb.current_speaker_country_id)
+        if spk_c:
+            spk_name = f"کشور {spk_c.flag} {spk_c.name_fa}"
+
+    applaud_txt = f"👏 <b>هیئت نمایندگی کشور {country.flag} {country.name_fa} سخنرانی {spk_name} را تشویق کرد!</b>"
+    await broadcast_to_assembly(
+        session,
+        session_id,
+        applaud_txt,
+        include_lobby=False,
+        include_un_sec=True,
+        exclude_country_id=country.id,
+    )
+    await call.answer("👏 تشویق شما در تالار ثبت شد.")
 
 
 @router.callback_query(F.data.startswith("asmb_walkout:"))
 async def cb_asmb_walkout(call: CallbackQuery, session: AsyncSession, db_user: User) -> None:
     """ترک اعتراضی تالار (Walkout)."""
-    await call.answer("صحن تالار را به نشانه اعتراض ترک نمودید.")
     session_id = int(call.data.split(":")[1])
     country = await get_player_country(session, db_user)
     if not country:
@@ -1135,19 +1249,29 @@ async def cb_asmb_walkout(call: CallbackQuery, session: AsyncSession, db_user: U
         part.walkout = True
         await session.flush()
 
-    # اعلام ترک اعتراضی به همه حاضران
-    in_hall_parts = await un_repo.list_participants_by_status(session, session_id, "inside_hall")
-    for p in in_hall_parts:
-        c = await countries_repo.get_country(session, p.country_id)
-        if c and c.owner_user_id:
-            try:
-                await bot.send_message(
-                    c.owner_user_id,
-                    f"🚶‍♂️ <b>اعتراض دیپلماتیک شدید:</b> هیئت کشور {country.flag} {country.name_fa} در اعتراض به سخنرانی جاری، صحن علنی مجمع عمومی را ترک کرد!",
-                )
-            except Exception:
-                pass
+    asmb = await un_repo.get_session(session, session_id)
+    spk_name = "سخنران"
+    if asmb and asmb.current_speaker_country_id:
+        spk_c = await countries_repo.get_country(session, asmb.current_speaker_country_id)
+        if spk_c:
+            spk_name = f"{spk_c.flag} {spk_c.name_fa}"
 
+    walkout_txt = (
+        f"🚨🚪 <b>حرکت اعتراضی در مجمع عمومی!</b> رئیس‌جمهور کشور {country.flag} <b>{country.name_fa}</b> "
+        f"در اعتراض به سخنرانی <b>{spk_name}</b>، صحن علنی مجمع عمومی سازمان ملل را ترک کرد!"
+    )
+    await broadcast_to_assembly(
+        session,
+        session_id,
+        walkout_txt,
+        include_lobby=False,
+        include_un_sec=True,
+        exclude_country_id=country.id,
+    )
+    await publish_news(bot, NewsCategory.DIPLOMACY, walkout_txt)
+    await send_log(bot, f"🏛 [مجمع عمومی / ترک اعتراضی] {country.name_fa} در اعتراض به {spk_name} صحن را ترک کرد.")
+
+    await call.answer("صحن تالار را به نشانه اعتراض ترک نمودید.")
     await safe_edit(
         call,
         "🚶‍♂️ شما در اعتراض به مواضع سخنران، صحن تالار را ترک نمودید و به لابی نیویورک بازگشتید.",
@@ -1270,7 +1394,7 @@ async def msg_asmb_vote_topic(message: Message, state: FSMContext, session: Asyn
     asmb = await un_repo.get_session(session, session_id)
     if asmb:
         asmb.voting_active = True
-        await session.flush()
+        await session.commit()
 
     # ارسال برگه رای‌گیری به کلیه کشورهای داخل تالار
     in_hall_parts = await un_repo.list_participants_by_status(session, session_id, "inside_hall")
@@ -1292,7 +1416,8 @@ async def msg_asmb_vote_topic(message: Message, state: FSMContext, session: Asyn
                 pass
 
     await message.answer(
-        f"✅ رای‌گیری با موضوع «{topic}» در صحن علنی آغاز شد و دکمه‌های رای‌گیری برای حاضران فعال گردید."
+        f"✅ رای‌گیری با موضوع «{topic}» در صحن علنی آغاز شد و دکمه‌های رای‌گیری برای حاضران فعال گردید.",
+        reply_markup=un_assembly_admin_kb(session_id, is_active=True, voting_active=True),
     )
 
 
@@ -1308,20 +1433,129 @@ async def cb_asmb_vote_cast(call: CallbackQuery, session: AsyncSession, db_user:
         "asmb_v_no": ("🔴 مخالف", "no"),
         "asmb_v_abs": ("⚪️ ممتنع", "abstain"),
     }
-    label, _ = vote_map.get(action, ("—", "abstain"))
-    await call.answer(f"رای {label} شما با موفقیت در صحن ثبت شد.", show_alert=True)
+    label, vote_key = vote_map.get(action, ("—", "abstain"))
 
     country = await get_player_country(session, db_user)
-    if country:
-        un_c = await countries_repo.get_country_by_name(session, "UN")
-        if un_c and un_c.owner_user_id:
-            try:
-                await bot.send_message(
-                    un_c.owner_user_id,
-                    f"🗳 <b>رای جدید در صحن مجمع:</b>\nکشور {country.flag} {country.name_fa} رای <b>{label}</b> خود را ثبت کرد.",
-                )
-            except Exception:
-                pass
+    if not country:
+        await call.answer("کشوری برای شما ثبت نشده است.", show_alert=True)
+        return
+
+    asmb = await un_repo.get_session(session, session_id)
+    if not asmb or not asmb.voting_active:
+        await call.answer("رای‌گیری فعالی در صحن در جریان نیست.", show_alert=True)
+        return
+
+    part = await un_repo.get_participant(session, session_id, country.id)
+    if not part:
+        await call.answer("شما در این اجلاس حضور ندارید.", show_alert=True)
+        return
+
+    part.last_vote = vote_key
+    await session.commit()
+
+    await call.answer(f"رای {label} شما با موفقیت در صحن ثبت شد.", show_alert=True)
+
+    # اطلاع‌رسانی ثبت رای به کل حاضران در صحن و سازمان ملل
+    vote_announcement = (
+        f"🗳 <b>رای جدید در صحن مجمع عمومی:</b>\n"
+        f"کشور {country.flag} <b>{country.name_fa}</b> رای <b>{label}</b> خود را ثبت کرد."
+    )
+    await broadcast_to_assembly(
+        session,
+        session_id,
+        vote_announcement,
+        include_lobby=False,
+        include_un_sec=True,
+        exclude_country_id=country.id,
+    )
+
+
+@router.callback_query(F.data.startswith("asmb_vote_end:"))
+async def cb_asmb_vote_end(call: CallbackQuery, session: AsyncSession, db_user: User) -> None:
+    """پایان رسمی رای‌گیری در صحن، شمارش آرا و اعلام نتیجه به اعضا و کانال خبر."""
+    session_id = int(call.data.split(":")[1])
+    asmb = await un_repo.get_session(session, session_id)
+    if not asmb:
+        await call.answer("اجلاس یافت نشد.", show_alert=True)
+        return
+
+    asmb.voting_active = False
+
+    # شمارش آرا از شرکت‌کنندگان داخل صحن
+    in_hall_parts = await un_repo.list_participants_by_status(session, session_id, "inside_hall")
+    yes_count = 0
+    no_count = 0
+    abs_count = 0
+    voted_lines = []
+
+    for p in in_hall_parts:
+        c = await countries_repo.get_country(session, p.country_id)
+        c_label = f"{c.flag} {c.name_fa}" if c else f"کشور #{p.country_id}"
+        if p.last_vote == "yes":
+            yes_count += 1
+            voted_lines.append(f"• {c_label}: 🟢 موافق")
+        elif p.last_vote == "no":
+            no_count += 1
+            voted_lines.append(f"• {c_label}: 🔴 مخالف")
+        elif p.last_vote == "abstain":
+            abs_count += 1
+            voted_lines.append(f"• {c_label}: ⚪️ ممتنع")
+        # ریست رای برای موضوعات بعدی
+        p.last_vote = None
+
+    await session.commit()
+
+    total_votes = yes_count + no_count + abs_count
+    if total_votes == 0:
+        outcome = "بدون رای ⚠️"
+        outcome_badge = "⚠️"
+    elif yes_count > no_count:
+        outcome = "تصویب شد ✅"
+        outcome_badge = "✅"
+    else:
+        outcome = "رد شد ❌"
+        outcome_badge = "❌"
+
+    result_txt = (
+        f"📊 <b>پایان رای‌گیری در صحن علنی مجمع عمومی سازمان ملل</b>\n\n"
+        f"نتیجه نهایی: {outcome_badge} <b>{outcome}</b>\n\n"
+        f"🟢 آراء موافق: <b>{yes_count}</b>\n"
+        f"🔴 آراء مخالف: <b>{no_count}</b>\n"
+        f"⚪️ آراء ممتنع: <b>{abs_count}</b>\n"
+        f"👥 کل آرای ثبت‌شده: <b>{total_votes}</b>\n"
+    )
+    if voted_lines:
+        result_txt += "\n<b>ریز آرای ثبت‌شده:</b>\n" + "\n".join(voted_lines[:20])
+
+    await call.answer("رای‌گیری با موفقیت به پایان رسید.")
+
+    # اعلان به تمام حاضرین تالار، لابی و پلیر سازمان ملل
+    await broadcast_to_assembly(
+        session,
+        session_id,
+        result_txt,
+        include_lobby=True,
+        include_un_sec=True,
+    )
+
+    # انتشار در اخبار دیپلماسی و لاگ
+    await publish_news(
+        bot,
+        NewsCategory.DIPLOMACY,
+        f"📊 <b>نتیجه رای‌گیری در مجمع عمومی سازمان ملل:</b>\n"
+        f"طرح مورد بررسی در صحن علنی با {yes_count} موافق، {no_count} مخالف و {abs_count} ممتنع <b>{outcome}</b>.",
+    )
+    await send_log(
+        bot,
+        f"📊 پایان رای‌گیری اجلاس #{asmb.session_number}: {outcome} (موافق: {yes_count}, مخالف: {no_count}, ممتنع: {abs_count})",
+    )
+
+    # آپدیت کیبورد پنل برای سازمان ملل
+    await safe_edit(
+        call,
+        f"✅ <b>رای‌گیری صحن مختومه شد.</b>\n\n{result_txt}",
+        reply_markup=un_assembly_admin_kb(session_id, is_active=True, voting_active=False),
+    )
 
 
 # ============================================================
@@ -2032,7 +2266,7 @@ async def msg_res_body(message: Message, state: FSMContext, session: AsyncSessio
 
 @router.callback_query(F.data == "un_res_list")
 async def cb_un_res_list(call: CallbackQuery, session: AsyncSession) -> None:
-    """مشاهده لیست و وضعیت آرای قطعنامه‌ها."""
+    """مشاهده لیست و وضعیت آرای قطعنامه‌ها با امکان مدیریت برای دبیرکل."""
     await call.answer()
     resolutions = await un_repo.list_resolutions(session)
     if not resolutions:
@@ -2044,18 +2278,96 @@ async def cb_un_res_list(call: CallbackQuery, session: AsyncSession) -> None:
         return
 
     text = "📜 <b>فهرست آخرین قطعنامه‌های سازمان ملل:</b>\n\n"
+    builder = InlineKeyboardBuilder()
     for r in resolutions[:10]:
         votes = await un_repo.get_resolution_votes(session, r.id)
         st_icon = "🗳" if r.status == "voting" else ("✅" if r.status == "passed" else "❌")
+        st_fa = {"voting": "در حال رای‌گیری", "passed": "تصویب‌شده", "rejected": "رد شده"}.get(r.status, r.status)
         text += (
-            f"{st_icon} <b>{r.resolution_number}</b>: {r.title}\n"
-            f"   وضعیت: {r.status} | موافق: {votes.get('yes', 0)} | مخالف: {votes.get('no', 0)} | ممتنع: {votes.get('abstain', 0)}\n\n"
+            f"{st_icon} <b>قطعنامه {r.resolution_number}</b>: {r.title}\n"
+            f"   وضعیت: <b>{st_fa}</b> | موافق: {votes.get('yes', 0)} | مخالف: {votes.get('no', 0)} | ممتنع: {votes.get('abstain', 0)}\n\n"
         )
+        if r.status == "voting":
+            builder.button(
+                text=f"🛑 پایان رای‌گیری قطعنامه {r.resolution_number}",
+                callback_data=f"res_close:{r.id}",
+            )
 
-    builder = InlineKeyboardBuilder()
     builder.button(text="🔙 بازگشت به منوی قطعنامه‌ها", callback_data="un:resolutions")
     builder.adjust(1)
     await safe_edit(call, text, reply_markup=builder.as_markup())
+
+
+@router.callback_query(F.data.startswith("res_close:"))
+async def cb_res_close(call: CallbackQuery, session: AsyncSession, db_user: User) -> None:
+    """پایان رای‌گیری رسمی قطعنامه، شمارش آرا و صدور نتیجه نهایی توسط دبیرکل."""
+    res_id = int(call.data.split(":")[1])
+    res = await un_repo.get_resolution(session, res_id)
+    if not res:
+        await call.answer("قطعنامه یافت نشد.", show_alert=True)
+        return
+
+    if res.status != "voting":
+        await call.answer("رای‌گیری این قطعنامه قبلاً بسته شده است.", show_alert=True)
+        return
+
+    votes = await un_repo.get_resolution_votes(session, res.id)
+    yes_count = votes.get("yes", 0)
+    no_count = votes.get("no", 0)
+    abs_count = votes.get("abstain", 0)
+    total_votes = yes_count + no_count + abs_count
+
+    if total_votes > 0 and yes_count > no_count:
+        res.status = "passed"
+        outcome_label = "تصویب شد ✅"
+        badge = "✅"
+    else:
+        res.status = "rejected"
+        outcome_label = "رد شد ❌"
+        badge = "❌"
+
+    res.closed_at = _utcnow()
+    await session.commit()
+
+    await call.answer(f"قطعنامه با وضعیت «{outcome_label}» مختومه شد.")
+
+    result_announcement = (
+        f"📜 <b>نتیجه نهایی رای‌گیری قطعنامه سازمان ملل:</b>\n\n"
+        f"شماره قطعنامه: <code>{res.resolution_number}</code>\n"
+        f"عنوان: <b>{res.title}</b>\n\n"
+        f"📊 <b>آمار آرا:</b>\n"
+        f"🟢 موافق: <b>{yes_count}</b>\n"
+        f"🔴 مخالف: <b>{no_count}</b>\n"
+        f"⚪️ ممتنع: <b>{abs_count}</b>\n"
+        f"👥 کل آرا: <b>{total_votes}</b>\n\n"
+        f"نتیجه نهایی: {badge} <b>{outcome_label}</b>"
+    )
+
+    # اطلاع‌رسانی به کلیه کشورهای دارای مالک
+    all_countries = await countries_repo.list_countries(session)
+    for c in all_countries:
+        if c.name_en != "UN" and c.is_claimed and c.owner_user_id:
+            try:
+                await bot.send_message(c.owner_user_id, result_announcement)
+            except Exception:
+                pass
+
+    await publish_news(
+        bot,
+        NewsCategory.DIPLOMACY,
+        f"📜 <b>نتیجه رای‌گیری قطعنامه #{res.resolution_number}:</b>\n"
+        f"پیش‌نویس قطعنامه «{res.title}» با {yes_count} موافق، {no_count} مخالف و {abs_count} ممتنع <b>{outcome_label}</b>.",
+    )
+    await send_log(
+        bot,
+        f"📜 پایان رای‌گیری قطعنامه #{res.resolution_number}: {outcome_label} (موافق: {yes_count}, مخالف: {no_count}, ممتنع: {abs_count})",
+    )
+
+    await safe_edit(
+        call,
+        f"✅ <b>قطعنامه مختومه شد.</b>\n\n{result_announcement}",
+        reply_markup=un_resolutions_menu_kb(),
+    )
 
 
 @router.callback_query(F.data.startswith("res_vote:"))

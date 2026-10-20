@@ -119,6 +119,8 @@ _COLUMN_MIGRATIONS = [
     # امکان توقف/ادامه تولید کارخانه‌ها و تأسیسات
     ("facilities", "active", "BOOLEAN NOT NULL DEFAULT TRUE"),
     ("military_factories", "active", "BOOLEAN NOT NULL DEFAULT TRUE"),
+    # رای‌گیری صحن علنی مجمع عمومی سازمان ملل
+    ("un_assembly_participants", "last_vote", "VARCHAR(16)"),
 ]
 
 

@@ -104,7 +104,9 @@ def un_iaea_summon_call_kb(target_country_id: int) -> InlineKeyboardMarkup:
 # ============================================================
 
 
-def un_assembly_admin_kb(session_id: int, is_active: bool = False) -> InlineKeyboardMarkup:
+def un_assembly_admin_kb(
+    session_id: int, is_active: bool = False, voting_active: bool = False
+) -> InlineKeyboardMarkup:
     """پنل مدیریت اجلاس مجمع عمومی برای دبیرکل سازمان ملل."""
     builder = InlineKeyboardBuilder()
     if not is_active:
@@ -119,11 +121,18 @@ def un_assembly_admin_kb(session_id: int, is_active: bool = False) -> InlineKeyb
             callback_data=f"un_asmb_next:{session_id}",
             style=STYLE_OK,
         )
-        builder.button(
-            text="📊 برگزاری رای‌گیری فوری در صحن",
-            callback_data=f"un_asmb_vote_prompt:{session_id}",
-            style=STYLE_MAIN,
-        )
+        if voting_active:
+            builder.button(
+                text="📊 بستن رای‌گیری و اعلام نتایج تابلو",
+                callback_data=f"asmb_vote_end:{session_id}",
+                style=STYLE_NO,
+            )
+        else:
+            builder.button(
+                text="📊 برگزاری رای‌گیری فوری در صحن",
+                callback_data=f"un_asmb_vote_prompt:{session_id}",
+                style=STYLE_MAIN,
+            )
         builder.button(
             text="🏁 پایان اجلاس سالانه",
             callback_data=f"un_asmb_close:{session_id}",
@@ -218,10 +227,26 @@ def assembly_hall_kb(
         builder.button(text="🟢 موافق", callback_data=f"asmb_v_yes:{session_id}", style=STYLE_OK)
         builder.button(text="🔴 مخالف", callback_data=f"asmb_v_no:{session_id}", style=STYLE_NO)
         builder.button(text="⚪️ ممتنع", callback_data=f"asmb_v_abs:{session_id}")
-        builder.adjust(1, 2, 1, 3)
+        builder.adjust(1, 1, 2, 3)
     else:
         builder.adjust(1, 1, 2)
 
+    return builder.as_markup()
+
+
+def speech_reactions_kb(session_id: int) -> InlineKeyboardMarkup:
+    """دکمه‌های واکنش سریع زیر پیام‌های رله‌شده سخنران در صحن مجمع."""
+    builder = InlineKeyboardBuilder()
+    builder.button(
+        text="👏 تشویق سخنران",
+        callback_data=f"asmb_applaud:{session_id}",
+    )
+    builder.button(
+        text="🚪 ترک اعتراضی تالار (Walkout)",
+        callback_data=f"asmb_walkout:{session_id}",
+        style=STYLE_NO,
+    )
+    builder.adjust(2)
     return builder.as_markup()
 
 
@@ -358,4 +383,17 @@ def resolution_vote_kb(res_id: int) -> InlineKeyboardMarkup:
     builder.button(text="🔴 مخالف (No)", callback_data=f"res_vote:{res_id}:no", style=STYLE_NO)
     builder.button(text="⚪️ ممتنع (Abstain)", callback_data=f"res_vote:{res_id}:abstain")
     builder.adjust(3)
+    return builder.as_markup()
+
+
+def resolution_admin_kb(res_id: int) -> InlineKeyboardMarkup:
+    """کیبورد مدیریت قطعنامه برای دبیرکل سازمان ملل جهت بستن رای‌گیری."""
+    builder = InlineKeyboardBuilder()
+    builder.button(
+        text="🏁 بستن رای‌گیری و صدور قطعنامه نهایی",
+        callback_data=f"res_close:{res_id}",
+        style=STYLE_NO,
+    )
+    builder.button(text="🔙 بازگشت به قطعنامه‌ها", callback_data="un_res_list")
+    builder.adjust(1)
     return builder.as_markup()

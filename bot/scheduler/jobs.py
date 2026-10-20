@@ -1508,10 +1508,19 @@ async def process_un_assembly(bot: Bot) -> None:
                         "speaker_country_id": nxt.country_id,
                         "speaker_name": nxt_c.name_fa if nxt_c else "",
                         "speaker_flag": nxt_c.flag if nxt_c else "",
+                        "prev_speaker_name": old_c.name_fa if old_c else "",
+                        "prev_speaker_flag": old_c.flag if old_c else "",
                     })
                 else:
                     active_s.current_speaker_country_id = None
                     active_s.speech_ends_at = None
+                    if old_c:
+                        speech_transitions.append({
+                            "type": "freed",
+                            "session_id": active_s.id,
+                            "prev_speaker_name": old_c.name_fa,
+                            "prev_speaker_flag": old_c.flag,
+                        })
 
         await session.commit()
 
@@ -1569,24 +1578,87 @@ async def process_un_assembly(bot: Bot) -> None:
         elif tr["type"] == "started":
             try:
                 async with async_session_factory() as s2:
-                    hall_parts = await un_repo.list_participants_by_status(s2, tr["session_id"], "inside_hall")
-                    txt = (
-                        f"🎙 <b>تریبون مجمع عمومی سازمان ملل متحد:</b>\n\n"
-                        f"هم‌اکنون نوبت سخنرانی ۵ دقیقه‌ای کشور {tr['speaker_flag']} <b>{tr['speaker_name']}</b> آغاز شد.\n"
-                        "ارسال متن و تصویر توسط سخنران برای کلیه حاضران رله خواهد شد."
+                    asmb = await un_repo.get_session(s2, tr["session_id"])
+                    voting_active = asmb.voting_active if asmb else False
+
+                    # ساخت پیام رسمی تغییر تریبون
+                    if tr.get("prev_speaker_name"):
+                        broadcast_txt = (
+                            f"🎙 <b>تغییر تریبون مجمع عمومی سازمان ملل</b>\n\n"
+                            f"نوبت سخنرانی کشور {tr['prev_speaker_flag']} <b>{tr['prev_speaker_name']}</b> به اتمام رسید "
+                            f"و هم‌اکنون تریبون به کشور {tr['speaker_flag']} <b>{tr['speaker_name']}</b> داده می‌شود! (مهلت سخنرانی: ۵ دقیقه)"
+                        )
+                    else:
+                        broadcast_txt = (
+                            f"🎙 <b>تریبون مجمع عمومی سازمان ملل</b> به کشور {tr['speaker_flag']} <b>{tr['speaker_name']}</b> واگذار شد! "
+                            f"(مهلت سخنرانی: ۵ دقیقه)"
+                        )
+
+                    # ارسال به داخل صحن و لابی نیویورک
+                    target_stmt = select(UNAssemblyParticipant).where(
+                        UNAssemblyParticipant.session_id == tr["session_id"],
+                        UNAssemblyParticipant.status.in_(["inside_hall", "in_new_york"]),
+                        UNAssemblyParticipant.country_id != tr["speaker_country_id"],
                     )
-                    for p in hall_parts:
+                    res_parts = (await s2.execute(target_stmt)).scalars().all()
+                    for p in res_parts:
                         c = await countries_repo.get_country(s2, p.country_id)
                         if c and c.owner_user_id:
-                            is_spk = (c.id == tr["speaker_country_id"])
                             try:
-                                await bot.send_message(
-                                    c.owner_user_id,
-                                    txt,
-                                    reply_markup=assembly_hall_kb(tr["session_id"], is_speaker=is_spk),
-                                )
+                                await bot.send_message(c.owner_user_id, broadcast_txt)
                             except Exception:
                                 pass
+
+                    # ارسال به پلیر سازمان ملل
+                    un_c = await countries_repo.get_country_by_name(s2, "UN")
+                    if un_c and un_c.owner_user_id and un_c.id != tr["speaker_country_id"]:
+                        try:
+                            await bot.send_message(un_c.owner_user_id, broadcast_txt)
+                        except Exception:
+                            pass
+
+                    # ارسال پیام اختصاصی به همراه کیبورد سخنران برای خود کشور سخنران جدید
+                    nxt_spk = await countries_repo.get_country(s2, tr["speaker_country_id"])
+                    if nxt_spk and nxt_spk.owner_user_id:
+                        try:
+                            await bot.send_message(
+                                nxt_spk.owner_user_id,
+                                "🎙 <b>تریبون در اختیار شماست!</b>\n\n"
+                                "به مدت ۵ دقیقه هر پیام متنی یا عکسی که بفرستید در صحن علنی مجمع منتشر می‌شود.",
+                                reply_markup=assembly_hall_kb(
+                                    tr["session_id"], is_speaker=True, voting_active=voting_active
+                                ),
+                            )
+                        except Exception:
+                            pass
+            except Exception:
+                pass
+        elif tr["type"] == "freed":
+            try:
+                async with async_session_factory() as s2:
+                    free_txt = (
+                        f"🎙 نوبت سخنرانی کشور {tr['prev_speaker_flag']} <b>{tr['prev_speaker_name']}</b> به پایان رسید "
+                        f"و تریبون مجمع عمومی هم‌اکنون آزاد است."
+                    )
+                    target_stmt = select(UNAssemblyParticipant).where(
+                        UNAssemblyParticipant.session_id == tr["session_id"],
+                        UNAssemblyParticipant.status.in_(["inside_hall", "in_new_york"]),
+                    )
+                    res_parts = (await s2.execute(target_stmt)).scalars().all()
+                    for p in res_parts:
+                        c = await countries_repo.get_country(s2, p.country_id)
+                        if c and c.owner_user_id:
+                            try:
+                                await bot.send_message(c.owner_user_id, free_txt)
+                            except Exception:
+                                pass
+
+                    un_c = await countries_repo.get_country_by_name(s2, "UN")
+                    if un_c and un_c.owner_user_id:
+                        try:
+                            await bot.send_message(un_c.owner_user_id, free_txt)
+                        except Exception:
+                            pass
             except Exception:
                 pass
 

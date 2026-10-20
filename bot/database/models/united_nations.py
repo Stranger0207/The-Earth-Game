@@ -67,6 +67,7 @@ class UNAssemblyParticipant(Base):
     travel_eta: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     joined_hall_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     walkout: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    last_vote: Mapped[str | None] = mapped_column(String(16), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False)
 
     def __repr__(self) -> str:

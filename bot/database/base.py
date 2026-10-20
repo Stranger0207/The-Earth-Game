@@ -116,6 +116,9 @@ _COLUMN_MIGRATIONS = [
     ("bot_state", "force_join_invite_link", "VARCHAR(256)"),
     # لینک فولدر کانال‌های بازی (/folder)
     ("bot_state", "game_folder_link", "VARCHAR(256)"),
+    # امکان توقف/ادامه تولید کارخانه‌ها و تأسیسات
+    ("facilities", "active", "BOOLEAN NOT NULL DEFAULT TRUE"),
+    ("military_factories", "active", "BOOLEAN NOT NULL DEFAULT TRUE"),
 ]
 
 

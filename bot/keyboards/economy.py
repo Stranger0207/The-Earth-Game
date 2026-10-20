@@ -193,6 +193,14 @@ def facility_list_nav_kb(
 
     if items:
         for idx, f in enumerate(items, start=start_idx):
+            is_active = getattr(f, "active", True)
+            toggle_text = f"⏸ توقف #{fa_number(idx)}" if is_active else f"▶️ شروع #{fa_number(idx)}"
+            toggle_style = STYLE_MAIN if is_active else STYLE_OK
+            builder.button(
+                text=toggle_text,
+                callback_data=f"fac_tog:{f.id}:{page}:{prefix}",
+                style=toggle_style,
+            )
             builder.button(
                 text=f"🗑 تخریب #{fa_number(idx)}",
                 callback_data=f"fac_del:{f.id}",

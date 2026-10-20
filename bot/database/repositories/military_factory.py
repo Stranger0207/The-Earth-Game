@@ -45,3 +45,15 @@ def is_due(factory: MilitaryFactory, now: datetime | None = None) -> bool:
         last = last.replace(tzinfo=timezone.utc)
     elapsed_h = (now - last).total_seconds() / 3600
     return elapsed_h >= factory.yield_interval_h
+
+
+async def toggle_factory_active(session: AsyncSession, factory_id: int) -> MilitaryFactory | None:
+    """تغییر وضعیت فعالیت کارخانه نظامی (توقف / ادامه بازتولید)."""
+    factory = await session.get(MilitaryFactory, factory_id)
+    if factory is not None:
+        factory.active = not factory.active
+        if factory.active:
+            factory.last_yield_at = datetime.now(timezone.utc)
+        await session.flush()
+    return factory
+

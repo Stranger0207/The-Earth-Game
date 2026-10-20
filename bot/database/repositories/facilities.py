@@ -164,3 +164,15 @@ def is_due(facility: Facility, now: datetime | None = None) -> bool:
         last = last.replace(tzinfo=timezone.utc)
     elapsed_h = (now - last).total_seconds() / 3600
     return elapsed_h >= facility.yield_interval_h
+
+
+async def toggle_facility_active(session: AsyncSession, facility_id: int) -> Facility | None:
+    """تغییر وضعیت فعالیت تأسیسات (توقف / ادامه تولید)."""
+    facility = await session.get(Facility, facility_id)
+    if facility is not None:
+        facility.active = not facility.active
+        if facility.active:
+            facility.last_yield_at = datetime.now(timezone.utc)
+        await session.flush()
+    return facility
+

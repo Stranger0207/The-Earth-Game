@@ -162,7 +162,7 @@ async def _show_military_report(
 # ============================================================
 #  🏭 سیستم کارخانه‌ی نظامی (v1.7) — بازتولید تجهیزات
 # ============================================================
-@router.callback_query(F.data == "mil:factory")
+@router.callback_query(F.data.in_({"mil:factory", "milfac:menu"}))
 async def cb_factory_menu(
     call: CallbackQuery, state: FSMContext, session: AsyncSession, db_user: User
 ) -> None:
@@ -448,18 +448,58 @@ async def cb_factory_mine(call: CallbackQuery, session: AsyncSession, db_user: U
         except ValueError:
             fa = f.factory_type
         interval_fa = "۲۴ ساعت" if f.yield_interval_h == 24 else f"{fa_number(f.yield_interval_h // 24)} روز"
+        status_text = "🟢 در حال تولید" if f.active else "⏸ متوقف‌شده (بدون مصرف و هزینه)"
         lines.append(
             f"{fa_number(idx)}. {fa} — بازتولید {f.asset_name}\n"
-            f"   📍 {f.location} | 🏭 {fa_number(f.yield_amount)} {f.unit}/{interval_fa} | 💰 {fa_money(f.cost)}"
+            f"   📍 {f.location} | 🏭 {fa_number(f.yield_amount)} {f.unit}/{interval_fa} | 💰 {fa_money(f.cost)}\n"
+            f"   وضعیت: <b>{status_text}</b>"
+        )
+        toggle_btn_text = f"⏸ توقف #{fa_number(idx)}" if f.active else f"▶️ شروع #{fa_number(idx)}"
+        toggle_style = STYLE_MAIN if f.active else STYLE_OK
+        builder.button(
+            text=toggle_btn_text,
+            callback_data=f"milfac_toggle:{f.id}",
+            style=toggle_style,
         )
         builder.button(
-            text=f"🗑 تخریب #{fa_number(idx)} ({f.asset_name[:12]})",
+            text=f"🗑 تخریب #{fa_number(idx)} ({f.asset_name[:10]})",
             callback_data=f"milfac_del:{f.id}",
             style=STYLE_NO,
         )
     builder.adjust(2)
     builder.row(InlineKeyboardButton(text="🔙 بازگشت", callback_data="milfac:menu", style=STYLE_OK))
     await safe_edit(call, "\n".join(lines), reply_markup=builder.as_markup())
+
+
+@router.callback_query(F.data.startswith("milfac_toggle:"))
+async def cb_milfac_toggle(call: CallbackQuery, session: AsyncSession, db_user: User) -> None:
+    """تغییر وضعیت فعالیت کارخانه نظامی (توقف / ادامه بازتولید)."""
+    country = await get_player_country(session, db_user)
+    if country is None:
+        await call.answer(NO_COUNTRY_TEXT, show_alert=True)
+        return
+    try:
+        fid = int(call.data.split(":")[1])
+    except (IndexError, ValueError):
+        await call.answer("شناسه نامعتبر است.", show_alert=True)
+        return
+
+    factory = await session.get(MilitaryFactory, fid)
+    if factory is None or factory.country_id != country.id:
+        await call.answer("این کارخانه یافت نشد یا متعلق به شما نیست.", show_alert=True)
+        return
+
+    await milfac_repo.toggle_factory_active(session, fid)
+    await session.commit()
+
+    if factory.active:
+        await call.answer(f"▶️ تولید کارخانه «{factory.asset_name}» از سر گرفته شد.", show_alert=True)
+    else:
+        await call.answer(
+            f"⏸ تولید کارخانه «{factory.asset_name}» متوقف گردید.\nدر این مدت هیچ منبعی مصرف نشده و هزینه‌ای نخواهد داشت.",
+            show_alert=True,
+        )
+    await cb_my_factories(call, session, db_user)
 
 
 @router.callback_query(F.data.startswith("milfac_del:"))

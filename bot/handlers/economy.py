@@ -106,10 +106,13 @@ def _facility_line(facility, index: int) -> str:
     if partner_pct:
         partner_note = f" | 🤝 سهم شریک: {fa_number(partner_pct)}٪"
 
+    status_label = "🟢 در حال تولید" if getattr(facility, "active", True) else "⏸ متوقف‌شده (بدون مصرف و هزینه)"
+
     return (
         f"{fa_number(index)}. {fa} — 📍 {facility.location or '—'}\n"
         f"   🏗 بازدهی: {fa_number(facility.yield_amount)} {unit}/۲۴ساعت "
-        f"| 💰 {fa_money(facility.budget)}{partner_note}"
+        f"| 💰 {fa_money(facility.budget)}{partner_note}\n"
+        f"   وضعیت: <b>{status_label}</b>"
     )
 
 
@@ -344,6 +347,51 @@ async def cb_facility_list(call: CallbackQuery, session: AsyncSession, db_user: 
             start_idx=page * FACILITY_PAGE_SIZE + 1,
         ),
     )
+
+
+# ============================================================
+#  ⏸ / ▶️ توقف یا ادامه تولید تأسیسات
+# ============================================================
+@router.callback_query(F.data.startswith("fac_tog:"))
+async def cb_facility_toggle(call: CallbackQuery, session: AsyncSession, db_user: User) -> None:
+    """تغییر وضعیت فعالیت تأسیسات (توقف یا از سرگیری تولید)."""
+    country = await get_player_country(session, db_user)
+    if country is None:
+        await call.answer(NO_COUNTRY_TEXT, show_alert=True)
+        return
+
+    parts = call.data.split(":", 3)
+    try:
+        fid = int(parts[1])
+        page = int(parts[2])
+        prefix = parts[3]
+    except (IndexError, ValueError):
+        await call.answer("داده نامعتبر است.", show_alert=True)
+        return
+
+    facility = await session.get(Facility, fid)
+    if facility is None or facility.country_id != country.id:
+        await call.answer("این تأسیسات یافت نشد یا متعلق به شما نیست.", show_alert=True)
+        return
+
+    await fac_repo.toggle_facility_active(session, fid)
+    await session.commit()
+
+    try:
+        fa = FACILITY_FA[FacilityType(facility.type)]
+    except (ValueError, KeyError):
+        fa = facility.type
+
+    if facility.active:
+        alert_msg = f"▶️ تولید «{fa}» مجدداً فعال شد."
+    else:
+        alert_msg = f"⏸ تولید «{fa}» متوقف گردید.\nدر این مدت هیچ منبعی مصرف نشده و هزینه‌ای نخواهد داشت."
+
+    await call.answer(alert_msg, show_alert=True)
+
+    # رندر مجدد همان صفحه از لیست تأسیسات
+    call.data = f"{prefix}:{page}"
+    await cb_facility_list(call, session, db_user)
 
 
 # ============================================================

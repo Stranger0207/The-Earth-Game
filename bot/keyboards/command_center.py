@@ -28,6 +28,7 @@ def command_center_kb(is_vip: bool = False, has_straits: bool = False) -> Inline
     if has_straits:
         builder.button(text="🌊 مدیریت تنگه‌ها", callback_data="menu:straits", style=STYLE_OK)
     builder.button(text="🎖 فرماندهان", callback_data="cc:commanders", style=STYLE_MAIN)
+    builder.button(text="🔬 تکنولوژی نظامی", callback_data="tech:menu", style=STYLE_MAIN)
     builder.button(text="🛡 پروژه‌های امنیتی (رول)", callback_data="mil:security_roles", style=STYLE_MAIN)
     builder.button(text="⚔️ عملیات و رول نظامی", callback_data="mil:ops_roles", style=STYLE_MAIN)
 
@@ -45,9 +46,9 @@ def command_center_kb(is_vip: bool = False, has_straits: bool = False) -> Inline
 
     builder.button(text="🔙 بازگشت", callback_data="menu:main", style=STYLE_MAIN)
     if has_straits:
-        builder.adjust(2, 2, 2, 2, 1, 1, 1)
+        builder.adjust(2, 2, 2, 2, 2, 1, 1)
     else:
-        builder.adjust(2, 2, 2, 2, 1, 1)
+        builder.adjust(2, 2, 2, 2, 2, 1)
     return builder.as_markup()
 
 
@@ -107,9 +108,10 @@ def industry_menu_kb() -> InlineKeyboardMarkup:
     """منوی صنایع نظامی."""
     builder = InlineKeyboardBuilder()
     builder.button(text="🏭 کارخانه نظامی", callback_data="mil:factory", style=STYLE_MAIN)
+    builder.button(text="🔬 تکنولوژی و لایسنس", callback_data="tech:menu", style=STYLE_MAIN)
     builder.button(text="💰 فروش تجهیزات", callback_data="mil:sell", style=STYLE_OK)
     builder.button(text="🪖 استقرار نیرو", callback_data="mil:deploy", style=STYLE_MAIN)
     builder.button(text="☢️ تأسیسات هسته‌ای", callback_data="mil:nuclear", style=STYLE_NO)
     builder.button(text="🔙 بازگشت", callback_data="menu:military", style=STYLE_MAIN)
-    builder.adjust(2, 2, 1)
+    builder.adjust(2, 2, 1, 1)
     return builder.as_markup()

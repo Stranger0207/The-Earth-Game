@@ -74,6 +74,8 @@ from ..database.models import (
     NuclearWarhead,
     Satellite,
     TariffRate,
+    TechLicense,
+    TechTransferRequest,
     Tweet,
     TweetLike,
     TwitterProfile,
@@ -137,6 +139,8 @@ async def reset_season(session: AsyncSession) -> dict[str, int]:
     await session.execute(delete(Sanction))
     await session.execute(delete(ResourceSale))
     await session.execute(delete(MilitarySale))      # v1.7
+    await session.execute(delete(TechTransferRequest))
+    await session.execute(delete(TechLicense))
     await session.execute(delete(MilitaryFactory))   # v1.7
     await session.execute(delete(Facility))
     await session.execute(delete(Cooldown))

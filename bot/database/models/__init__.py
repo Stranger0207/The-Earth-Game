@@ -52,6 +52,7 @@ from .reserves import Reserve
 from .satellite import Satellite
 from .strait import BlockedCargo, StraitBlockRule, StraitConfig
 from .tariff import TariffRate
+from .tech_transfer import TechLicense, TechTransferRequest
 from .trade import ResourceSale
 from .twitter import Tweet, TweetLike, TwitterProfile
 from .united_nations import (
@@ -118,6 +119,8 @@ __all__ = [
     "StraitBlockRule",
     "StraitConfig",
     "TariffRate",
+    "TechLicense",
+    "TechTransferRequest",
     "Tweet",
     "TweetLike",
     "TwitterProfile",

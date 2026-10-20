@@ -227,15 +227,50 @@ async def cb_factory_type(call: CallbackQuery, state: FSMContext, session: Async
 
 
 @router.callback_query(MilitaryFactoryForm.choosing_asset, F.data.startswith("milfac_asset:"))
-async def cb_factory_asset(call: CallbackQuery, state: FSMContext) -> None:
-    """انتخاب قلم تجهیزات و درخواست محل احداث."""
+async def cb_factory_asset(
+    call: CallbackQuery, state: FSMContext, session: AsyncSession, db_user: User
+) -> None:
+    """انتخاب قلم تجهیزات و بررسی لایسنس تکنولوژی ساخت."""
     await call.answer()
+    country = await get_player_country(session, db_user)
+    if country is None:
+        await safe_edit(call, NO_COUNTRY_TEXT)
+        return
+
     idx = int(call.data.split(":")[1])
     data = await state.get_data()
     assets = data.get("assets", [])
     if idx >= len(assets):
         await call.answer("انتخاب نامعتبر.", show_alert=True)
         return
+
+    asset_name = assets[idx]["name"]
+    from ..services.tech_service import can_produce_equipment
+    can_prod, origin_en = await can_produce_equipment(session, country, asset_name)
+    if not can_prod:
+        origin_country = await countries_repo.get_country_by_name(session, origin_en)
+        origin_display = f"{origin_country.flag} {origin_country.name_fa}" if origin_country else origin_en
+
+        err_text = (
+            "🚫 <b>خطای عدم دسترسی به تکنولوژی ساخت!</b>\n\n"
+            f"تجهیزات <b>{asset_name}</b> ساخت کشور <b>{origin_display}</b> است و کشور شما دانش فنی و لایسنس بازتولید آن را در اختیار ندارد.\n\n"
+            f"📩 <b>آیا می‌خواهید درخواست دریافت لایسنس تکنولوژی این تجهیزات را به کشور سازنده ({origin_display}) بفرستید؟</b>"
+        )
+        builder = InlineKeyboardBuilder()
+        builder.button(
+            text="✅ بله، ارسال درخواست تکنولوژی",
+            callback_data=f"tech_req_send:{idx}",
+            style=STYLE_OK,
+        )
+        builder.button(
+            text="❌ خیر / بازگشت",
+            callback_data=f"milfac_type:{data.get('factory_type')}",
+            style=STYLE_NO,
+        )
+        builder.adjust(1)
+        await safe_edit(call, err_text, reply_markup=builder.as_markup())
+        return
+
     await state.update_data(asset_name=assets[idx]["name"], asset_unit=assets[idx]["unit"])
     await state.set_state(MilitaryFactoryForm.entering_location)
     await safe_edit(call,
@@ -321,6 +356,17 @@ async def cb_factory_confirm(call: CallbackQuery, state: FSMContext, session: As
     cost = MIL_FACTORY_COST_USD[ftype]
     build_res = MIL_FACTORY_BUILD_RESOURCES[ftype]
     yield_amount, interval_h = MIL_FACTORY_YIELD[ftype]
+
+    # بررسی مجدد لایسنس تکنولوژی پیش از ثبت
+    from ..services.tech_service import can_produce_equipment
+    can_prod, _ = await can_produce_equipment(session, country, data["asset_name"])
+    if not can_prod:
+        await safe_edit(
+            call,
+            "⛔️ شما لایسنس تکنولوژی بازتولید این تجهیزات را در اختیار ندارید.",
+            reply_markup=military_factory_menu_kb(),
+        )
+        return
 
     if country.budget < cost:
         await safe_edit(call,

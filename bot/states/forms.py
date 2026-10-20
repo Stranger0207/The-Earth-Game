@@ -86,6 +86,12 @@ class MilitarySaleForm(StatesGroup):
     choosing_fee_payer = State() # پرداخت‌کننده عوارض هوایی (فروشنده/خریدار)
 
 
+class TechTransferForm(StatesGroup):
+    """فرم انتقال تکنولوژی و لایسنس تسلیحاتی."""
+
+    entering_price = State()  # وارد کردن قیمت دلاری لایسنس توسط کشور سازنده
+
+
 class StraitForm(StatesGroup):
     """فرم تنظیمات تنگه‌ها و عوارض (آپدیت ۳ و ۱۱)."""
 

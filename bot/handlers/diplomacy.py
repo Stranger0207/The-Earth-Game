@@ -876,10 +876,16 @@ async def cb_gmeet_accept(call: CallbackQuery, session: AsyncSession, db_user: U
         traveler_pres = await _president_name(session, country)
         x = f"{country.flag} {country.name_fa}"
         b = f"{host.flag} {host.name_fa}" if host else "?"
+        if country.name_en == "UN":
+            flight_lead = f"✈ | دبیرکل محترم سازمان ملل متحد 🇺🇳 مقر سازمان ملل را به مقصد کشور {b}"
+        elif host and host.name_en == "UN":
+            flight_lead = f"✈ | ریاست جمهور محترم کشور {x} ، جناب آقای {traveler_pres} کشور خود را به مقصد مقر سازمان ملل متحد 🇺🇳"
+        else:
+            flight_lead = f"✈ | ریاست جمهور محترم کشور {x} ، جناب آقای {traveler_pres} کشور خود را به مقصد کشور {b}"
+
         caption = (
             "⚪ | اطلاع رسانی سفر مقامات دیپلمات\n\n"
-            f"✈ | ریاست جمهور محترم کشور {x} ، جناب آقای {traveler_pres} کشور خود را "
-            f"به مقصد کشور {b} برای شرکت در نشست «{meeting.title}» ترک کرد.\n"
+            f"{flight_lead} برای شرکت در نشست «{meeting.title}» ترک کرد.\n"
             f"⏳ | مدت زمان پرواز: {fa_number(minutes)} دقیقه"
         )
         await send_photo_news(
@@ -1020,10 +1026,16 @@ async def cb_meet_accept(call: CallbackQuery, session: AsyncSession) -> None:
         traveler_pres = await _president_name(session, traveler)
         x = f"{traveler.flag} {traveler.name_fa}" if traveler else "?"
         b = f"{host.flag} {host.name_fa}" if host else "?"
+        if traveler and traveler.name_en == "UN":
+            flight_lead = f"✈ | دبیرکل محترم سازمان ملل متحد 🇺🇳 مقر سازمان ملل را به مقصد کشور {b}"
+        elif host and host.name_en == "UN":
+            flight_lead = f"✈ | ریاست جمهور محترم کشور {x} ، جناب آقای {traveler_pres} کشور خود را به مقصد مقر سازمان ملل متحد 🇺🇳"
+        else:
+            flight_lead = f"✈ | ریاست جمهور محترم کشور {x} ، جناب آقای {traveler_pres} کشور خود را به مقصد کشور {b}"
+
         caption = (
             "⚪ | اطلاع رسانی سفر مقامات دیپلمات\n\n"
-            f"✈ | ریاست جمهور محترم کشور {x} ، جناب آقای {traveler_pres} کشور خود را "
-            f"به مقصد کشور {b} برای برگزاری دیدار حضوری ترک کرد.\n"
+            f"{flight_lead} برای برگزاری دیدار حضوری ترک کرد.\n"
             f"⏳ | مدت زمان پرواز: {fa_number(minutes)} دقیقه"
         )
         await send_photo_news(
@@ -2669,10 +2681,27 @@ async def msg_speech_photo(message: Message, state: FSMContext, session: AsyncSe
     await session.flush()
 
     username = await _get_bot_username()
-    caption = (
-        f"📢 یک بیانیه از طرف رئیس‌جمهور <b>{president}</b> —- منتشر شد!\n\n"
-        f"متن سخنرانی:\n{speech_text}"
-    )
+    is_un = (country.name_en == "UN")
+    if is_un:
+        caption = (
+            "🎙 <b>بیانیه رسمی دبیرکل سازمان ملل متحد 🇺🇳</b>\n\n"
+            f"متن بیانیه:\n{speech_text}"
+        )
+        log_text = (
+            "🎙 <b>بیانیه رسمی دبیرکل سازمان ملل متحد 🇺🇳</b>\n\n"
+            f"📝 متن:\n{speech_text}"
+        )
+    else:
+        caption = (
+            f"📢 یک بیانیه از طرف رئیس‌جمهور <b>{president}</b> —- منتشر شد!\n\n"
+            f"متن سخنرانی:\n{speech_text}"
+        )
+        log_text = (
+            f"📢 <b>بیانیه</b>\n"
+            f"کشور: {country.flag} {country.name_fa} (رئیس‌جمهور {president})\n\n"
+            f"📝 متن:\n{speech_text}"
+        )
+
     quote_kb = InlineKeyboardMarkup(inline_keyboard=[[
         InlineKeyboardButton(
             text="💬 نقل قول",
@@ -2693,14 +2722,11 @@ async def msg_speech_photo(message: Message, state: FSMContext, session: AsyncSe
     await cd_repo.touch(session, country.id, "speech")
 
     # لاگ بیانیه به گروه لاگ مدیران (v1.9)
-    await send_log(
-        bot,
-        f"📢 <b>بیانیه</b>\n"
-        f"کشور: {country.flag} {country.name_fa} (رئیس‌جمهور {president})\n\n"
-        f"📝 متن:\n{speech_text}",
-    )
+    await send_log(bot, log_text)
 
-    await message.answer("✅ سخنرانی شما در کانال دیپلماسی منتشر شد.", reply_markup=diplomacy_menu_kb())
+    from ..keyboards.united_nations import un_main_menu_kb
+    resp_kb = un_main_menu_kb() if is_un else diplomacy_menu_kb()
+    await message.answer("✅ سخنرانی شما در کانال دیپلماسی منتشر شد.", reply_markup=resp_kb)
 
 
 @router.message(SpeechForm.quoting, F.text)
@@ -2730,8 +2756,12 @@ async def msg_speech_quote(message: Message, state: FSMContext, session: AsyncSe
         )
 
     quoter_name = db_user.president_name or country.name_fa
+
+    speaker_desc = "دبیرکل سازمان ملل متحد 🇺🇳" if (speaker_country and speaker_country.name_en == "UN") else f"رئیس‌جمهور <b>{speaker_name}</b>"
+    quoter_desc = "دبیرکل سازمان ملل متحد 🇺🇳" if country.name_en == "UN" else f"رئیس‌جمهور <b>{quoter_name}</b>"
+
     text = (
-        f"🗣 بیانیه‌ی رئیس‌جمهور <b>{quoter_name}</b> —- به نقل از رئیس‌جمهور <b>{speaker_name}</b>:\n\n"
+        f"🗣 بیانیه‌ی {quoter_desc} —- به نقل از {speaker_desc}:\n\n"
         f"{message.text}"
     )
     try:
@@ -2740,7 +2770,9 @@ async def msg_speech_quote(message: Message, state: FSMContext, session: AsyncSe
             text,
             reply_to_message_id=speech.channel_message_id,
         )
-        await message.answer("✅ نقل قول شما منتشر شد.", reply_markup=diplomacy_menu_kb())
+        from ..keyboards.united_nations import un_main_menu_kb
+        resp_kb = un_main_menu_kb() if country.name_en == "UN" else diplomacy_menu_kb()
+        await message.answer("✅ نقل قول شما منتشر شد.", reply_markup=resp_kb)
     except Exception:  # noqa: BLE001
         await message.answer("⚠️ خطا در انتشار نقل قول.")
 

@@ -23,6 +23,12 @@ def un_main_menu_kb() -> InlineKeyboardMarkup:
     builder.button(text="🕊 صندوق کمک‌های بشردوستانه", callback_data="un:humanitarian", style=STYLE_MAIN)
     builder.button(text="🏛 وضعیت دبیرخانه", callback_data="menu:status", style=STYLE_MAIN)
 
+    # امکانات دیپلماتیک سازمان ملل متحد
+    builder.button(text="🎙 بیانیه رسمی دبیرکل", callback_data="dip:speech", style=STYLE_MAIN)
+    builder.button(text="🤝 دیدار حضوری (سفر)", callback_data="dip:meeting", style=STYLE_MAIN)
+    builder.button(text="📞 تماس تلفنی ۵ دقیقه‌ای", callback_data="dip:call", style=STYLE_MAIN)
+    builder.button(text="✉️ ارسال و دریافت نامه", callback_data="dip:letter", style=STYLE_MAIN)
+
     if settings.webapp_base_url:
         builder.button(
             text="🌍 رادار زنده جهان (نقشه)",
@@ -35,7 +41,7 @@ def un_main_menu_kb() -> InlineKeyboardMarkup:
             style=STYLE_OK,
         )
 
-    builder.adjust(2, 2, 2, 1)
+    builder.adjust(2, 2, 2, 2, 2, 1)
     return builder.as_markup()
 
 

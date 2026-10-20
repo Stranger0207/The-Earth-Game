@@ -61,6 +61,7 @@ from ..database.repositories import military as mil_repo
 from ..database.repositories import military_factory as milfac_repo
 from ..database.repositories import profanity as profanity_repo
 from ..database.repositories import reserves as reserves_repo
+from ..database.repositories import tech_transfer as tech_repo
 from ..database.repositories import united_nations as un_repo
 from ..database.repositories import users as users_repo
 from ..enums import (
@@ -87,7 +88,8 @@ from ..services.news_service import publish_news, send_log, send_to_admin_group
 from ..utils.formatting import render_economy_panel, render_military_panel, render_reserves_panel
 from ..utils.numbers import fa_money, fa_number, parse_amount
 from ..utils.screens import safe_edit
-from ..utils.ui import STYLE_MAIN, STYLE_NO, STYLE_OK, header
+from ..utils.ui import DIVIDER, STYLE_MAIN, STYLE_NO, STYLE_OK, header
+from ..services.tech_service import get_equipment_origin
 from ..states import GodForm, ProfanityAdminForm
 
 logger = logging.getLogger(__name__)
@@ -151,6 +153,7 @@ def _home_kb() -> InlineKeyboardMarkup:
     builder.button(text="📊 نرخ بازار جهانی", callback_data="god:market", style=STYLE_MAIN)
     builder.button(text="🏗 پروژه‌های اقتصادی", callback_data="god:projects", style=STYLE_MAIN)
     builder.button(text="☢️ برنامه‌های هسته‌ای", callback_data="god:nuclear", style=STYLE_MAIN)
+    builder.button(text="🔬 لایسنس‌های تکنولوژی", callback_data="god:tech", style=STYLE_MAIN)
     builder.button(text="💥 سیستم تلفات", callback_data="god:casualty", style=STYLE_NO)
     builder.button(text="🤬 فیلتر فحش و کلمات رکیک", callback_data="god:profanity", style=STYLE_MAIN)
     builder.button(text="📢 جوین اجباری کانال", callback_data="god:force_join", style=STYLE_MAIN)
@@ -336,6 +339,8 @@ async def _country_panel_kb(country: Country) -> InlineKeyboardMarkup:
     builder.button(text="📦 ویرایش ذخایر", callback_data=f"godres:{country.id}", style=STYLE_MAIN)
     builder.button(text="⚔️ ویرایش تجهیزات", callback_data=f"godmil:{country.id}", style=STYLE_MAIN)
     builder.button(text="🏭 تأسیسات و کارخانه‌ها", callback_data=f"godfac:{country.id}", style=STYLE_MAIN)
+    builder.button(text="🔬 لایسنس‌های تکنولوژی", callback_data=f"godtech:{country.id}", style=STYLE_MAIN)
+    builder.button(text="🏗 پروژه‌ها", callback_data=f"godproj:{country.id}", style=STYLE_MAIN)
     econ_sat_btn = (
         "🛰 ماهواره اقتصادی: فعال ✅"
         if getattr(country, "econ_sat_unlocked", False)
@@ -346,7 +351,6 @@ async def _country_panel_kb(country: Country) -> InlineKeyboardMarkup:
         callback_data=f"godeconsat:{country.id}",
         style=STYLE_OK if getattr(country, "econ_sat_unlocked", False) else STYLE_NO,
     )
-    builder.button(text="🏗 پروژه‌ها", callback_data=f"godproj:{country.id}", style=STYLE_MAIN)
     if country.is_claimed:
         builder.button(text="🚪 آزادسازی (اخراج)", callback_data=f"godrelease:{country.id}", style=STYLE_NO)
         builder.button(text="⛔️ بن مالک", callback_data=f"godban:{country.id}", style=STYLE_NO)
@@ -355,9 +359,9 @@ async def _country_panel_kb(country: Country) -> InlineKeyboardMarkup:
         builder.button(text="▶️ رفع تعلیق", callback_data=f"godunsuspend:{country.id}", style=STYLE_OK)
     builder.button(text="🔙 بازگشت", callback_data="god:countries", style=STYLE_MAIN)
     if country.is_claimed:
-        builder.adjust(2, 2, 2, 3, 2, 1)
+        builder.adjust(2, 2, 2, 1, 3, 2, 1)
     else:
-        builder.adjust(2, 2, 2, 1)
+        builder.adjust(2, 2, 2, 1, 1)
     return builder.as_markup()
 
 
@@ -670,6 +674,102 @@ async def cb_god_mf_type(call: CallbackQuery, state: FSMContext) -> None:
         "📦 نام قلم تجهیزاتی که این کارخانه بازتولید می‌کند را وارد کنید:",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
             InlineKeyboardButton(text="🔙 لغو", callback_data=f"godfac:{cid}", style=STYLE_MAIN)
+        ]]),
+    )
+
+
+# ============================================================
+#  لایسنس‌های تکنولوژی تسلیحاتی — v2.9
+# ============================================================
+async def _render_god_tech(call: CallbackQuery, session: AsyncSession, cid: int) -> None:
+    country = await countries_repo.get_country(session, cid)
+    if country is None:
+        await call.message.edit_text("کشور یافت نشد.", reply_markup=_home_kb())
+        return
+
+    licenses = await tech_repo.list_licenses_for_country(session, cid)
+    lines = [
+        header(f"لایسنس‌های تکنولوژی {country.flag} {country.name_fa}", "🔬"),
+        "",
+        f"تعداد لایسنس‌های فعال: <b>{fa_number(len(licenses))}</b> مورد",
+        DIVIDER,
+    ]
+    builder = InlineKeyboardBuilder()
+    if not licenses:
+        lines.append("<i>هیچ لایسنس فعالی برای این کشور ثبت نشده است.</i>")
+    else:
+        for lic in licenses:
+            origin_c = await countries_repo.get_country(session, lic.origin_country_id)
+            origin_name = f"{origin_c.flag} {origin_c.name_fa}" if origin_c else str(lic.origin_country_id)
+            lines.append(f"• <b>{lic.equipment_name}</b> (سازنده: {origin_name})")
+            builder.button(
+                text=f"🗑 حذف: {lic.equipment_name[:18]}",
+                callback_data=f"godtechdel:{cid}:{lic.id}",
+                style=STYLE_NO,
+            )
+
+    builder.button(text="➕ اعطای لایسنس دستی", callback_data=f"godtechadd:{cid}", style=STYLE_OK)
+    builder.button(text="🔙 بازگشت به مدیریت کشور", callback_data=f"godc:{cid}", style=STYLE_MAIN)
+    builder.adjust(1)
+    await call.message.edit_text("\n".join(lines), reply_markup=builder.as_markup())
+
+
+@router.callback_query(F.data == "god:tech")
+async def cb_god_tech_countries(call: CallbackQuery, session: AsyncSession) -> None:
+    if not await _guard(call):
+        return
+    await call.answer()
+    countries = await countries_repo.list_countries(session)
+    builder = InlineKeyboardBuilder()
+    for c in countries:
+        mark = "🟢" if c.is_claimed else "⚪️"
+        builder.button(text=f"{mark} {c.flag} {c.name_fa}", callback_data=f"godtech:{c.id}", style=STYLE_MAIN)
+    builder.button(text="🔙 بازگشت", callback_data="god:home", style=STYLE_MAIN)
+    builder.adjust(2)
+    await call.message.edit_text(
+        header("مدیریت لایسنس‌های تکنولوژی تسلیحاتی", "🔬") + "\n\nکشور مورد نظر را انتخاب کنید:",
+        reply_markup=builder.as_markup(),
+    )
+
+
+@router.callback_query(F.data.startswith("godtech:"))
+async def cb_god_tech_detail(call: CallbackQuery, session: AsyncSession) -> None:
+    if not await _guard(call):
+        return
+    await call.answer()
+    cid = int(call.data.split(":")[1])
+    await _render_god_tech(call, session, cid)
+
+
+@router.callback_query(F.data.startswith("godtechdel:"))
+async def cb_god_tech_del(call: CallbackQuery, session: AsyncSession) -> None:
+    if not await _guard(call):
+        return
+    _, cid_s, lic_id_s = call.data.split(":")
+    cid = int(cid_s)
+    lic_id = int(lic_id_s)
+    ok = await tech_repo.revoke_license(session, lic_id)
+    await session.commit()
+    if ok:
+        await call.answer("لایسنس با موفقیت لغو و حذف شد.", show_alert=True)
+        await send_log(bot, f"🔬 <b>لغو لایسنس در پنل گاد</b>\nکشور: {cid} | شناسه لایسنس: {lic_id}")
+    else:
+        await call.answer("لایسنس یافت نشد.", show_alert=True)
+    await _render_god_tech(call, session, cid)
+
+
+@router.callback_query(F.data.startswith("godtechadd:"))
+async def cb_god_tech_add(call: CallbackQuery, state: FSMContext) -> None:
+    if not await _guard(call):
+        return
+    await call.answer()
+    cid = int(call.data.split(":")[1])
+    await state.set_state(GodForm.entering_value)
+    await state.update_data(god_kind="techadd_name", god_country=cid)
+    await call.message.edit_text(
+        "🔬 نام تجهیزاتی که می‌خواهید لایسنس آن به این کشور اعطا شود را وارد کنید (دقیقاً مشابه نام در سیستم):",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="🔙 لغو", callback_data=f"godtech:{cid}", style=STYLE_MAIN)
         ]]),
     )
 
@@ -1289,6 +1389,41 @@ async def msg_god_value(message: Message, state: FSMContext, session: AsyncSessi
             ]]),
         )
         await send_log(bot, f"🏭 <b>افزودن کارخانه نظامی توسط مدیریت</b>\n{MIL_FACTORY_FA[ftype]} برای کشور {cid}")
+        return
+
+    if kind == "techadd_name":
+        await state.clear()
+        cid = data.get("god_country")
+        name = message.text.strip()
+        country = await countries_repo.get_country(session, cid)
+        origin_code = get_equipment_origin(name)
+        origin_country = None
+        if origin_code:
+            origin_country = await countries_repo.get_country_by_name(session, origin_code)
+        origin_id = origin_country.id if origin_country else cid
+
+        await tech_repo.grant_license(
+            session,
+            holder_country_id=cid,
+            origin_country_id=origin_id,
+            equipment_name=name,
+            price_paid=0.0,
+        )
+        await session.commit()
+        origin_label = f"{origin_country.flag} {origin_country.name_fa}" if origin_country else "سیستم"
+        await message.answer(
+            f"✅ لایسنس بازتولید «{name}» (سازنده: {origin_label}) با موفقیت به {country.name_fa if country else cid} اعطا شد.",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                InlineKeyboardButton(text="🔙 لایسنس‌ها", callback_data=f"godtech:{cid}", style=STYLE_MAIN)
+            ]]),
+        )
+        await send_log(
+            bot,
+            f"🔬 <b>اعطای دستی لایسنس توسط مدیریت</b>\n"
+            f"کشور: {country.name_fa if country else cid}\n"
+            f"تجهیز: {name}\n"
+            f"سازنده: {origin_label}",
+        )
         return
 
     if kind == "market_custom_reason":

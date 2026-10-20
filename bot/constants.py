@@ -683,6 +683,8 @@ LOCKABLE_FEATURES: dict[str, tuple[str, str]] = {
     "military.nuclear": ("☢️ تأسیسات هسته‌ای", FEATURE_CAT_MILITARY),
     "military.factory": ("🏭 کارخانه نظامی", FEATURE_CAT_MILITARY),
     "military.sale": ("💰 فروش تسلیحات", FEATURE_CAT_MILITARY),
+    "tech_transfer": ("🔬 انتقال تکنولوژی و لایسنس", FEATURE_CAT_MILITARY),
+    "military.tech_transfer": ("🔬 انتقال تکنولوژی و لایسنس", FEATURE_CAT_MILITARY),
     "military.straits": ("🌊 مدیریت تنگه‌ها", FEATURE_CAT_MILITARY),
     "straits_management": ("🌊 مدیریت تنگه‌ها", FEATURE_CAT_MILITARY),
     "security_roles": ("🛡 پروژه‌های امنیتی", FEATURE_CAT_MILITARY),

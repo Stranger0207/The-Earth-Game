@@ -247,11 +247,17 @@ def render_diplomatic_letter_image(
     draw.rectangle([16, 16, canvas_width - 16, 95], fill=COLOR_NAVY)
     draw.line([16, 95, canvas_width - 16, 95], fill=COLOR_GOLD, width=3)
 
-    title_text = prepare_rtl("وزارت امور خارجه — سند رسمی مکاتبات دیپلماتیک")
+    is_un = ("سازمان ملل" in clean_sender_country)
+    if is_un:
+        title_text = prepare_rtl("دبیرخانه سازمان ملل متحد — ابلاغیه رسمی بین‌المللی")
+        sub_text = "UNITED NATIONS SECRETARIAT — OFFICIAL DIPLOMATIC NOTE"
+    else:
+        title_text = prepare_rtl("وزارت امور خارجه — سند رسمی مکاتبات دیپلماتیک")
+        sub_text = "OFFICIAL DIPLOMATIC CORRESPONDENCE — THE EARTH GAME"
+
     b_title = font_title.getbbox(title_text)
     draw.text(((canvas_width - (b_title[2] - b_title[0])) // 2, 28), title_text, fill=COLOR_GOLD, font=font_title)
 
-    sub_text = "OFFICIAL DIPLOMATIC CORRESPONDENCE — THE EARTH GAME"
     b_sub = font_sub.getbbox(sub_text)
     draw.text(((canvas_width - (b_sub[2] - b_sub[0])) // 2, 65), sub_text, fill="#94A3B8", font=font_sub)
 
@@ -302,11 +308,11 @@ def render_diplomatic_letter_image(
     b_s2 = font_seal_bold.getbbox(s2)
     draw.text((seal_x1 + (seal_width - (b_s2[2] - b_s2[0])) // 2, seal_y + 37), s2, fill=COLOR_NAVY, font=font_seal_bold)
 
-    s3 = "MINISTRY OF FOREIGN AFFAIRS - OFFICIAL SEAL"
+    s3 = "UNITED NATIONS SECRETARIAT - OFFICIAL SEAL" if is_un else "MINISTRY OF FOREIGN AFFAIRS - OFFICIAL SEAL"
     b_s3 = font_seal_reg.getbbox(s3)
     draw.text((seal_x1 + (seal_width - (b_s3[2] - b_s3[0])) // 2, seal_y + 63), s3, fill=COLOR_GOLD, font=font_seal_reg)
 
-    s4 = "DIPLOMATIC MISSION & STATE DISPATCH"
+    s4 = "INTERNATIONAL DIPLOMATIC NOTE" if is_un else "DIPLOMATIC MISSION & STATE DISPATCH"
     b_s4 = font_seal_reg.getbbox(s4)
     draw.text((seal_x1 + (seal_width - (b_s4[2] - b_s4[0])) // 2, seal_y + 80), s4, fill=COLOR_TEXT_MUTED, font=font_seal_reg)
 

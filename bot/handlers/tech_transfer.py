@@ -20,12 +20,13 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..config import get_settings
-from ..database.models import User
+from ..database.models import MilitaryAsset, User
 from ..database.repositories import countries as countries_repo
+from ..database.repositories import military as mil_repo
 from ..database.repositories import tech_transfer as tech_repo
 from ..loader import bot
 from ..services.news_service import send_log
-from ..services.tech_service import get_equipment_origin
+from ..services.tech_service import get_equipment_origin, is_native_equipment
 from ..states import TechTransferForm
 from ..utils.numbers import fa_money, fa_number, parse_amount
 from ..utils.screens import safe_edit
@@ -91,6 +92,11 @@ async def cb_tech_menu(
     inv_badge = f" ({fa_number(len(unpaid_invoices))})" if unpaid_invoices else ""
 
     builder.button(
+        text="🔬 درخواست لایسنس جدید (از تجهیزات شما)",
+        callback_data="tech:from_assets",
+        style=STYLE_OK,
+    )
+    builder.button(
         text=f"📥 درخواست‌های خرید دریافتی{in_badge}",
         callback_data="tech:incoming",
         style=STYLE_OK if incoming_reqs else STYLE_MAIN,
@@ -119,6 +125,261 @@ async def cb_tech_menu(
     builder.adjust(1)
 
     await safe_edit(call, text, reply_markup=builder.as_markup())
+
+
+# ============================================================
+#  🔬 درخواست لایسنس جدید از روی لیست تجهیزات ارتش
+# ============================================================
+
+
+@router.callback_query(F.data == "tech:from_assets")
+async def cb_tech_from_assets(
+    call: CallbackQuery, session: AsyncSession, db_user: User
+) -> None:
+    """مشاهده لیست تجهیزات غیربومی ارتش جهت درخواست لایسنس."""
+    await call.answer()
+    country = await get_player_country(session, db_user)
+    if country is None:
+        await safe_edit(call, NO_COUNTRY_TEXT)
+        return
+    if not await assert_feature(call, session, country, "tech_transfer"):
+        return
+
+    assets = await mil_repo.list_assets(session, country.id)
+    # فیلتر کردن تجهیزات غیربومی (که کشور سازنده‌شان کشور خود بازیکن نیست)
+    foreign_items: list[tuple[MilitaryAsset, Country | None]] = []
+    for asset in assets:
+        if not asset.name or asset.category == "سرباز آماده نبرد" or "پرسنل" in asset.name:
+            continue
+        origin_code = get_equipment_origin(asset.name)
+        if origin_code and origin_code != country.name_en:
+            origin_c = await countries_repo.get_country_by_name(session, origin_code)
+            foreign_items.append((asset, origin_c))
+
+    if not foreign_items:
+        text = (
+            header("درخواست لایسنس تکنولوژی (از تجهیزات)", "🔬") + "\n\n"
+            f"🏴 کشور: {country.flag} <b>{country.name_fa}</b>\n"
+            f"{DIVIDER}\n"
+            "✅ <b>تمامی تجهیزات موجود در ارتش شما بومی هستند!</b>\n\n"
+            "هیچ سلاح غیربومی نیازمند دریافت لایسنس در زرادخانه کشور شما یافت نشد. "
+            "شما می‌توانید تمامی تجهیزات فعلی خود را بدون نیاز به مجوز در کارخانه نظامی بازتولید کنید."
+        )
+        await safe_edit(call, text, reply_markup=_back_tech_kb("tech:menu"))
+        return
+
+    text = (
+        header("درخواست لایسنس تکنولوژی (از تجهیزات)", "🔬") + "\n\n"
+        f"🏴 کشور: {country.flag} <b>{country.name_fa}</b>\n"
+        f"{DIVIDER}\n"
+        "در زیر لیست تجهیزات ساخت کشورهای دیگر در ارتش شما آورده شده است.\n"
+        "برای مشاهده وضعیت لایسنس یا ارسال درخواست خرید تکنولوژی به کشور سازنده، روی هر قلم کلیک کنید:\n"
+    )
+
+    builder = InlineKeyboardBuilder()
+    for asset, origin_c in foreign_items:
+        origin_flag = origin_c.flag if origin_c else "🏳"
+        origin_name = origin_c.name_fa if origin_c else (get_equipment_origin(asset.name) or "نامشخص")
+
+        has_lic = await tech_repo.has_license(session, country.id, asset.name)
+        active_req = await tech_repo.get_active_request(session, country.id, asset.name)
+
+        if has_lic:
+            btn_text = f"✅ {asset.name} (دارای لایسنس)"
+            style = STYLE_OK
+        elif active_req and active_req.status == "INVOICE_SENT":
+            btn_text = f"🧾 {asset.name} (فاکتور آماده: {fa_money(active_req.license_price)})"
+            style = STYLE_OK
+        elif active_req and active_req.status == "PENDING_MANUFACTURER":
+            btn_text = f"⏳ {asset.name} (در انتظار تعیین قیمت)"
+            style = STYLE_MAIN
+        else:
+            btn_text = f"⚠️ {asset.name} [{origin_flag} {origin_name}]"
+            style = STYLE_MAIN
+
+        builder.button(
+            text=btn_text,
+            callback_data=f"tech_ast_info:{asset.id}",
+            style=style,
+        )
+
+    builder.button(text="🔙 بازگشت به پنل تکنولوژی", callback_data="tech:menu", style=STYLE_MAIN)
+    builder.adjust(1)
+    await safe_edit(call, text, reply_markup=builder.as_markup())
+
+
+@router.callback_query(F.data.startswith("tech_ast_info:"))
+async def cb_tech_ast_info(
+    call: CallbackQuery, session: AsyncSession, db_user: User
+) -> None:
+    """نمایش کارت جزئیات تجهیزات و وضعیت لایسنس."""
+    await call.answer()
+    country = await get_player_country(session, db_user)
+    if country is None:
+        await safe_edit(call, NO_COUNTRY_TEXT)
+        return
+
+    asset_id = int(call.data.split(":")[1])
+    asset = await mil_repo.get_asset(session, asset_id)
+    if asset is None or asset.country_id != country.id:
+        await call.answer("تجهیزات یافت نشد یا متعلق به شما نیست.", show_alert=True)
+        return
+
+    origin_code = get_equipment_origin(asset.name)
+    origin_country = await countries_repo.get_country_by_name(session, origin_code) if origin_code else None
+    origin_display = f"{origin_country.flag} {origin_country.name_fa}" if origin_country else (origin_code or "نامشخص")
+
+    has_lic = await tech_repo.has_license(session, country.id, asset.name)
+    active_req = await tech_repo.get_active_request(session, country.id, asset.name)
+
+    builder = InlineKeyboardBuilder()
+
+    if has_lic:
+        st_text = "دارای لایسنس رسمی بازتولید ✅"
+        desc = (
+            "✅ <b>لایسنس فعال:</b> شما مجوز رسمی بازتولید این سلاح را در اختیار دارید "
+            "و می‌توانید خط تولید آن را در کارخانه نظامی احداث کنید."
+        )
+        builder.button(text="🏭 احداث کارخانه نظامی برای این سلاح", callback_data="milfac:build", style=STYLE_OK)
+    elif active_req and active_req.status == "INVOICE_SENT":
+        st_text = f"فاکتور رسمی صادر شده (مبلغ: {fa_money(active_req.license_price)}) 🧾"
+        desc = (
+            f"🧾 کشور سازنده ({origin_display}) فاکتور رسمی به مبلغ <b>{fa_money(active_req.license_price)}</b> صادر کرده است. "
+            "با پرداخت این فاکتور، لایسنس فوراً فعال خواهد شد."
+        )
+        builder.button(text="✅ تایید و پرداخت فاکتور", callback_data=f"tech_inv_pay:{active_req.id}", style=STYLE_OK)
+        builder.button(text="❌ رد فاکتور و انصراف", callback_data=f"tech_inv_cancel:{active_req.id}", style=STYLE_NO)
+    elif active_req and active_req.status == "PENDING_MANUFACTURER":
+        st_text = "درخواست ارسال شده (در انتظار تعیین قیمت توسط سازنده) ⏳"
+        desc = (
+            f"⏳ درخواست خرید تکنولوژی برای رهبر کشور <b>{origin_display}</b> ارسال شده است. "
+            "به محض مشخص شدن قیمت، فاکتور برای شما ارسال می‌گردد."
+        )
+        builder.button(text="❌ لغو درخواست خرید", callback_data=f"tech_req_cancel_buyer:{active_req.id}", style=STYLE_NO)
+    else:
+        st_text = "فاقد لایسنس بازتولید ❌"
+        desc = (
+            f"⚠️ این تجهیزات ساخت کشور <b>{origin_display}</b> است و شما دانش فنی و لایسنس ساخت آن را ندارید.\n\n"
+            f"📩 آیا می‌خواهید درخواست دریافت لایسنس تکنولوژی را برای کشور سازنده ({origin_display}) ارسال کنید؟"
+        )
+        builder.button(
+            text=f"✅ ارسال درخواست لایسنس به {origin_display}",
+            callback_data=f"tech_ast_send:{asset.id}",
+            style=STYLE_OK,
+        )
+
+    builder.button(text="🔙 بازگشت به لیست تجهیزات", callback_data="tech:from_assets", style=STYLE_MAIN)
+    builder.adjust(1)
+
+    text = (
+        header("جزئیات لایسنس تکنولوژی نظامی", "🔬") + "\n\n"
+        f"🔹 نام تجهیزات: <b>{asset.name}</b>\n"
+        f"🔹 شاخه: <b>{asset.branch}</b> | رسته: <b>{asset.category}</b>\n"
+        f"🔹 کشور سازنده اصلی: <b>{origin_display}</b>\n"
+        f"🔹 موجودی در ارتش شما: <b>{fa_number(asset.count)} {asset.unit}</b>\n"
+        f"🔹 وضعیت لایسنس: <b>{st_text}</b>\n"
+        f"{DIVIDER}\n"
+        f"{desc}"
+    )
+
+    await safe_edit(call, text, reply_markup=builder.as_markup())
+
+
+@router.callback_query(F.data.startswith("tech_ast_send:"))
+async def cb_tech_ast_send(
+    call: CallbackQuery, session: AsyncSession, db_user: User
+) -> None:
+    """ارسال مستقیم درخواست لایسنس به کشور سازنده از لیست تجهیزات."""
+    country = await get_player_country(session, db_user)
+    if country is None:
+        await safe_edit(call, NO_COUNTRY_TEXT)
+        return
+    if not await assert_feature(call, session, country, "tech_transfer"):
+        return
+
+    asset_id = int(call.data.split(":")[1])
+    asset = await mil_repo.get_asset(session, asset_id)
+    if asset is None or asset.country_id != country.id:
+        await call.answer("تجهیزات یافت نشد.", show_alert=True)
+        return
+
+    origin_code = get_equipment_origin(asset.name)
+    if not origin_code or origin_code == country.name_en:
+        await call.answer("این سلاح بومی کشور شماست و نیازی به لایسنس ندارد.", show_alert=True)
+        return
+
+    seller_country = await countries_repo.get_country_by_name(session, origin_code)
+    if seller_country is None:
+        await call.answer("کشور سازنده در بازی تعریف نشده است.", show_alert=True)
+        return
+
+    # بررسی عدم وجود لایسنس قبلی یا درخواست باز
+    if await tech_repo.has_license(session, country.id, asset.name):
+        await call.answer("شما قبلاً لایسنس این تجهیزات را دریافت کرده‌اید.", show_alert=True)
+        return
+
+    active_req = await tech_repo.get_active_request(session, country.id, asset.name)
+    if active_req is not None:
+        await call.answer("یک درخواست باز برای این تجهیزات در سیستم ثبت شده است.", show_alert=True)
+        return
+
+    req = await tech_repo.create_request(
+        session=session,
+        buyer_country_id=country.id,
+        seller_country_id=seller_country.id,
+        equipment_name=asset.name,
+        branch=asset.branch,
+        category=asset.category,
+    )
+    await session.commit()
+
+    # ارسال اعلان به پیوی کشور سازنده در صورت وجود مالک
+    if seller_country.owner_user_id:
+        seller_text = (
+            "🔬 <b>درخواست خرید لایسنس تکنولوژی نظامی</b>\n\n"
+            f"کشور <b>{country.flag} {country.name_fa}</b> درخواست دریافت لایسنس تکنولوژی و خط تولید <b>{asset.name}</b> را برای شما ارسال کرده است."
+        )
+        builder = InlineKeyboardBuilder()
+        builder.button(
+            text="💵 تعیین قیمت لایسنس و ارسال فاکتور",
+            callback_data=f"tech_inv_start:{req.id}",
+            style=STYLE_OK,
+        )
+        builder.button(
+            text="❌ رد درخواست انتقال تکنولوژی",
+            callback_data=f"tech_req_reject:{req.id}",
+            style=STYLE_NO,
+        )
+        builder.adjust(1)
+        try:
+            await bot.send_message(
+                seller_country.owner_user_id,
+                seller_text,
+                reply_markup=builder.as_markup(),
+            )
+        except Exception as e:
+            logger.warning(f"Could not message seller country owner: {e}")
+
+    await call.answer("درخواست با موفقیت ارسال شد ✅", show_alert=True)
+
+    text = (
+        header("درخواست لایسنس ارسال شد", "✅") + "\n\n"
+        f"درخواست دریافت لایسنس و خط تولید <b>{asset.name}</b> برای کشور سازنده ({seller_country.flag} <b>{seller_country.name_fa}</b>) ارسال گردید.\n\n"
+        "به محض اینکه کشور سازنده قیمت لایسنس را مشخص کند، فاکتور رسمی در پیوی و در کارتابل فاکتورهای شما قرار خواهد گرفت."
+    )
+    b = InlineKeyboardBuilder()
+    b.button(text="🔙 بازگشت به لیست تجهیزات", callback_data="tech:from_assets", style=STYLE_MAIN)
+    b.button(text="🔬 پنل تکنولوژی نظامی", callback_data="tech:menu", style=STYLE_MAIN)
+    b.adjust(1)
+    await safe_edit(call, text, reply_markup=b.as_markup())
+
+    await send_log(
+        bot,
+        "🔬 <b>درخواست لایسنس تکنولوژی نظامی (از تجهیزات)</b>\n"
+        f"متقاضی: {country.flag} {country.name_fa}\n"
+        f"سازنده: {seller_country.flag} {seller_country.name_fa}\n"
+        f"سلاح: {asset.name}",
+    )
 
 
 # ============================================================

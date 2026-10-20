@@ -20,6 +20,11 @@ async def list_assets(
     return list(result.scalars().all())
 
 
+async def get_asset(session: AsyncSession, asset_id: int) -> MilitaryAsset | None:
+    """دریافت یک قلم تجهیزات بر اساس شناسه."""
+    return await session.get(MilitaryAsset, asset_id)
+
+
 async def get_asset_by_name(
     session: AsyncSession, country_id: int, name: str
 ) -> MilitaryAsset | None:

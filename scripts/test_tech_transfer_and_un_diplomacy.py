@@ -122,6 +122,12 @@ async def test_2_and_3_tech_transfer_lifecycle(session: AsyncSession) -> None:
     can_prod, origin = await can_produce_equipment(session, syria, "Shahed-136")
     check("تولید سلاح غیربومی (شاهد ۱۳۶) توسط سوریه بدون لایسنس ممنوع است", not can_prod and origin == "Iran")
 
+    # تست ۲.۱: ایران بدون لایسنس نباید بتواند جنگنده‌های غیربومی مثل J-10 یا Su-35 را بازتولید کند
+    can_prod_j10, origin_j10 = await can_produce_equipment(session, iran, "J-10 (محدود)")
+    check("تولید جنگنده غیربومی J-10 ساخت چین توسط ایران بدون لایسنس ممنوع است", not can_prod_j10 and origin_j10 == "China")
+    can_prod_su35, origin_su35 = await can_produce_equipment(session, iran, "Su-35 (محدود)")
+    check("تولید جنگنده غیربومی Su-35 ساخت روسیه توسط ایران بدون لایسنس ممنوع است", not can_prod_su35 and origin_su35 == "Russia")
+
     # ایران خودش سازنده است و باید بتواند سلاح بومی خودش را تولید کند
     can_prod_native, _ = await can_produce_equipment(session, iran, "Shahed-136")
     check("تولید سلاح بومی توسط خود کشور سازنده (ایران) مجاز است", can_prod_native)

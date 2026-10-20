@@ -509,6 +509,14 @@ def build_origins() -> dict[str, str]:
             set_orig(item_name, "NorthKorea")
             matched = True
 
+        # ارث‌بری خودکار از نام بدون پرانتز (Clean Name)
+        if not matched:
+            import re
+            clean_name = re.sub(r"\s*\([^)]*\)", "", item_name).strip()
+            if clean_name in origins:
+                set_orig(item_name, origins[clean_name])
+                matched = True
+
         if not matched:
             # اگر فقط یک کشور دارنده دارد و آن کشور از سازندگان اصلی تسلیحات است
             primary_makers = {
@@ -521,6 +529,26 @@ def build_origins() -> dict[str, str]:
                 set_orig(item_name, holders[0])
             else:
                 unmapped.append((item_name, holders))
+
+    # نگاشت‌های قطعی و تصحیح اقلام دارای پسوند به کشور سازنده اصلی
+    explicit_overrides = {
+        "J-10 (محدود)": "China",
+        "Su-35 (محدود)": "Russia",
+        "Z-10 (محدود)": "China",
+        "Boeing 707/747 (پشتیبانی)": "USA",
+        "H-60 (محدود)": "USA",
+        "Kharg (پشتیبانی)": "Britain",
+        "M270 (مشترک با آمریکا)": "USA",
+        "Predator (MQ-9 lease/limited)": "USA",
+        "Oliver Hazard Perry (Meko/AW variants)": "USA",
+        "F-35 (تعلیق/برنامه محدود)": "USA",
+        "F-35B (برنامه مشترک)": "USA",
+        "Taurus (محدود)": "Germany",
+        "Taurus KEPD 350 (محدود)": "Germany",
+        "SM-3 (Sea-based)": "USA",
+    }
+    for k, v in explicit_overrides.items():
+        set_orig(k, v)
 
     print(f"Mapped {len(origins)} / {len(all_items)} items. Unmapped: {len(unmapped)}")
     if unmapped:

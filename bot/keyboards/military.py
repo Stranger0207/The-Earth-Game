@@ -36,6 +36,13 @@ def military_report_nav_kb(
         builder.row(*nav)
 
     builder.row(
+        InlineKeyboardButton(
+            text="🔬 درخواست لایسنس تکنولوژی (از تجهیزات)",
+            callback_data="tech:from_assets",
+            style=STYLE_OK,
+        )
+    )
+    builder.row(
         InlineKeyboardButton(text="🔙 بازگشت", callback_data=back_data, style=STYLE_MAIN)
     )
     return builder.as_markup()
@@ -51,8 +58,9 @@ def military_menu_kb() -> InlineKeyboardMarkup:
     builder.button(text="🏭 کارخانه نظامی", callback_data="mil:factory", style=STYLE_MAIN)
     builder.button(text="💰 فروش تجهیزات", callback_data="mil:sell", style=STYLE_OK)
     builder.button(text="🪖 استقرار نیرو", callback_data="mil:deploy", style=STYLE_MAIN)
+    builder.button(text="🔬 تکنولوژی نظامی", callback_data="tech:menu", style=STYLE_MAIN)
     builder.button(text="🔙 بازگشت", callback_data="menu:main", style=STYLE_MAIN)
-    builder.adjust(2, 2, 2, 1, 1)
+    builder.adjust(2, 2, 2, 2, 1)
     return builder.as_markup()
 
 

@@ -35,7 +35,7 @@ def command_center_kb(is_vip: bool = False, has_straits: bool = False) -> Inline
     if settings.webapp_base_url:
         builder.button(
             text="🌍 رادار زنده جهان (نقشه)",
-            web_app=WebAppInfo(url=settings.webapp_base_url),
+            web_app=WebAppInfo(url=settings.webapp_url),
         )
     else:
         builder.button(

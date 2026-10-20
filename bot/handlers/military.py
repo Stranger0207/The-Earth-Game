@@ -65,7 +65,7 @@ from ..services.news_service import send_log
 from ..states import MilitaryFactoryForm, MilitarySaleForm
 from ..utils.formatting import military_branch_pages, render_military_branch
 from ..utils.numbers import fa_money, fa_number, parse_amount
-from ..utils.ui import STYLE_NO, STYLE_OK, header
+from ..utils.ui import STYLE_MAIN, STYLE_NO, STYLE_OK, header
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from ..utils.screens import safe_edit
 from .deps import NO_COUNTRY_TEXT, assert_feature, get_player_country
@@ -499,7 +499,7 @@ async def cb_milfac_toggle(call: CallbackQuery, session: AsyncSession, db_user: 
             f"⏸ تولید کارخانه «{factory.asset_name}» متوقف گردید.\nدر این مدت هیچ منبعی مصرف نشده و هزینه‌ای نخواهد داشت.",
             show_alert=True,
         )
-    await cb_my_factories(call, session, db_user)
+    await cb_factory_mine(call, session, db_user)
 
 
 @router.callback_query(F.data.startswith("milfac_del:"))

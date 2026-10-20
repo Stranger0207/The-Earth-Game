@@ -52,7 +52,7 @@ def economy_menu_kb(is_usa: bool = False, has_straits: bool = False) -> InlineKe
     if settings.webapp_base_url:
         builder.button(
             text="🌍 رادار زنده جهان (نقشه)",
-            web_app=WebAppInfo(url=settings.webapp_base_url),
+            web_app=WebAppInfo(url=settings.webapp_url),
         )
     else:
         builder.button(

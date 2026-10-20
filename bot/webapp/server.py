@@ -36,7 +36,7 @@ async def handle_options(request: web.Request) -> web.Response:
 
 
 async def handle_index(request: web.Request) -> web.Response:
-    """ارائه صفحه اصلی مینی‌اپ نقشه زنده."""
+    """ارائه صفحه اصلی مینی‌اپ نقشه زنده با هدرهای ضد کش."""
     index_file = STATIC_DIR / "index.html"
     if not index_file.exists():
         return web.Response(
@@ -44,7 +44,11 @@ async def handle_index(request: web.Request) -> web.Response:
             content_type="text/html",
             status=404,
         )
-    return web.FileResponse(index_file)
+    headers = _cors_headers()
+    headers["Cache-Control"] = "no-cache, no-store, must-revalidate, max-age=0"
+    headers["Pragma"] = "no-cache"
+    headers["Expires"] = "0"
+    return web.FileResponse(index_file, headers=headers)
 
 
 async def handle_radar_state(request: web.Request) -> web.Response:

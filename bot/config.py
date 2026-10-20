@@ -71,6 +71,14 @@ class Settings(BaseSettings):
     webapp_port: int = 8080
     webapp_base_url: str = ""                     # آدرس عمومی مینی‌اپ (مثلاً https://...ngrok-free.app)
 
+    @property
+    def webapp_url(self) -> str:
+        """آدرس مینی‌اپ با پارامتر v برای شکستن کش مرورگر تلگرام."""
+        if not self.webapp_base_url:
+            return ""
+        sep = "&" if "?" in self.webapp_base_url else "?"
+        return f"{self.webapp_base_url}{sep}v=3.2"
+
     # --- جوین اجباری و لینک فولدر بازی ---
     force_join_enabled: bool = False
     force_join_chat_id: str | None = None

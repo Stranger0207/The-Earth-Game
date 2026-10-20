@@ -24,7 +24,7 @@ def main_menu_kb() -> InlineKeyboardMarkup:
     if settings.webapp_base_url:
         builder.button(
             text="🌍 رادار زنده جهان (نقشه)",
-            web_app=WebAppInfo(url=settings.webapp_base_url),
+            web_app=WebAppInfo(url=settings.webapp_url),
         )
     else:
         builder.button(

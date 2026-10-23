@@ -102,34 +102,8 @@ UI_CATEGORIES: tuple[str, ...] = (
     "ui_military_roles",
 )
 
-# نگاشت فالبک هوشمند: در صورتی که برای زیرمنویی هنوز عکسی گذاشته نشده باشد،
-# از عکس‌های باکیفیت دسته‌ی مادر استفاده می‌شود تا منو بدون عکس نماند.
+# نگاشت فالبک فقط برای اخبار کانال‌ها (نه منوهای کاربری تا تصاویر منوها با یکدیگر تداخل نکنند)
 CATEGORY_FALLBACKS: dict[str, str] = {
-    # زیرمنوهای نظامی -> ui_military
-    "ui_industry": "ui_military",
-    "ui_factories": "ui_military",
-    "ui_bases": "ui_military",
-    "ui_satellite": "ui_military",
-    "ui_nuclear": "ui_military",
-    "ui_deployment": "ui_military",
-    "ui_interception": "ui_military",
-    "ui_commanders": "ui_military",
-    "ui_security_roles": "ui_military",
-    "ui_military_roles": "ui_military",
-    # زیرمنوهای اقتصاد -> ui_economy
-    "ui_facilities": "ui_economy",
-    "ui_investment": "ui_economy",
-    "ui_straits": "ui_economy",
-    "ui_auction": "ui_economy",
-    # زیرمنوهای دیپلماسی -> ui_diplomacy
-    "ui_letters": "ui_diplomacy",
-    "ui_alliances": "ui_diplomacy",
-    "ui_sanctions": "ui_diplomacy",
-    "ui_contracts": "ui_diplomacy",
-    "ui_twitter": "ui_diplomacy",
-    # سازمان ملل و حاکمیت
-    "ui_un": "ui_main",
-    "ui_governance": "ui_main",
     # اخبار کانال‌ها
     "news_military": "military",
     "news_diplomacy": "diplomacy_travel",

@@ -16,6 +16,7 @@ import asyncio
 import os
 from pathlib import Path
 
+from aiogram.exceptions import TelegramRetryAfter
 from aiogram.types import FSInputFile
 
 from bot.config import get_settings
@@ -37,19 +38,36 @@ SANCTION_IMAGE_STEM: dict[SanctionType, str] = {
 }
 
 
-async def _upload(chat_id: int, path: Path, cache_key: str, filename: str = "") -> bool:
+async def _upload(chat_id: int, path: Path, cache_key: str, filename: str = "", max_retries: int = 4) -> bool:
     """یک عکس را آپلود و file_id آن را زیر cache_key در File.md ذخیره می‌کند.
 
     اگر filename داده شود، به‌صورت سه‌بخشی ذخیره می‌شود تا تنوع عکس‌ها قابل‌ردیابی باشد.
+    همچنین محدودیت نرخ تلگرام (Flood control / TelegramRetryAfter) را هوشمندانه مدیریت می‌کند.
     """
-    try:
-        sent = await bot.send_photo(chat_id, photo=FSInputFile(str(path)), caption=cache_key)
-        if sent.photo:
-            media._append_cache(cache_key, sent.photo[-1].file_id, filename)
-            print(f"  ✅ {cache_key} ← {path.name}")
-            return True
-    except Exception as exc:  # noqa: BLE001
-        print(f"  ⚠️ خطا در {cache_key} ({path.name}): {exc}")
+    for attempt in range(max_retries):
+        try:
+            sent = await bot.send_photo(chat_id, photo=FSInputFile(str(path)), caption=cache_key)
+            if sent.photo:
+                media._append_cache(cache_key, sent.photo[-1].file_id, filename)
+                print(f"  ✅ {cache_key} ← {path.name}")
+                # وقفه ۲.۵ ثانیه‌ای بین هر ارسال جهت جلوگیری از مواجهه با محدودیت تلگرام
+                await asyncio.sleep(2.5)
+                return True
+        except TelegramRetryAfter as err:
+            wait_sec = err.retry_after + 1
+            print(f"  ⏳ محدودیت موقت تلگرام (Flood control): {wait_sec} ثانیه صبر می‌کنیم و سپس مجدداً تلاش می‌شود...")
+            await asyncio.sleep(wait_sec)
+        except Exception as exc:  # noqa: BLE001
+            err_str = str(exc).lower()
+            if "retry after" in err_str or "flood control" in err_str:
+                import re
+                m = re.search(r"(\d+)", str(exc))
+                wait_sec = int(m.group(1)) + 1 if m else 30
+                print(f"  ⏳ محدودیت تلگرام: {wait_sec} ثانیه صبر می‌کنیم...")
+                await asyncio.sleep(wait_sec)
+                continue
+            print(f"  ⚠️ خطا در {cache_key} ({path.name}): {exc}")
+            break
     return False
 
 

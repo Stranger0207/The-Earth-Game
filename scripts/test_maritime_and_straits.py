@@ -841,18 +841,12 @@ async def main():
         check("خبر WTO شامل ایموجی کشتی 🚢 است", "🚢" in wto_caption)
         check("خبر WTO شامل واژه دریانوردی است", "دریانوردی" in wto_caption)
         # -------------------------------------------------------------
-        # [بخش ۱۰] تست عدم امکان رهگیری محموله دریایی، پایداری ۱ ساعته درگیری و کریدورها
+        # [بخش ۱۰] تست عدم امکان رهگیری محموله، پایداری ۱ ساعته درگیری و کریدورها
         # -------------------------------------------------------------
-        print("\n[بخش ۱۰] تست غیرفعال‌سازی رهگیری دریایی، نمایش ۱ ساعته درگیری و کریدورها:")
-        from bot.services import interception_service
+        print("\n[بخش ۱۰] تست حذف رهگیری، نمایش ۱ ساعته درگیری و کریدورها:")
         from bot.webapp import state as webapp_state
 
-        # ۱) بررسی سرویس رهگیری برای محموله‌های دریایی
-        intc_list = await interception_service.interceptable_shipments(session, iran_c.id)
-        sea_in_intc = [s for s in intc_list if s.get("transport_mode") == "SEA"]
-        check("هیچ محموله دریایی در لیست رهگیری قرار نمی‌گیرد", len(sea_in_intc) == 0)
-
-        # ۲) بررسی کریدورهای دریایی بین‌المللی
+        # ۱) بررسی کریدورهای دریایی بین‌المللی
         corridors = geo.get_all_maritime_corridor_segments()
         check("کریدورهای دریایی بین‌المللی استخراج شدند", len(corridors) > 0)
         check("هر قطعه کریدور دارای دو نقطه مختصات جغرافیایی است", len(corridors[0]) == 2 and len(corridors[0][0]) == 2)

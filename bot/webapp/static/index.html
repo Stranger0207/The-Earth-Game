@@ -295,12 +295,6 @@
       transform: scale(0.98);
     }
 
-    .btn-intercept {
-      background: linear-gradient(135deg, #dc2626, #b91c1c);
-      color: #fff;
-      box-shadow: 0 4px 15px rgba(220, 38, 38, 0.4);
-    }
-
     /* استایل آیکون‌های متحرک نقشه */
     .vehicle-icon {
       display: flex;
@@ -1004,7 +998,7 @@
             || s.standoff_action === 'HOLD'
             || s.standoff_action === 'RUNNING'
           );
-          const icon = isSea ? createShipIcon(s.can_intercept, hasHalo) : createPlaneIcon('#a855f7', s.can_intercept);
+          const icon = isSea ? createShipIcon(false, hasHalo) : createPlaneIcon('#a855f7', false);
           const marker = L.marker(s.waypoints[0], { icon });
           marker.on('click', () => showShipmentInfo(s));
           targetGroup.addLayer(marker);
@@ -1144,15 +1138,6 @@
       const etaTime = s.eta ? new Date(s.eta).getTime() : 0;
       const remain = etaTime - now;
 
-      let interceptBtn = '';
-      if (s.can_intercept && s.transport_mode !== 'SEA') {
-        interceptBtn = `
-          <button class="action-btn btn-intercept" onclick="interceptShipment(${s.id})">
-            🎯 اقدام به رهگیری این محموله
-          </button>
-        `;
-      }
-
       const carrierLabel = (s.transport_mode === 'SEA') ? 'کشتی باری / نفتکش' : 'ترابری هوایی WTO';
 
       let timeRow = '';
@@ -1211,29 +1196,11 @@
           <span class="info-label">محتویات بارنامه:</span>
           <span class="info-value" style="color: ${s.is_confidential ? '#f59e0b' : '#10b981'};">${s.content}</span>
         </div>
-        <div class="info-row">
-          <span class="info-label">وضعیت اسکورت:</span>
-          <span class="info-value">${s.escort_label}</span>
-        </div>
         ${timeRow}
         ${standoffBadge}
-        ${interceptBtn}
       `;
 
       openSheet(`محموله تجاری #${s.id}`, html);
-    }
-
-    function interceptShipment(saleId) {
-      if (!botUsername) {
-        alert('شناسه ربات در دسترس نیست.');
-        return;
-      }
-      const deepLink = `https://t.me/${botUsername}?start=intc_${saleId}`;
-      if (tg) {
-        tg.openTelegramLink(deepLink);
-      } else {
-        window.open(deepLink, '_blank');
-      }
     }
 
     function showFlightInfo(f) {

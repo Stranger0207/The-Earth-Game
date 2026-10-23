@@ -49,7 +49,6 @@ from ..enums import (
     TradeStatus,
 )
 from ..keyboards.common import confirm_cancel_kb, countries_kb
-from ..keyboards.covert import escort_offer_kb
 from ..keyboards.economy import fee_payer_kb
 
 from ..keyboards.military import (
@@ -1028,7 +1027,6 @@ async def cb_milsale_ok(call: CallbackQuery, session: AsyncSession, db_user: Use
         call.message.html_text + f"\n\n✅ <b>تأیید شد</b> — زمان رسیدن: حدود {fa_number(minutes)} دقیقه"
     )
 
-    # (v1.11.1) پیشنهاد اسکورت در همان لحظه‌ی ارسال محموله‌ی نظامی
     if seller.owner_user_id:
         try:
             await bot.send_message(
@@ -1037,11 +1035,7 @@ async def cb_milsale_ok(call: CallbackQuery, session: AsyncSession, db_user: Use
                 "محموله در راه است.\n\n"
                 f"🚢 <b>محموله:</b> {fa_number(sale.count)} {sale.unit} {sale.name}\n"
                 f"🎯 <b>مقصد:</b> {buyer.flag} {buyer.name_fa}\n"
-                f"⏱ زمان رسیدن: حدود {fa_number(minutes)} دقیقه\n\n"
-                "🛡 <b>آیا می‌خواهید برای این محموله اسکورت بفرستید؟</b>\n"
-                "<i>محموله‌ی بی‌محافظ در مسیر قابل رهگیری است. اسکورت فقط با "
-                "جنگنده انجام می‌شود و سوخت مصرف می‌کند.</i>",
-                reply_markup=escort_offer_kb(sale.id, "mil"),
+                f"⏱ زمان رسیدن: حدود {fa_number(minutes)} دقیقه",
             )
         except Exception:  # noqa: BLE001
             pass

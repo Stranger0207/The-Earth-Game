@@ -17,7 +17,6 @@ import asyncio
 from datetime import datetime
 
 from bot.constants import (
-    ESCORT_MAX_UNITS,
     FACILITY_TOTAL_LIMIT_NON_VIP,
     INVESTMENT_ACTIVE_LIMIT,
 )
@@ -34,7 +33,6 @@ from bot.database.repositories import facilities as fac_repo
 from bot.database.repositories import investments as inv_repo
 from bot.database.repositories import letters as letters_repo
 from bot.enums import FacilityType, ResourceType
-from bot.services import escort_service
 
 # ── چک‌های کوچک ─────────────────────────────────────────────
 _CHECKS: list[tuple[str, bool, str]] = []
@@ -54,58 +52,6 @@ def _mk(name_en: str, name_fa: str, vip: bool = False) -> Country:
 # ── ۱) اسکورت فقط جنگنده ────────────────────────────────────
 async def _test_escort(s) -> None:
     c = _mk("ET", "تست")
-    s.add(c)
-    await s.flush()
-    s.add_all([
-        MilitaryAsset(country_id=c.id, branch="نیروی هوایی", category="جنگنده", name="F-16", count=50, unit="فروند"),
-        MilitaryAsset(country_id=c.id, branch="نیروی هوایی", category="پهپادها", name="MQ-9", count=20, unit="فروند"),
-        MilitaryAsset(country_id=c.id, branch="نیروی دریایی", category="ناوچه", name="Frigate", count=5, unit="فروند"),
-        MilitaryAsset(country_id=c.id, branch="سامانه‌های دفاعی", category="سامانه ضدموشکی", name="S-300", count=10, unit="مجموعه"),
-        MilitaryAsset(country_id=c.id, branch="سامانه‌های حمله هوایی", category="موشک کروز", name="Cruise", count=100, unit="عدد"),
-    ])
-    await s.flush()
-
-    esc = await escort_service.available_escort_assets(s, c.id)
-    names = {a["name"] for a in esc}
-    check("اسکورت فقط جنگنده", names == {"F-16"}, str(names))
-
-    itc = await escort_service.available_interceptor_assets(s, c.id)
-    inames = {a["name"] for a in itc}
-    check("رهگیری با ناوچه ممکن است", "Frigate" in inames, str(inames))
-    check("رهگیری با پدافند ممکن است", "S-300" in inames, str(inames))
-    check("موشک رهگیر نیست", "Cruise" not in inames, str(inames))
-
-    s.add(Reserve(country_id=c.id, resource=ResourceType.OIL.value, amount=100.0, can_extract=True))
-    await s.flush()
-
-    # غیرجنگنده در اعتبارسنجی سمت سرور هم رد می‌شود
-    for name, cat, br in [
-        ("MQ-9", "پهپادها", "نیروی هوایی"),
-        ("Frigate", "ناوچه", "نیروی دریایی"),
-    ]:
-        try:
-            await escort_service.validate_escort(s, c, [{
-                "name": name, "count": 2, "branch": br, "category": cat, "unit": "عدد",
-            }])
-            check(f"اسکورت {name} رد می‌شود", False, "پذیرفته شد")
-        except escort_service.EscortError:
-            check(f"اسکورت {name} رد می‌شود", True)
-
-    power, fuel = await escort_service.validate_escort(s, c, [{
-        "name": "F-16", "count": 10, "branch": "نیروی هوایی", "category": "جنگنده", "unit": "فروند",
-    }])
-    check("جنگنده مجاز اسکورت است", power > 0 and fuel > 0, f"power={power} fuel={fuel}")
-
-    try:
-        await escort_service.validate_escort(s, c, [{
-            "name": "F-16", "count": ESCORT_MAX_UNITS + 1,
-            "branch": "نیروی هوایی", "category": "جنگنده", "unit": "فروند",
-        }])
-        check("سقف اسکورت رعایت می‌شود", False)
-    except escort_service.EscortError:
-        check("سقف اسکورت رعایت می‌شود", True)
-
-
 # ── ۲) سقف معادن و فهرست به‌تفکیک نوع ────────────────────────
 async def _test_facility_cap(s) -> None:
     normal, vip = _mk("N", "عادی"), _mk("V", "ویژه", vip=True)
@@ -209,8 +155,6 @@ async def _test_routing() -> None:
         "godfacpg:1:0": "cb_god_facilities_page",
         "godinvpg:1": "cb_god_invest_page",
         "mail:allies": "cb_mail_allies",
-        "escort:add:res:5": "cb_escort_add",
-        "escort:skip:mil:5": "cb_escort_skip",
         "mil:report": "cb_report",
         "inv:mine": "cb_invest_mine",
         "inv:on_me": "cb_invest_on_me",
@@ -218,14 +162,14 @@ async def _test_routing() -> None:
 
     def walk(router):
         seen_ids = set()
-        stack = [router]
-        while stack:
-            r = stack.pop()
-            if id(r) in seen_ids:
+        queue = [router]
+        while queue:
+            r = queue.pop(0)
+            if id(r) in seen_ids or r.name == "fallback":
                 continue
             seen_ids.add(id(r))
             yield r
-            stack.extend(r.sub_routers)
+            queue.extend(r.sub_routers)
 
     chat = Chat(id=1, type="private")
     tg = TgUser(id=111, is_bot=False, first_name="T")
@@ -262,7 +206,6 @@ async def _test_routing() -> None:
 async def main() -> None:
     await init_db()
     async with async_session_factory() as s:
-        await _test_escort(s)
         await _test_facility_cap(s)
         await _test_invest_cap(s)
         await _test_mail(s)

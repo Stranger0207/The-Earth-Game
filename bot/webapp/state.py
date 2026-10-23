@@ -39,7 +39,6 @@ from ..enums import (
     TransportMode,
 )
 from ..services import geo_service as geo
-from ..services import interception_service
 from ..utils.numbers import fa_number
 
 logger = logging.getLogger(__name__)
@@ -391,7 +390,6 @@ async def get_radar_state(
                 cargo_desc = f"💥 کشتی در {strait_name_fa} مورد اصابت موشک قرار گرفت و غرق شد"
             else:
                 cargo_desc = f"🚨 کشتی در {strait_name_fa} توقیف و بار آن مصادره شد"
-            can_intercept = False
         else:
             is_owner_or_admin = (
                 is_admin
@@ -412,14 +410,6 @@ async def get_radar_state(
                 cargo_desc = "🔒 محرمانه (بارنامه طبقه‌بندی‌شده)"
                 is_confidential = True
 
-            # امکان رهگیری (محموله‌های دریایی طبق دستور کاملاً غیرفعال هستند)
-            can_intercept = (
-                mode != TransportMode.SEA.value
-                and viewer_country is not None
-                and viewer_country.id not in (sale.seller_country, sale.buyer_country)
-                and geo.is_on_route(viewer_country.name_en, seller.name_en, buyer.name_en)
-            )
-
         shipments.append({
             "id": sale.id,
             "sale_type": "resource",
@@ -434,9 +424,9 @@ async def get_radar_state(
             "has_warning_halo": has_warning_halo,
             "content": cargo_desc,
             "is_confidential": is_confidential,
-            "has_escort": bool(sale.escort_power and sale.escort_power > 0),
-            "escort_label": interception_service.escort_label(sale.escort_power),
-            "can_intercept": can_intercept,
+            "has_escort": False,
+            "escort_label": "",
+            "can_intercept": False,
             "from_country": {
                 "id": seller.id,
                 "name_en": seller.name_en,
@@ -478,12 +468,6 @@ async def get_radar_state(
             cargo_desc = "🔒 محرمانه (بارنامه طبقه‌بندی‌شده)"
             is_confidential = True
 
-        can_intercept = (
-            viewer_country is not None
-            and viewer_country.id not in (msale.seller_country, msale.buyer_country)
-            and geo.is_on_route(viewer_country.name_en, seller.name_en, buyer.name_en)
-        )
-
         shipments.append({
             "id": msale.id,
             "sale_type": "military",
@@ -492,9 +476,9 @@ async def get_radar_state(
             "held_at_strait_id": None,
             "content": cargo_desc,
             "is_confidential": is_confidential,
-            "has_escort": bool(msale.escort_power and msale.escort_power > 0),
-            "escort_label": interception_service.escort_label(msale.escort_power),
-            "can_intercept": can_intercept,
+            "has_escort": False,
+            "escort_label": "",
+            "can_intercept": False,
             "from_country": {
                 "id": seller.id,
                 "name_en": seller.name_en,

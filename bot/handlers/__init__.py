@@ -22,7 +22,6 @@ from . import (
     god_locks,
     godmode,
     governance,
-    interception,
     investment,
     joint,
     kick,
@@ -103,7 +102,6 @@ def register_all_routers(dp: Dispatcher) -> None:
     dp.include_router(alliance.router)
     dp.include_router(twitter.router)
     dp.include_router(command_center.router)
-    dp.include_router(interception.router)
     dp.include_router(tech_transfer.router)
     dp.include_router(military.router)
     dp.include_router(military_roles.router)

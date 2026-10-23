@@ -234,7 +234,7 @@ async def run_tests() -> None:
         "قانون محرمانگی: برای فروشنده بارنامه آشکار است (is_confidential=False).",
     )
     assert_true("نفت" in oil_shipment["content"], "محتوای بار نفت به درستی به فروشنده نمایش داده می‌شود.")
-    assert_true(oil_shipment["has_escort"] is True, "وضعیت اسکورت محموله ثبت شده است.")
+    assert_true(oil_shipment["can_intercept"] is False, "رهگیری محموله غیرفعال است.")
 
     # ۲. استعلام توسط کشور ثالث (آلمان): بارنامه باید محرمانه باشد
     async with async_session_factory() as session:

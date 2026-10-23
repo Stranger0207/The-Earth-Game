@@ -63,8 +63,6 @@ bot/
 ├── services/            منطق بازی
 │   ├── ai/              client (Groq)، context (DB→JSON)، prompts، evaluators
 │   ├── economy_service.py     ساخت تأسیسات، فروش، اثرات اقتصادی، تعرفه
-│   ├── interception_service.py رهگیری و توقیف محموله
-│   ├── escort_service.py      اسکورت محموله‌های تجاری و نظامی
 │   ├── sanction_service.py    اثرات تحریم
 │   ├── season_service.py      ریست کامل فصل
 │   └── news_service.py        ارسال خبر به کانال‌ها و لاگ
@@ -820,6 +818,22 @@ python -m scripts.test_factory_pause_and_svg   # ۱۶ تست جامع: توقف 
 
 ### ۳. پیش‌کش برای VPS
 - پشتیبانی کامل در `scripts/cache_media.py` جهت کش‌کردن یک‌باره شناسه‌های `file_id` کلیه دسته‌های جدید در `File.md`.
+
+---
+
+## 🚫 حذف کامل سیستم‌های اسکورت و رهگیری محموله
+
+طبق درخواست، سیستم‌های اسکورت محموله و رهگیری محموله تجاری و نظامی به طور کامل از بازی حذف شدند:
+1. **منوی ستاد فرماندهی کل:** دکمه «⚓ رهگیری محموله» (`op:intercept`) از کیبورد نظامی حذف و چیدمان دکمه‌ها اصلاح شد.
+2. **پیشنهاد اسکورت در معاملات:** پیام‌های درخواست اسکورت، گزینه‌های افزودن جنگنده و مصرف سوخت از ارسال محموله‌های منابع (`economy.py`) و تسلیحات (`military.py`) حذف شدند.
+3. **مینی‌اپ رادار زنده جهان:** متغیرهای `can_intercept` و `has_escort` و سطر وضعیت اسکورت از اطلاعات محموله در رادار حذف شدند و دکمه دیپ‌لینک «🎯 اقدام به رهگیری این محموله» برداشته شد.
+4. **حذف سرویس‌ها، روترها و فایل‌ها:**
+   - حذف روتر `bot/handlers/interception.py` و خارج‌سازی از `register_all_routers`
+   - حذف سرویس‌های `interception_service.py` و `escort_service.py`
+   - حذف کیبوردهای `bot/keyboards/covert.py`
+   - حذف وضعیت‌های `EscortForm` و `InterceptionForm` از فرم‌ها
+   - حذف کلید قفل `military.interception` از `LOCKABLE_FEATURES` و ثابت‌های مربوطه از `constants.py`
+   - حذف دسته‌ی تصویری `ui_interception` از `media.py`
 
 ---
 

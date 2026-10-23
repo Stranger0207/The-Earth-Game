@@ -46,10 +46,6 @@ from .forms import (
     TeamManageForm,
 )
 from .military_base import MilitaryBaseForm
-from .operations import (
-    EscortForm,
-    InterceptionForm,
-)
 from .satellite import SatelliteForm
 from .united_nations import (
     CourtForm,
@@ -76,12 +72,10 @@ __all__ = [
     "DeploymentForm",
     "EconProjectDraftForm",
     "AdminProjectReviewForm",
-    "EscortForm",
     "FacilityForm",
     "GodForm",
     "GodLockForm",
     "GovernanceForm",
-    "InterceptionForm",
     "InvestForm",
     "JointFacilityForm",
     "LetterForm",

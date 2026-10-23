@@ -627,40 +627,6 @@ NUCLEAR_DETERRENCE_MAX_PCT = 30.0
 
 # ============================================================
 #  ⚓ رهگیری و اسکورت محموله WTO (v1.10.7)
-# ============================================================
-
-INTERCEPTION_BASE_SUCCESS_PCT = 40.0       # شانس پایه‌ی رهگیری موفق
-INTERCEPTION_SEIZE_PCT = 55.0              # در صورت موفقیت: شانس مصادره (وگرنه نابودی)
-INTERCEPTION_DIPLOMATIC_HIT = -4.0         # افت رضایت رهگیرنده (بحران دیپلماتیک)
-INTERCEPTION_FAIL_SATISFACTION_HIT = -2.0  # افت رضایت در صورت شکست
-
-# فروشنده می‌تواند نیروی محافظ همراه محموله بفرستد.
-ESCORT_MAX_UNITS = 40                   # حداکثر واحد اسکورت هر محموله
-ESCORT_FUEL_PER_UNIT = 0.03             # میلیون بشکه به ازای هر واحد
-# رهگیری فقط وقتی موفق می‌شود که قدرت مهاجم از این نسبت از اسکورت بیشتر باشد
-ESCORT_BREAK_RATIO = 1.35               # نیاز به ۳۵٪ برتری قدرت
-# محموله‌ی بدون اسکورت با این شانس پایه رهگیری می‌شود
-INTERCEPTION_UNESCORTED_SUCCESS_PCT = 75.0
-# تلفات دو طرف
-ESCORT_LOSS_PCT = 45.0                  # تلفات اسکورت در صورت شکست
-INTERCEPTOR_LOSS_PCT = 25.0             # تلفات رهگیر حتی در صورت موفقیت
-INTERCEPTOR_REPULSED_LOSS_PCT = 40.0    # تلفات رهگیر در صورت دفع شدن
-
-# شاخه‌های مجاز برای اسکورت
-ESCORT_ALLOWED_BRANCHES: frozenset[str] = frozenset({
-    "نیروی دریایی", "نیروی هوایی", "سامانه‌های دفاعی",
-})
-
-# اسکورت محموله فقط با جنگنده انجام می‌شود
-ESCORT_ALLOWED_CATEGORIES: frozenset[str] = frozenset({"جنگنده"})
-
-# حداکثر واحدی که می‌توان برای رهگیری یک محموله اعزام کرد
-INTERCEPTOR_MAX_UNITS = 40
-
-# سامانه‌های این شاخه‌ها پس از رهگیری «تخلیه» می‌شوند
-INTERCEPTOR_DEPLETED_BRANCHES: frozenset[str] = frozenset({"سامانه‌های دفاعی"})
-
-
 # ---------- آپشن‌های قابل‌قفل توسط مالک (پنل /god → قفل آپشن‌ها) ----------
 FEATURE_CAT_MILITARY = "⚔️ نظامی"
 FEATURE_CAT_ECONOMY = "💰 اقتصاد"
@@ -676,7 +642,6 @@ FEATURE_CATEGORIES: list[str] = [
 
 LOCKABLE_FEATURES: dict[str, tuple[str, str]] = {
     # ⚔️ نظامی
-    "military.interception": ("⚓ رهگیری محموله", FEATURE_CAT_MILITARY),
     "military.base": ("🏗 پایگاه نظامی", FEATURE_CAT_MILITARY),
     "military.satellite": ("🛰 ماهواره نظامی", FEATURE_CAT_MILITARY),
     "military.deploy": ("🪖 استقرار نیرو", FEATURE_CAT_MILITARY),

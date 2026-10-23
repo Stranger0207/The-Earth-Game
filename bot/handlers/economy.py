@@ -48,7 +48,6 @@ from ..enums import (
     TransportMode,
 )
 from ..keyboards.common import countries_kb
-from ..keyboards.covert import escort_offer_kb
 from ..keyboards.economy import (
     economy_menu_kb,
     facility_list_nav_kb,
@@ -1220,11 +1219,7 @@ async def cb_sale_accept(
                 f"محموله در راه است.{tariff_note}\n\n"
                 f"📦 <b>محموله:</b> {fa_number(sale.amount)} {unit_fa} {rname}\n"
                 f"🎯 <b>مقصد:</b> {buyer.flag} {buyer.name_fa}\n"
-                f"⏱ زمان رسیدن: حدود {fa_number(minutes)} دقیقه\n\n"
-                "🛡 <b>آیا می‌خواهید برای این محموله اسکورت بفرستید؟</b>\n"
-                "<i>محموله‌ی بی‌محافظ در مسیر قابل رهگیری است. اسکورت فقط با "
-                "جنگنده انجام می‌شود و سوخت مصرف می‌کند.</i>",
-                reply_markup=escort_offer_kb(sale.id, "res"),
+                f"⏱ زمان رسیدن: حدود {fa_number(minutes)} دقیقه",
             )
         except Exception:  # noqa: BLE001
             pass

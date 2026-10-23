@@ -837,6 +837,7 @@ async def main():
 
         # بررسی کپشن سازمان WTO
         check("خبر WTO فراخوانی شد", mock_send_photo_news.called)
+        check("دسته عکس WTO برای محموله دریایی wto_sea است", mock_send_photo_news.call_args[0][2] == "wto_sea")
         wto_caption = mock_send_photo_news.call_args[0][3]
         check("خبر WTO شامل ایموجی کشتی 🚢 است", "🚢" in wto_caption)
         check("خبر WTO شامل واژه دریانوردی است", "دریانوردی" in wto_caption)

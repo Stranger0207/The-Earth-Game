@@ -115,6 +115,7 @@ async def main() -> None:
     # دسته‌های ui_* (سیستم تصویری منوهای اصلی) هم اینجا کش می‌شوند.
     for category in (
         "wto",
+        "wto_sea",
         "trump",
         "diplomacy_travel",
         "meeting",

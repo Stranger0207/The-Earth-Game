@@ -27,6 +27,7 @@ MEDIA_FILE = _PROJECT_ROOT / "File.md"
 # نگاشت دسته‌ی عکس به فولدر محلی منبع
 MEDIA_DIRS: dict[str, str] = {
     "wto": r"D:\PictureDB\WTO",
+    "wto_sea": r"D:\PictureDB\Sea",
     "trump": r"D:\PictureDB\Trump",
     "diplomacy_travel": r"D:\PictureDB\Diplomaci",
     "meeting": r"D:\PictureDB\Didar",
@@ -106,6 +107,7 @@ CATEGORY_FALLBACKS: dict[str, str] = {
     "news_military": "military",
     "news_diplomacy": "diplomacy_travel",
     "news_economy": "ui_economy",
+    "wto_sea": "wto",
 }
 
 _IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp"}
@@ -168,9 +170,20 @@ def _append_cache(category: str, file_id: str, filename: str = "") -> None:
             f.write(f"- {category} | {file_id}\n")
 
 
+def _get_media_folder(category: str) -> str | None:
+    folder = MEDIA_DIRS.get(category)
+    if not folder:
+        return None
+    if category == "wto_sea" and not os.path.isdir(folder):
+        alt = r"D:\PictureDB\Maritime"
+        if os.path.isdir(alt):
+            return alt
+    return folder
+
+
 def _find_local_file(category: str, stem: str) -> Path | None:
     """یافتن یک فایل عکس مشخص (با نام پایه مثل "1") در فولدر یک دسته."""
-    folder = MEDIA_DIRS.get(category)
+    folder = _get_media_folder(category)
     if not folder or not os.path.isdir(folder):
         return None
     for name in os.listdir(folder):
@@ -230,7 +243,7 @@ async def send_specific_photo(
 
 def _local_images(category: str) -> list[Path]:
     """فهرست عکس‌های محلی یک دسته (در صورت در دسترس بودن فولدر)."""
-    folder = MEDIA_DIRS.get(category)
+    folder = _get_media_folder(category)
     if not folder or not os.path.isdir(folder):
         return []
     return [

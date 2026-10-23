@@ -1250,18 +1250,21 @@ async def cb_sale_accept(
         if mode == "SEA":
             icon = "🚢"
             verb = "دریانوردی"
+            media_cat = "wto_sea"
         elif mode == "AIR":
             icon = "✈"
             verb = "پرواز"
+            media_cat = "wto"
         else:
             icon = "🚛"
             verb = "ترانزیت زمینی"
+            media_cat = "wto"
         caption = (
             "🔵 | اطلاع رسانی سازمان نقل و انتقالات جهانی\n\n"
             f"{icon} | یک محموله {c_type} کشور {seller_name} را به مقصد کشور {buyer_name} ترک کرد.\n"
             f"⏳ | مدت زمان {verb}: {fa_number(minutes)} دقیقه"
         )
-        await send_photo_news(bot, settings.wto_channel_id, "wto", caption)
+        await send_photo_news(bot, settings.wto_channel_id, media_cat, caption)
 
     # لاگ تجارت به گروه لاگ مدیران: فروشنده، خریدار، منبع و مقدار، قیمت
     # + دکمه‌ی «تحویل فوری» برای مدیران (v1.8)

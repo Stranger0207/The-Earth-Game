@@ -165,7 +165,8 @@ async def run_all_tests() -> None:
     print("\n--- ۲. بررسی ثابت‌ها، کلیدهای قفل و شمارش‌گرها ---")
     assert_eq(ECON_PROJECT_YIELD_INTERVAL_HOURS, 72, "چرخه بازدهی پروژه باید ۷۲ ساعت باشد")
     assert_true("econ.projects" in LOCKABLE_FEATURES, "کلید econ.projects در LOCKABLE_FEATURES موجود است")
-    assert_true("econ_projects" in LOCKABLE_FEATURES, "کلید مستعار econ_projects در LOCKABLE_FEATURES موجود است")
+    from bot.constants import FEATURE_KEY_ALIASES
+    assert_eq(FEATURE_KEY_ALIASES.get("econ_projects"), "econ.projects", "کلید مستعار econ_projects به econ.projects نگاشت می‌شود")
 
     # شمارش‌گرهای وضعیت
     for st in [

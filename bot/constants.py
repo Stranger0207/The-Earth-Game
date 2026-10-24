@@ -649,13 +649,9 @@ LOCKABLE_FEATURES: dict[str, tuple[str, str]] = {
     "military.factory": ("🏭 کارخانه نظامی", FEATURE_CAT_MILITARY),
     "military.sale": ("💰 فروش تسلیحات", FEATURE_CAT_MILITARY),
     "tech_transfer": ("🔬 انتقال تکنولوژی و لایسنس", FEATURE_CAT_MILITARY),
-    "military.tech_transfer": ("🔬 انتقال تکنولوژی و لایسنس", FEATURE_CAT_MILITARY),
-    "military.straits": ("🌊 مدیریت تنگه‌ها", FEATURE_CAT_MILITARY),
     "straits_management": ("🌊 مدیریت تنگه‌ها", FEATURE_CAT_MILITARY),
     "security_roles": ("🛡 پروژه‌های امنیتی", FEATURE_CAT_MILITARY),
     "military_roles": ("⚔️ رول‌های نظامی", FEATURE_CAT_MILITARY),
-    "military.security_role": ("🛡 پروژه‌های امنیتی", FEATURE_CAT_MILITARY),
-    "military.ops_role": ("⚔️ رول‌های نظامی", FEATURE_CAT_MILITARY),
     "live_radar_map": ("🌍 رادار زنده جهان (نقشه)", FEATURE_CAT_MILITARY),
     # 💰 اقتصاد
     "econ.facility": ("🏗 احداث تأسیسات", FEATURE_CAT_ECONOMY),
@@ -667,10 +663,7 @@ LOCKABLE_FEATURES: dict[str, tuple[str, str]] = {
     "econ.transfer": ("💸 انتقال وجه", FEATURE_CAT_ECONOMY),
     "econ.investment": ("📈 سرمایه‌گذاری", FEATURE_CAT_ECONOMY),
     "econ.satellite": ("💰 ماهواره اقتصادی", FEATURE_CAT_ECONOMY),
-    "econ_satellite": ("💰 ماهواره اقتصادی", FEATURE_CAT_ECONOMY),
     "econ.projects": ("🏗 پروژه‌های اقتصادی", FEATURE_CAT_ECONOMY),
-    "econ_projects": ("🏗 پروژه‌های اقتصادی", FEATURE_CAT_ECONOMY),
-    "market_rates": ("📈 نرخ لحظه‌ای ذخایر", FEATURE_CAT_ECONOMY),
     "econ.market_rates": ("📈 نرخ لحظه‌ای ذخایر", FEATURE_CAT_ECONOMY),
     # 🤝 دیپلماسی
     "dip.letter": ("✉️ نامه", FEATURE_CAT_DIPLOMACY),
@@ -681,7 +674,6 @@ LOCKABLE_FEATURES: dict[str, tuple[str, str]] = {
     "dip.alliance": ("🤝 اتحاد", FEATURE_CAT_DIPLOMACY),
     "dip.speech": ("🎤 سخنرانی", FEATURE_CAT_DIPLOMACY),
     "twitter": ("🐦 توییتر (X)", FEATURE_CAT_DIPLOMACY),
-    "dip.twitter": ("🐦 توییتر (X)", FEATURE_CAT_DIPLOMACY),
     # 🏛 حاکمیت
     "gov.system": ("🏛 تغییر نظام حاکمیتی", FEATURE_CAT_GOVERNANCE),
     "gov.tax": ("💵 مالیات", FEATURE_CAT_GOVERNANCE),
@@ -691,6 +683,18 @@ LOCKABLE_FEATURES: dict[str, tuple[str, str]] = {
     "un.assembly": ("🏛 مجمع عمومی سازمان ملل", FEATURE_CAT_DIPLOMACY),
     "un.court": ("⚖️ دادگاه بین‌المللی لاهه", FEATURE_CAT_DIPLOMACY),
     "un.resolution": ("📜 قطعنامه‌های بین‌المللی", FEATURE_CAT_DIPLOMACY),
+}
+
+# نگاشت کلیدهای مستعار به کلید رسمی (برای سازگاری با رکوردهای احتمالی گذشته در دیتابیس)
+FEATURE_KEY_ALIASES: dict[str, str] = {
+    "military.tech_transfer": "tech_transfer",
+    "military.straits": "straits_management",
+    "military.security_role": "security_roles",
+    "military.ops_role": "military_roles",
+    "econ_satellite": "econ.satellite",
+    "econ_projects": "econ.projects",
+    "market_rates": "econ.market_rates",
+    "dip.twitter": "twitter",
 }
 
 # آیدی کانال رسمی توییتر جهانی (X)

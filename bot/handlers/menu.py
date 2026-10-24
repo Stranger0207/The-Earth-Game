@@ -48,7 +48,10 @@ async def cb_main(
 
 
 @router.callback_query(F.data == "menu:economy")
-async def cb_economy(call: CallbackQuery, session: AsyncSession, db_user: User) -> None:
+async def cb_economy(
+    call: CallbackQuery, state: FSMContext, session: AsyncSession, db_user: User
+) -> None:
+    await state.clear()
     country = await get_player_country(session, db_user)
     if await check_hall_lock(call, session, country):
         return

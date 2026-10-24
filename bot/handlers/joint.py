@@ -34,6 +34,7 @@ from ..services.economy_service import EconomyError, build_joint_facility
 from ..services.news_service import send_log
 from ..states import JointFacilityForm
 from ..utils.numbers import fa_money, fa_number, parse_amount
+from ..utils.screens import safe_edit
 from ..utils.ui import STYLE_MAIN, STYLE_NO, STYLE_OK
 from .deps import NO_COUNTRY_TEXT, assert_feature, get_player_country
 
@@ -51,7 +52,7 @@ async def cb_joint_start(call: CallbackQuery, state: FSMContext, session: AsyncS
     await call.answer()
     country = await get_player_country(session, db_user)
     if country is None:
-        await call.message.edit_text(NO_COUNTRY_TEXT)
+        await safe_edit(call, NO_COUNTRY_TEXT)
         return
     if not await assert_feature(call, session, country, "econ.joint"):
         return
@@ -60,7 +61,8 @@ async def cb_joint_start(call: CallbackQuery, state: FSMContext, session: AsyncS
     since = datetime.now(timezone.utc) - timedelta(hours=BUILD_LIMIT_WINDOW_HOURS)
     recent = await fac_repo.count_joint_requests_since(session, country.id, since)
     if recent >= JOINT_BUILD_LIMIT:
-        await call.message.edit_text(
+        await safe_edit(
+            call,
             f"⏳ شما در هر {fa_number(BUILD_LIMIT_WINDOW_HOURS)} ساعت حداکثر "
             f"{fa_number(JOINT_BUILD_LIMIT)} تأسیسات مشترک می‌توانید بسازید. لطفاً بعداً تلاش کنید.",
             reply_markup=_back_build_kb(),
@@ -70,7 +72,8 @@ async def cb_joint_start(call: CallbackQuery, state: FSMContext, session: AsyncS
     await state.set_state(JointFacilityForm.choosing_partner)
     countries = await countries_repo.list_countries(session)
     others = [c for c in countries if c.id != country.id and c.owner_user_id is not None]
-    await call.message.edit_text(
+    await safe_edit(
+        call,
         "🤝 <b>تأسیسات مشترک</b>\n\nشریک تجاری خود را انتخاب کنید:",
         reply_markup=countries_kb(others, prefix="joint_partner", columns=2, back_data="econ:build"),
     )
@@ -81,11 +84,12 @@ async def cb_joint_partner(call: CallbackQuery, state: FSMContext, session: Asyn
     await call.answer()
     partner = await countries_repo.get_country(session, int(call.data.split(":")[1]))
     if partner is None or partner.owner_user_id is None:
-        await call.message.edit_text("شریک نامعتبر است.", reply_markup=_back_build_kb())
+        await safe_edit(call, "شریک نامعتبر است.", reply_markup=_back_build_kb())
         return
     await state.update_data(partner_id=partner.id)
     await state.set_state(JointFacilityForm.choosing_type)
-    await call.message.edit_text(
+    await safe_edit(
+        call,
         f"🤝 شریک: {partner.flag} {partner.name_fa}\n\nنوع تأسیسات مشترک را انتخاب کنید:",
         reply_markup=joint_facility_types_kb(),
     )
@@ -105,7 +109,8 @@ async def cb_joint_type(
         total_of_type = await fac_repo.count_facilities_by_type(session, country.id, ftype)
         if total_of_type >= FACILITY_TOTAL_LIMIT_NON_VIP:
             await state.clear()
-            await call.message.edit_text(
+            await safe_edit(
+                call,
                 f"🚫 سقف ساخت «{FACILITY_FA[ftype]}» پر شده است "
                 f"(حداکثر {fa_number(FACILITY_TOTAL_LIMIT_NON_VIP)} عدد، "
                 f"فعلی: {fa_number(total_of_type)}).\n\n"
@@ -118,14 +123,16 @@ async def cb_joint_type(
     cost = FACILITY_COST_USD[ftype]
     if ftype == FacilityType.MINE:
         await state.set_state(JointFacilityForm.choosing_resource)
-        await call.message.edit_text(
+        await safe_edit(
+            call,
             f"⛏ معدن مشترک چه منبعی؟\n💰 هزینه‌ی کل: {fa_money(cost)}",
             reply_markup=joint_mine_resources_kb(),
         )
     else:
         await state.update_data(resource=None)
         await state.set_state(JointFacilityForm.entering_percent)
-        await call.message.edit_text(
+        await safe_edit(
+            call,
             f"🏭 {FACILITY_FA[ftype]} مشترک\n💰 هزینه‌ی کل: {fa_money(cost)}\n\n"
             "درصد سهم شریک را وارد کنید (۱ تا ۹۹، مثلاً 40):",
             reply_markup=_back_build_kb(),
@@ -137,7 +144,8 @@ async def cb_joint_resource(call: CallbackQuery, state: FSMContext) -> None:
     await call.answer()
     await state.update_data(resource=call.data.split(":")[1])
     await state.set_state(JointFacilityForm.entering_percent)
-    await call.message.edit_text(
+    await safe_edit(
+        call,
         "درصد سهم شریک را وارد کنید (۱ تا ۹۹، مثلاً 40):",
         reply_markup=_back_build_kb(),
     )

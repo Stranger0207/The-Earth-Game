@@ -7,7 +7,7 @@ from __future__ import annotations
 from aiogram.types import CallbackQuery, Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..constants import FEATURE_LOCKED_TEXT, LOCKABLE_FEATURES
+from ..constants import FEATURE_KEY_ALIASES, FEATURE_LOCKED_TEXT, LOCKABLE_FEATURES
 from ..database.models import Country, User
 from ..database.repositories import countries as countries_repo
 from ..database.repositories import feature_locks as locks_repo
@@ -28,16 +28,18 @@ NO_COUNTRY_TEXT = (
 
 def feature_name(feature_key: str) -> str:
     """نام فارسی یک آپشن قابل‌قفل (برای پیام‌ها و لاگ)."""
-    entry = LOCKABLE_FEATURES.get(feature_key)
-    return entry[0] if entry else feature_key
+    canonical_key = FEATURE_KEY_ALIASES.get(feature_key, feature_key)
+    entry = LOCKABLE_FEATURES.get(canonical_key)
+    return entry[0] if entry else canonical_key
 
 
 async def is_feature_locked(
     session: AsyncSession, country: Country | None, feature_key: str
 ) -> bool:
     """آیا این آپشن برای این کشور قفل است؟ (قفل سراسری هم لحاظ می‌شود)"""
+    canonical_key = FEATURE_KEY_ALIASES.get(feature_key, feature_key)
     return await locks_repo.is_locked(
-        session, feature_key, country.id if country else None
+        session, canonical_key, country.id if country else None
     )
 
 

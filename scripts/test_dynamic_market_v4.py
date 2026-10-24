@@ -205,8 +205,9 @@ async def run_tests() -> None:
         session.add(bstate)
         await session.flush()
         check("ستون market_news_enabled پیش‌فرض True است", bstate.market_news_enabled is True)
-        check("کلید قفل market_rates در LOCKABLE_FEATURES تعریف شده است", "market_rates" in LOCKABLE_FEATURES)
         check("کلید قفل econ.market_rates در LOCKABLE_FEATURES تعریف شده است", "econ.market_rates" in LOCKABLE_FEATURES)
+        from bot.constants import FEATURE_KEY_ALIASES
+        check("کلید مستعار market_rates در FEATURE_KEY_ALIASES نگاشت شده است", FEATURE_KEY_ALIASES.get("market_rates") == "econ.market_rates")
 
         # ۱۰. ریست فصل و بازگشت به قیمت پایه
         print("\n— آزمون ۱۰: بازنشانی نرخ‌ها در ریست فصل")

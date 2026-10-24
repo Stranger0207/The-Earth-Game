@@ -132,7 +132,7 @@ async def cb_report(call: CallbackQuery, session: AsyncSession, db_user: User) -
     await call.answer()
     country = await get_player_country(session, db_user)
     if country is None:
-        await safe_edit(call,NO_COUNTRY_TEXT)
+        await safe_edit(call, NO_COUNTRY_TEXT)
         return
     await safe_edit(call,
         render_economy_panel(country), reply_markup=economy_menu_kb()
@@ -144,7 +144,7 @@ async def cb_reserves(call: CallbackQuery, session: AsyncSession, db_user: User)
     await call.answer()
     country = await get_player_country(session, db_user)
     if country is None:
-        await safe_edit(call,NO_COUNTRY_TEXT)
+        await safe_edit(call, NO_COUNTRY_TEXT)
         return
     reserves = await reserves_repo.list_reserves(session, country.id)
     await safe_edit(call,
@@ -677,7 +677,7 @@ async def cb_sell(
     await call.answer()
     country = await get_player_country(session, db_user)
     if country is None:
-        await safe_edit(call,NO_COUNTRY_TEXT)
+        await safe_edit(call, NO_COUNTRY_TEXT)
         return
     if not await assert_feature(call, session, country, "econ.sale"):
         return
@@ -696,11 +696,10 @@ async def cb_sell(
         return
 
     await state.set_state(SaleForm.choosing_resource)
-    await show_menu(
+    await safe_edit(
         call,
         "💱 کدام منبع را می‌خواهید بفروشید؟",
         reply_markup=sell_resources_kb(),
-        image_key="economy",
     )
 
 
@@ -721,7 +720,7 @@ async def _ask_sale_amount(target: CallbackQuery | Message, state: FSMContext, r
     )
     kb = _back_kb("sback:res")
     if isinstance(target, CallbackQuery):
-        await target.message.edit_text(text, reply_markup=kb)
+        await safe_edit(target, text, reply_markup=kb)
     else:
         await target.answer(text, reply_markup=kb)
 
@@ -787,7 +786,7 @@ async def _show_sale_buyers(
     others = [c for c in countries if c.id != country_id]
     kb = countries_kb(others, prefix="sell_buyer", columns=2, back_data="sback:amt")
     if isinstance(target, CallbackQuery):
-        await target.message.edit_text("کشور خریدار را انتخاب کنید:", reply_markup=kb)
+        await safe_edit(target, "کشور خریدار را انتخاب کنید:", reply_markup=kb)
     else:
         await target.answer("کشور خریدار را انتخاب کنید:", reply_markup=kb)
 

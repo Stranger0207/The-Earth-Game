@@ -119,33 +119,19 @@ def _test_new_countries() -> None:
               all(nb in gc for nb in g.get("neighbors", [])), str(g.get("neighbors")))
 
 
-# ── ۴) سنجش توان فناورانه‌ی خریدار ──────────────────────────
+# ── ۴) حذف سنجش توان فناورانه‌ی خریدار (آزادسازی معاملات نظامی) ──────────
 def _test_arms_export_gate() -> None:
     from bot.services.ai import evaluators, prompts
 
-    p = prompts.arms_export_prompt()
-    check("پرامپت صادرات تسلیحات وجود دارد", bool(p))
-    check("F-22 در پرامپت نمونه شده", "F-22" in p)
-    check("B-2 در پرامپت نمونه شده", "B-2" in p)
-    check("نسل ۵ در پرامپت آمده", "نسل ۵" in p)
-    check("خروجی allowed دارد", '"allowed"' in p)
-    check("خروجی severity دارد", '"severity"' in p)
+    check("پرامپت صادرات تسلیحات حذف شده", not hasattr(prompts, "arms_export_prompt"))
+    check("سنجش‌گر صادرات تسلیحات حذف شده", not hasattr(evaluators, "evaluate_arms_export"))
 
-    check("سنجش‌گر صادرات تسلیحات هست", hasattr(evaluators, "evaluate_arms_export"))
-    sig = inspect.signature(evaluators.evaluate_arms_export)
-    for param in ("item_name", "category_fa", "branch_fa", "count"):
-        check(f"پارامتر {param} در سنجش‌گر هست", param in sig.parameters)
-
-    # هندلر فروش، سنجش را صدا می‌زند و در صورت رد معامله را ثبت نمی‌کند
+    # هندلر فروش، دیگر سنجش را صدا نمی‌زند و مستقیم معامله را جلو می‌برد
     src = inspect.getsource(
         __import__("bot.handlers.military", fromlist=["x"]).cb_sell_buyer
     )
-    check("هندلر فروش سنجش را صدا می‌زند", "evaluate_arms_export" in src)
-    check("رد شدن معامله را متوقف می‌کند",
-          'verdict.get("allowed") is False' in src and "return" in src)
-    check("رد شدن در گروه لاگ ثبت می‌شود", "send_log" in src)
-    # fallback: خطای AI (دیکشنری خالی) معامله را رد نمی‌کند
-    check("خطای AI معامله را رد نمی‌کند", "if verdict and" in src)
+    check("هندلر فروش دیگر سنجش AI را صدا نمی‌زند", "evaluate_arms_export" not in src)
+    check("انتقال مستقیم به فرم تعیین پرداخت‌کننده عوارض", "MilitarySaleForm.choosing_fee_payer" in src)
 
 
 async def main() -> None:

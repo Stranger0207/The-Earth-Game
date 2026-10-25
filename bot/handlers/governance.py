@@ -1277,6 +1277,10 @@ async def cb_visa_rm_all_confirm(call: CallbackQuery, session: AsyncSession, db_
 
 # ---------- مجلس ----------
 
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc)
+
+
 def _format_cooldown(rem_seconds: int | float) -> str:
     rem_sec = max(0, int(rem_seconds))
     h = rem_sec // 3600
@@ -1297,11 +1301,13 @@ def _aware_dt(dt: datetime | None) -> datetime | None:
     return dt
 
 
-@router.callback_query(F.data == "gov:parliament")
+@router.callback_query(F.data == "gov:parliament", StateFilter("*"))
 async def cb_parliament(
-    call: CallbackQuery, session: AsyncSession, db_user: User
+    call: CallbackQuery, session: AsyncSession, db_user: User, state: FSMContext | None = None
 ) -> None:
     await call.answer()
+    if state:
+        await state.clear()
     country = await get_player_country(session, db_user)
     quota_line = ""
     if country:

@@ -975,7 +975,7 @@ async def cb_tech_req_reject(
             pass
 
 
-@router.callback_query(F.data.startswith("tech_inv_cancel:"))
+@router.callback_query(F.data.startswith("tech_inv_cancel:") | F.data.startswith("tech_req_cancel_buyer:"))
 async def cb_tech_inv_cancel(
     call: CallbackQuery, session: AsyncSession, db_user: User
 ) -> None:

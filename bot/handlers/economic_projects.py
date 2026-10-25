@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timezone, timedelta
 from aiogram import F, Router
 from aiogram.filters import StateFilter
 from aiogram.fsm.context import FSMContext
@@ -12,6 +13,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..config import get_settings
 from ..constants import (
     ECON_PROJECT_YIELD_INTERVAL_HOURS,
+    ECON_ROLE_LIMIT_COUNT,
+    ECON_ROLE_LIMIT_HOURS,
     MAX_ROLE_PAGE_LEN,
 )
 from ..database.models import Country, EconomicProject, User
@@ -54,13 +57,41 @@ router = Router(name="economic_projects")
 settings = get_settings()
 
 
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _aware(dt: datetime | None) -> datetime | None:
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
+def _format_cooldown(rem_seconds: int | float) -> str:
+    rem_sec = max(0, int(rem_seconds))
+    h = rem_sec // 3600
+    m = (rem_sec % 3600) // 60
+    if h > 0 and m > 0:
+        return f"{fa_number(h)} ساعت و {fa_number(m)} دقیقه"
+    elif h > 0:
+        return f"{fa_number(h)} ساعت"
+    else:
+        return f"{fa_number(max(1, m))} دقیقه"
+
+
 # ============================================================
 #  ورودی و منوی اصلی پروژه‌ها
 # ============================================================
 
 @router.callback_query(F.data == "econ:projects")
-async def cb_projects_home(call: CallbackQuery, session: AsyncSession, db_user: User) -> None:
+async def cb_projects_home(
+    call: CallbackQuery, session: AsyncSession, db_user: User, state: FSMContext | None = None
+) -> None:
     await call.answer()
+    if state:
+        await state.clear()
     country = await get_player_country(session, db_user)
     if country is None:
         await safe_edit(call, NO_COUNTRY_TEXT)
@@ -68,9 +99,25 @@ async def cb_projects_home(call: CallbackQuery, session: AsyncSession, db_user: 
     if not await assert_feature(call, session, country, "econ.projects"):
         return
 
+    now = _utcnow()
+    since = now - timedelta(hours=ECON_ROLE_LIMIT_HOURS)
+    used = await proj_repo.count_projects_by_country_since(session, country.id, since)
+    rem_quota = max(0, ECON_ROLE_LIMIT_COUNT - used)
+    if rem_quota > 0:
+        quota_line = f"\n📊 <b>سهمیه رول اقتصادی شما:</b> {fa_number(rem_quota)} از {fa_number(ECON_ROLE_LIMIT_COUNT)} (در {fa_number(ECON_ROLE_LIMIT_HOURS)} ساعت)\n"
+    else:
+        earliest = await proj_repo.get_earliest_project_since(session, country.id, since)
+        rem_str = "به‌زودی"
+        if earliest and earliest.created_at:
+            earliest_aware = _aware(earliest.created_at)
+            rem_sec = max(0, int((earliest_aware + timedelta(hours=ECON_ROLE_LIMIT_HOURS) - now).total_seconds()))
+            rem_str = _format_cooldown(rem_sec)
+        quota_line = f"\n⏳ <b>سهمیه ۲۴ ساعته شما پر است.</b> آزادسازی سهمیه بعدی: {rem_str}\n"
+
     text = (
         header("پروژه‌های اقتصادی (رول)", "🏗")
-        + "\n\nاز این بخش می‌توانید رول‌ها و پروژه‌های توسعه اقتصادی کشور خود را تدوین کنید.\n"
+        + f"{quota_line}\n"
+        "از این بخش می‌توانید رول‌ها و پروژه‌های توسعه اقتصادی کشور خود را تدوین کنید.\n"
         "پس از نگارش متن (تا ۲ صفحه)، پروژه جهت داوری و تخصیص بودجه و بازدهی ۷۲ ساعته به تیم مدیریت ارسال خواهد شد.\n\n"
         "📌 گزینه‌ی مورد نظر را انتخاب کنید:"
     )
@@ -215,6 +262,22 @@ async def cb_new_project(call: CallbackQuery, state: FSMContext, session: AsyncS
     if not await assert_feature(call, session, country, "econ.projects"):
         return
 
+    now = _utcnow()
+    since = now - timedelta(hours=ECON_ROLE_LIMIT_HOURS)
+    used = await proj_repo.count_projects_by_country_since(session, country.id, since)
+    if used >= ECON_ROLE_LIMIT_COUNT:
+        earliest = await proj_repo.get_earliest_project_since(session, country.id, since)
+        rem_str = "به‌زودی"
+        if earliest and earliest.created_at:
+            rem_sec = max(0, int((_aware(earliest.created_at) + timedelta(hours=ECON_ROLE_LIMIT_HOURS) - now).total_seconds()))
+            rem_str = _format_cooldown(rem_sec)
+        await call.answer(
+            f"⏳ سقف مجاز ثبت رول اقتصادی شما ({fa_number(ECON_ROLE_LIMIT_COUNT)} رول در {fa_number(ECON_ROLE_LIMIT_HOURS)} ساعت) پر است.\n"
+            f"زمان باقیمانده تا ثبت بعدی: {rem_str}",
+            show_alert=True,
+        )
+        return
+
     await state.set_state(EconProjectDraftForm.entering_title)
     await safe_edit(
         call,
@@ -239,7 +302,12 @@ async def msg_title(message: Message, state: FSMContext) -> None:
     await message.answer(
         f"✅ عنوان پروژه: <b>{title}</b>\n\n"
         f"اکنون <b>متن صفحه اول</b> رول اقتصادی خود را ارسال کنید.\n"
-        f"⚠️ <b>توجه:</b> حداکثر سقف مجاز <b>{fa_number(MAX_ROLE_PAGE_LEN)}</b> کاراکتر است."
+        f"⚠️ <b>توجه:</b> حداکثر سقف مجاز <b>{fa_number(MAX_ROLE_PAGE_LEN)}</b> کاراکتر است.",
+        reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="❌ انصراف", callback_data="econ:projects", style=STYLE_NO)],
+            ]
+        ),
     )
 
 
@@ -260,6 +328,7 @@ async def msg_page_1(message: Message, state: FSMContext) -> None:
         reply_markup=InlineKeyboardMarkup(
             inline_keyboard=[
                 [InlineKeyboardButton(text="⏭ بدون صفحه دوم / رفتن به مرحله بعد", callback_data="ep_skip_p2", style=STYLE_OK)],
+                [InlineKeyboardButton(text="❌ انصراف", callback_data="econ:projects", style=STYLE_NO)],
             ]
         ),
     )
@@ -272,7 +341,12 @@ async def cb_skip_p2(call: CallbackQuery, state: FSMContext) -> None:
     await state.set_state(EconProjectDraftForm.entering_budget)
     await safe_edit(
         call,
-        "💰 لطفاً <b>بودجه پیشنهادی / مورد نیاز</b> برای این پروژه را به دلار وارد کنید (مثلاً: 50M یا 100000000):"
+        "💰 لطفاً <b>بودجه پیشنهادی / مورد نیاز</b> برای این پروژه را به دلار وارد کنید (مثلاً: 50M یا 100000000):",
+        reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="❌ انصراف", callback_data="econ:projects", style=STYLE_NO)],
+            ]
+        ),
     )
 
 
@@ -288,7 +362,12 @@ async def msg_page_2(message: Message, state: FSMContext) -> None:
     await state.set_state(EconProjectDraftForm.entering_budget)
     await message.answer(
         f"✅ صفحه دوم با موفقیت ثبت شد ({fa_number(len(text))} کاراکتر).\n\n"
-        f"💰 لطفاً <b>بودجه پیشنهادی / مورد نیاز</b> برای این پروژه را به دلار وارد کنید (مثلاً: 50M یا 100000000):"
+        f"💰 لطفاً <b>بودجه پیشنهادی / مورد نیاز</b> برای این پروژه را به دلار وارد کنید (مثلاً: 50M یا 100000000):",
+        reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="❌ انصراف", callback_data="econ:projects", style=STYLE_NO)],
+            ]
+        ),
     )
 
 
@@ -480,6 +559,23 @@ async def cb_submit_do(call: CallbackQuery, session: AsyncSession, db_user: User
         await safe_edit(call, "❌ کشور یافت نشد.")
         return
 
+    now = _utcnow()
+    since = now - timedelta(hours=ECON_ROLE_LIMIT_HOURS)
+    used = await proj_repo.count_projects_by_country_since(session, country.id, since)
+    if used >= ECON_ROLE_LIMIT_COUNT:
+        earliest = await proj_repo.get_earliest_project_since(session, country.id, since)
+        rem_str = "به‌زودی"
+        if earliest and earliest.created_at:
+            rem_sec = max(0, int((_aware(earliest.created_at) + timedelta(hours=ECON_ROLE_LIMIT_HOURS) - now).total_seconds()))
+            rem_str = _format_cooldown(rem_sec)
+        await safe_edit(
+            call,
+            f"⏳ متأسفانه سقف مجاز ثبت رول اقتصادی شما ({fa_number(ECON_ROLE_LIMIT_COUNT)} رول در {fa_number(ECON_ROLE_LIMIT_HOURS)} ساعت) پر شده است.\n"
+            f"زمان باقیمانده تا ثبت بعدی: {rem_str}",
+            reply_markup=econ_projects_home_kb(),
+        )
+        return
+
     # ۱. تغییر وضعیت به PENDING_REVIEW
     project.status = EconomicProjectStatus.PENDING_REVIEW.value
 
@@ -601,6 +697,104 @@ async def cb_grp_reject_quick(call: CallbackQuery, session: AsyncSession) -> Non
     )
 
 
+@router.callback_query(F.data.startswith("ep_admin_approve:"))
+async def cb_admin_approve_router(call: CallbackQuery, session: AsyncSession) -> None:
+    """هدایت دکمه تخصیص بودجه و تایید از پنل /roles."""
+    proj_id = int(call.data.split(":")[1])
+    call.data = f"ep_grp_approve:{proj_id}"
+    await cb_grp_approve_menu(call, session)
+
+
+@router.callback_query(F.data.startswith("ep_admin_reject:"))
+async def cb_admin_reject_router(call: CallbackQuery) -> None:
+    """هدایت دکمه رد پروژه از پنل /roles."""
+    proj_id = int(call.data.split(":")[1])
+    call.data = f"ep_grp_reject:{proj_id}"
+    await cb_grp_reject_menu(call)
+
+
+@router.callback_query(F.data.startswith("ep_rj_custom:"))
+async def cb_grp_reject_custom(call: CallbackQuery, state: FSMContext) -> None:
+    """درخواست وارد کردن دلیل رد اختصاصی."""
+    await call.answer()
+    proj_id = int(call.data.split(":")[1])
+    await state.set_state(AdminProjectReviewForm.entering_reject_reason)
+    await state.update_data(
+        project_id=proj_id,
+        admin_chat_id=call.message.chat.id,
+        admin_message_id=call.message.message_id,
+    )
+    cancel_kb = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="🔙 انصراف و بازگشت", callback_data=f"ep_grp_cancel:{proj_id}", style=STYLE_NO),
+    ]])
+    await call.message.reply(
+        "✍️ لطفاً <b>علت رد پروژه</b> را ارسال کنید تا به اطلاع بازیکن برسد:",
+        reply_markup=cancel_kb,
+    )
+
+
+@router.message(StateFilter(AdminProjectReviewForm.entering_reject_reason))
+async def msg_custom_reject_reason(
+    message: Message, state: FSMContext, session: AsyncSession
+) -> None:
+    """دریافت دلیل رد اختصاصی و رد پروژه."""
+    reason = (message.text or "").strip()
+    if not reason:
+        await message.answer("⚠️ لطفاً دلیل رد را بنویسید:")
+        return
+
+    data = await state.get_data()
+    proj_id = data.get("project_id")
+    await state.clear()
+
+    project = await proj_repo.get_project(session, proj_id)
+    if not project:
+        await message.answer("❌ پروژه یافت نشد.")
+        return
+
+    admin_user = message.from_user
+    admin_name = admin_user.full_name or f"@{admin_user.username}" if admin_user.username else str(admin_user.id)
+
+    await reject_project(session, project, admin_user.id, reason)
+    await session.commit()
+
+    admin_chat_id = data.get("admin_chat_id")
+    admin_msg_id = data.get("admin_message_id")
+    if admin_chat_id and admin_msg_id:
+        try:
+            await bot.edit_message_text(
+                chat_id=admin_chat_id,
+                message_id=admin_msg_id,
+                text=(message.text or "") + f"\n\n❌ <b>رد شد توسط {admin_name}</b>\n<b>دلیل:</b> {reason}",
+                reply_markup=None,
+            )
+        except Exception:
+            pass
+
+    country = await countries_repo.get_country(session, project.country_id)
+    if country and country.owner_user_id:
+        try:
+            await bot.send_message(
+                country.owner_user_id,
+                f"❌ <b>پروژه رول اقتصادی شما رد شد</b>\n\n"
+                f"عنوان پروژه: <b>{project.title}</b>\n"
+                f"دلیل تیم مدیریت: {reason}\n\n"
+                f"💡 می‌توانید با بازنویسی و رفع ایراد، پروژه را مجدداً تدوین و ارسال فرمایید.",
+            )
+        except Exception:
+            pass
+
+    await send_log(
+        bot,
+        f"❌ <b>رد رول اقتصادی</b>\n"
+        f"کشور: {country.name_fa if country else '—'}\n"
+        f"پروژه: {project.title}\n"
+        f"بررسی‌کننده: {admin_name}\n"
+        f"دلیل: {reason}",
+    )
+    await message.answer("✅ پروژه با موفقیت رد شد و پیام به پیوی بازیکن ارسال گردید.")
+
+
 @router.callback_query(F.data.startswith("ep_grp_cancel:"))
 async def cb_grp_cancel(call: CallbackQuery, session: AsyncSession) -> None:
     """بازگشت به دکمه‌های اصلی داوری در گروه."""
@@ -694,6 +888,128 @@ async def cb_set_ycash(call: CallbackQuery, session: AsyncSession) -> None:
             len(project.yield_resources_dict),
         )
         await call.message.edit_reply_markup(reply_markup=kb)
+
+
+@router.callback_query(F.data.startswith("ep_set_cash_custom:"))
+async def cb_set_cash_custom(call: CallbackQuery, state: FSMContext) -> None:
+    """درخواست وارد کردن هزینه دلاری دلخواه افتتاح."""
+    await call.answer()
+    proj_id = int(call.data.split(":")[1])
+    await state.set_state(AdminProjectReviewForm.entering_custom_cash)
+    await state.update_data(
+        project_id=proj_id,
+        admin_chat_id=call.message.chat.id,
+        admin_message_id=call.message.message_id,
+    )
+    cancel_kb = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="🔙 انصراف و بازگشت", callback_data=f"ep_grp_approve:{proj_id}", style=STYLE_NO),
+    ]])
+    await call.message.reply(
+        "💵 لطفاً <b>هزینه دلاری افتتاح</b> مورد نظر برای این پروژه را وارد کنید (یا عدد 0 برای افتتاح رایگان):\n"
+        "<i>(مثال: 50M یا 100,000,000 یا 0)</i>",
+        reply_markup=cancel_kb,
+    )
+
+
+@router.message(StateFilter(AdminProjectReviewForm.entering_custom_cash))
+async def msg_custom_cash(
+    message: Message, state: FSMContext, session: AsyncSession
+) -> None:
+    """دریافت مبلغ دلخواه هزینه افتتاح."""
+    raw = (message.text or "").strip()
+    val = parse_amount(raw)
+    if val is None or val < 0:
+        await message.answer("⚠️ لطفاً مبلغ معتبری وارد کنید (مثال: 50M یا 10,000,000 یا 0):")
+        return
+
+    data = await state.get_data()
+    proj_id = data.get("project_id")
+    await state.clear()
+
+    project = await proj_repo.get_project(session, proj_id)
+    if not project:
+        await message.answer("❌ پروژه یافت نشد.")
+        return
+
+    project.launch_cost_cash = float(val)
+    await session.commit()
+
+    kb = admin_approve_settings_kb(
+        proj_id,
+        project.launch_cost_cash,
+        len(project.launch_resources_dict),
+        project.yield_cash_72h or 0.0,
+        len(project.yield_resources_dict),
+    )
+    admin_chat_id = data.get("admin_chat_id")
+    admin_msg_id = data.get("admin_message_id")
+    if admin_chat_id and admin_msg_id:
+        try:
+            await bot.edit_message_reply_markup(chat_id=admin_chat_id, message_id=admin_msg_id, reply_markup=kb)
+        except Exception:
+            pass
+    await message.answer(f"✅ هزینه دلاری افتتاح پروژه روی <b>{fa_money(val)}</b> تنظیم شد.", reply_markup=kb)
+
+
+@router.callback_query(F.data.startswith("ep_set_ycash_custom:"))
+async def cb_set_ycash_custom(call: CallbackQuery, state: FSMContext) -> None:
+    """درخواست وارد کردن سود دلخواه ۷۲ ساعته."""
+    await call.answer()
+    proj_id = int(call.data.split(":")[1])
+    await state.set_state(AdminProjectReviewForm.entering_custom_yield)
+    await state.update_data(
+        project_id=proj_id,
+        admin_chat_id=call.message.chat.id,
+        admin_message_id=call.message.message_id,
+    )
+    cancel_kb = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="🔙 انصراف و بازگشت", callback_data=f"ep_grp_approve:{proj_id}", style=STYLE_NO),
+    ]])
+    await call.message.reply(
+        "💰 لطفاً <b>مبلغ سود نقدی ۷۲ ساعته</b> مورد نظر برای این پروژه را به دلار وارد کنید:\n"
+        "<i>(مثال: 20M یا 15,000,000 یا ۱۵۰۰۰۰۰۰)</i>",
+        reply_markup=cancel_kb,
+    )
+
+
+@router.message(StateFilter(AdminProjectReviewForm.entering_custom_yield))
+async def msg_custom_yield(
+    message: Message, state: FSMContext, session: AsyncSession
+) -> None:
+    """دریافت مبلغ دلخواه سود ۷۲ ساعته."""
+    raw = (message.text or "").strip()
+    val = parse_amount(raw)
+    if val is None or val < 0:
+        await message.answer("⚠️ لطفاً مبلغ معتبری وارد کنید (مثال: 20M یا 15,000,000):")
+        return
+
+    data = await state.get_data()
+    proj_id = data.get("project_id")
+    await state.clear()
+
+    project = await proj_repo.get_project(session, proj_id)
+    if not project:
+        await message.answer("❌ پروژه یافت نشد.")
+        return
+
+    project.yield_cash_72h = float(val)
+    await session.commit()
+
+    kb = admin_approve_settings_kb(
+        proj_id,
+        project.launch_cost_cash or 0.0,
+        len(project.launch_resources_dict),
+        project.yield_cash_72h,
+        len(project.yield_resources_dict),
+    )
+    admin_chat_id = data.get("admin_chat_id")
+    admin_msg_id = data.get("admin_message_id")
+    if admin_chat_id and admin_msg_id:
+        try:
+            await bot.edit_message_reply_markup(chat_id=admin_chat_id, message_id=admin_msg_id, reply_markup=kb)
+        except Exception:
+            pass
+    await message.answer(f"✅ سود ۷۲ ساعته پروژه روی <b>{fa_money(val)}</b> تنظیم شد.", reply_markup=kb)
 
 
 @router.callback_query(F.data.startswith("ep_cfg_res:"))

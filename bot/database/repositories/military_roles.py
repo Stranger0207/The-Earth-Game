@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from sqlalchemy import select
+from datetime import datetime
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..models import MilitaryRole
@@ -74,3 +75,53 @@ async def delete_military_role(
     """حذف رول نظامی از دیتابیس."""
     await session.delete(role)
     await session.flush()
+
+
+async def count_roles_by_attacker_since(
+    session: AsyncSession,
+    attacker_country_id: int,
+    since_dt: datetime,
+    valid_statuses: list[str] | None = None,
+) -> int:
+    """
+    شمارش عملیات‌های نظامی ثبت‌شده توسط مهاجم در بازه زمانی مشخص.
+    پیش‌نویس‌ها (DRAFT) و لغوشده‌ها (CANCELLED) شمارش نمی‌شوند.
+    """
+    if valid_statuses is None:
+        valid_statuses = [
+            MilitaryRoleStatus.PENDING_REVIEW.value,
+            MilitaryRoleStatus.COMPLETED.value,
+        ]
+    q = select(func.count(MilitaryRole.id)).where(
+        MilitaryRole.attacker_country_id == attacker_country_id,
+        MilitaryRole.created_at >= since_dt,
+        MilitaryRole.status.in_(valid_statuses),
+    )
+    res = await session.execute(q)
+    return res.scalar_one() or 0
+
+
+async def get_earliest_role_since(
+    session: AsyncSession,
+    attacker_country_id: int,
+    since_dt: datetime,
+    valid_statuses: list[str] | None = None,
+) -> MilitaryRole | None:
+    """قدیمی‌ترین رول نظامی معتبر در پنجره زمانی جهت محاسبه زمان آزادسازی سهمیه بعدی."""
+    if valid_statuses is None:
+        valid_statuses = [
+            MilitaryRoleStatus.PENDING_REVIEW.value,
+            MilitaryRoleStatus.COMPLETED.value,
+        ]
+    q = (
+        select(MilitaryRole)
+        .where(
+            MilitaryRole.attacker_country_id == attacker_country_id,
+            MilitaryRole.created_at >= since_dt,
+            MilitaryRole.status.in_(valid_statuses),
+        )
+        .order_by(MilitaryRole.created_at.asc())
+        .limit(1)
+    )
+    res = await session.execute(q)
+    return res.scalars().first()

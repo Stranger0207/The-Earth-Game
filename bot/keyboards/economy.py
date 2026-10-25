@@ -35,6 +35,7 @@ def economy_menu_kb(is_usa: bool = False, has_straits: bool = False) -> InlineKe
     settings = get_settings()
     builder = InlineKeyboardBuilder()
     builder.button(text="📊 گزارش اقتصادی", callback_data="econ:report", style=STYLE_MAIN)
+    builder.button(text="📊 لیست بازدهی روزانه", callback_data="econ:daily_yield", style=STYLE_MAIN)
     builder.button(text="📦 ذخایر", callback_data="econ:reserves", style=STYLE_MAIN)
     builder.button(text="📈 نرخ لحظه‌ای ذخایر", callback_data="econ:market_rates", style=STYLE_MAIN)
     builder.button(text="💱 فروش ذخیره", callback_data="econ:sell", style=STYLE_OK)
@@ -115,10 +116,20 @@ def bank_menu_kb() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.button(text="💰 موجودی", callback_data="bank:balance", style=STYLE_MAIN)
     builder.button(text="📉 بدهی", callback_data="bank:debt", style=STYLE_MAIN)
+    builder.button(text="📊 لیست بازدهی روزانه", callback_data="econ:daily_yield:bank", style=STYLE_MAIN)
     builder.button(text="🔁 انتقال وجه", callback_data="bank:transfer", style=STYLE_OK)
     builder.button(text="🏛 وام", callback_data="bank:loan", style=STYLE_MAIN)
     builder.button(text="🔙 بازگشت", callback_data="menu:economy", style=STYLE_MAIN)
-    builder.adjust(2, 2, 1)
+    builder.adjust(2, 1, 2, 1)
+    return builder.as_markup()
+
+
+def daily_yield_kb(back_target: str = "menu:economy", refresh_target: str = "econ:daily_yield:refresh") -> InlineKeyboardMarkup:
+    """کیبورد صفحه لیست بازدهی روزانه کشور."""
+    builder = InlineKeyboardBuilder()
+    builder.button(text="🔄 به‌روزرسانی ترازنامه", callback_data=refresh_target, style=STYLE_OK)
+    builder.button(text="🔙 بازگشت", callback_data=back_target, style=STYLE_MAIN)
+    builder.adjust(1, 1)
     return builder.as_markup()
 
 

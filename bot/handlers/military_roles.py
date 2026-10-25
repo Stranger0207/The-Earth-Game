@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timezone, timedelta
 from aiogram import F, Router
 from aiogram.filters import StateFilter
 from aiogram.fsm.context import FSMContext
@@ -11,7 +12,12 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..config import get_settings
-from ..constants import DEPLOY_BRANCHES, MAX_ROLE_PAGE_LEN
+from ..constants import (
+    DEPLOY_BRANCHES,
+    MAX_ROLE_PAGE_LEN,
+    MIL_ROLE_LIMIT_COUNT,
+    MIL_ROLE_LIMIT_HOURS,
+)
 from ..database.models import Country, MilitaryRole, User
 from ..database.repositories import countries as countries_repo
 from ..database.repositories import military as mil_repo
@@ -52,6 +58,30 @@ router = Router(name="military_roles")
 settings = get_settings()
 
 
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _aware(dt: datetime | None) -> datetime | None:
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
+def _format_cooldown(rem_seconds: int | float) -> str:
+    rem_sec = max(0, int(rem_seconds))
+    h = rem_sec // 3600
+    m = (rem_sec % 3600) // 60
+    if h > 0 and m > 0:
+        return f"{fa_number(h)} ساعت و {fa_number(m)} دقیقه"
+    elif h > 0:
+        return f"{fa_number(h)} ساعت"
+    else:
+        return f"{fa_number(max(1, m))} دقیقه"
+
+
 # ============================================================
 #  ورودی و منوی اصلی رول‌های نظامی
 # ============================================================
@@ -70,10 +100,25 @@ async def cb_military_roles_home(
     if not await assert_feature(call, session, country, "military_roles"):
         return
 
+    now = _utcnow()
+    since = now - timedelta(hours=MIL_ROLE_LIMIT_HOURS)
+    used = await mil_ops_repo.count_roles_by_attacker_since(session, country.id, since)
+    rem_quota = max(0, MIL_ROLE_LIMIT_COUNT - used)
+    if rem_quota > 0:
+        quota_line = f"\n📊 <b>سهمیه عملیات نظامی شما:</b> {fa_number(rem_quota)} از {fa_number(MIL_ROLE_LIMIT_COUNT)} (در {fa_number(MIL_ROLE_LIMIT_HOURS)} ساعت)\n"
+    else:
+        earliest = await mil_ops_repo.get_earliest_role_since(session, country.id, since)
+        rem_str = "به‌زودی"
+        if earliest and earliest.created_at:
+            rem_sec = max(0, int((_aware(earliest.created_at) + timedelta(hours=MIL_ROLE_LIMIT_HOURS) - now).total_seconds()))
+            rem_str = _format_cooldown(rem_sec)
+        quota_line = f"\n⏳ <b>سهمیه ۲۴ ساعته عملیات نظامی شما پر است.</b> آزادسازی سهمیه بعدی: {rem_str}\n"
+
     text = (
         header("عملیات و رول‌های نظامی", "⚔️")
         + f"\n\nکشور: {country.flag} <b>{country.name_fa}</b>\n"
-        f"{DIVIDER}\n"
+        + f"{quota_line}"
+        + f"{DIVIDER}\n"
         "در این بخش می‌توانید رول‌های عملیاتی تهاجمی، خرابکاری و ترور را نگارش و ارسال کنید.\n\n"
         "📌 <b>انواع رول‌های نظامی و سقف صفحات:</b>\n"
         "• 💣 <b>رول خرابکاری:</b> حداکثر ۲ صفحه (هر صفحه تا ۴۰۰۰ کاراکتر)\n"
@@ -104,6 +149,22 @@ async def cb_new_military_op(
         await safe_edit(call, NO_COUNTRY_TEXT)
         return
     if not await assert_feature(call, session, country, "military_roles"):
+        return
+
+    now = _utcnow()
+    since = now - timedelta(hours=MIL_ROLE_LIMIT_HOURS)
+    used = await mil_ops_repo.count_roles_by_attacker_since(session, country.id, since)
+    if used >= MIL_ROLE_LIMIT_COUNT:
+        earliest = await mil_ops_repo.get_earliest_role_since(session, country.id, since)
+        rem_str = "به‌زودی"
+        if earliest and earliest.created_at:
+            rem_sec = max(0, int((_aware(earliest.created_at) + timedelta(hours=MIL_ROLE_LIMIT_HOURS) - now).total_seconds()))
+            rem_str = _format_cooldown(rem_sec)
+        await call.answer(
+            f"⏳ سقف مجاز ثبت عملیات نظامی شما ({fa_number(MIL_ROLE_LIMIT_COUNT)} عملیات در {fa_number(MIL_ROLE_LIMIT_HOURS)} ساعت) پر است.\n"
+            f"زمان باقیمانده تا ثبت بعدی: {rem_str}",
+            show_alert=True,
+        )
         return
 
     text = (
@@ -212,6 +273,11 @@ async def cb_mil_target_pick(
         f"📌 عنوان: <b>{title}</b>\n\n"
         f"اکنون <b>متن صفحه اول</b> رول عملیاتی خود را ارسال کنید.\n"
         f"⚠️ <b>توجه:</b> حداکثر سقف مجاز هر صفحه <b>{fa_number(MAX_ROLE_PAGE_LEN)}</b> کاراکتر است.",
+        reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="❌ انصراف", callback_data="mil:ops_roles", style=STYLE_NO)],
+            ]
+        ),
     )
 
 
@@ -531,6 +597,23 @@ async def cb_draft_submit_do(
     attacker = await countries_repo.get_country(session, role.attacker_country_id)
     target = await countries_repo.get_country(session, role.target_country_id)
     if not attacker or not target:
+        return
+
+    now = _utcnow()
+    since = now - timedelta(hours=MIL_ROLE_LIMIT_HOURS)
+    used = await mil_ops_repo.count_roles_by_attacker_since(session, role.attacker_country_id, since)
+    if used >= MIL_ROLE_LIMIT_COUNT:
+        earliest = await mil_ops_repo.get_earliest_role_since(session, role.attacker_country_id, since)
+        rem_str = "به‌زودی"
+        if earliest and earliest.created_at:
+            rem_sec = max(0, int((_aware(earliest.created_at) + timedelta(hours=MIL_ROLE_LIMIT_HOURS) - now).total_seconds()))
+            rem_str = _format_cooldown(rem_sec)
+        await safe_edit(
+            call,
+            f"⏳ متأسفانه سقف مجاز ثبت عملیات نظامی شما ({fa_number(MIL_ROLE_LIMIT_COUNT)} عملیات در {fa_number(MIL_ROLE_LIMIT_HOURS)} ساعت) پر شده است.\n"
+            f"زمان باقیمانده تا ثبت بعدی: {rem_str}",
+            reply_markup=military_roles_home_kb(),
+        )
         return
 
     ok, err = await submit_military_role(session, role)
@@ -1112,3 +1195,9 @@ async def cb_admin_end_do(call: CallbackQuery, session: AsyncSession) -> None:
         f"توسط ادمین: {admin_name}\n"
         f"تلفات: {cas_report}",
     )
+
+
+@router.callback_query(F.data.in_({"mil_noop", "noop"}))
+async def cb_mil_noop(call: CallbackQuery) -> None:
+    """پاسخ به دکمه‌های اینلاین غیرفعال (شمارنده صفحات)."""
+    await call.answer()

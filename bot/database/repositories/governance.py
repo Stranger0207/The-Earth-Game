@@ -140,6 +140,35 @@ async def get_pending_laws(session: AsyncSession, country_id: int) -> list[Law]:
     return list((await session.execute(q)).scalars().all())
 
 
+async def count_laws_by_country_since(
+    session: AsyncSession, country_id: int, since_dt: datetime, exclude_rejected: bool = True
+) -> int:
+    """شمارش لوایح ثبت‌شده یک کشور از یک تاریخ مشخص (به‌جز لوایح ردشده)."""
+    q = select(func.count(Law.id)).where(
+        Law.country_id == country_id,
+        Law.created_at >= since_dt,
+    )
+    if exclude_rejected:
+        q = q.where(Law.status != "rejected")
+    res = await session.execute(q)
+    return res.scalar_one() or 0
+
+
+async def get_earliest_law_since(
+    session: AsyncSession, country_id: int, since_dt: datetime, exclude_rejected: bool = True
+) -> Law | None:
+    """قدیمی‌ترین لایحه در پنجره زمانی جهت محاسبه زمان آزادسازی سهمیه بعدی."""
+    q = (
+        select(Law)
+        .where(Law.country_id == country_id, Law.created_at >= since_dt)
+    )
+    if exclude_rejected:
+        q = q.where(Law.status != "rejected")
+    q = q.order_by(Law.created_at.asc()).limit(1)
+    res = await session.execute(q)
+    return res.scalars().first()
+
+
 async def get_law_by_id(session: AsyncSession, law_id: int) -> Law | None:
     return await session.get(Law, law_id)
 

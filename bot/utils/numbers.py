@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-# نگاشت ارقام انگلیسی به فارسی
+# نگاشت ارقام انگلیسی به فارسی و بالعکس (پشتیبانی از ارقام فارسی و عربی)
 _EN_TO_FA = str.maketrans("0123456789", "۰۱۲۳۴۵۶۷۸۹")
-_FA_TO_EN = str.maketrans("۰۱۲۳۴۵۶۷۸۹", "0123456789")
+_FA_TO_EN = str.maketrans("۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩", "01234567890123456789")
 
 
 def to_fa_digits(text: str | int | float) -> str:
@@ -45,12 +45,14 @@ def fa_money(value: float | None) -> str:
 
 def parse_amount(text: str) -> float | None:
     """
-    تلاش برای تبدیل ورودی کاربر (با ارقام فارسی/انگلیسی، کاما، پسوند m/b/k) به عدد.
+    تلاش برای تبدیل ورودی کاربر (با ارقام فارسی/عربی/انگلیسی، کاما/ویرگول فارسی، پسوند m/b/k) به عدد.
     در صورت ناموفق None برمی‌گرداند.
     """
     if not text:
         return None
-    raw = to_en_digits(text.strip().lower()).replace(",", "").replace(" ", "")
+    raw = to_en_digits(text.strip().lower())
+    for sep in (",", "،", "٫", " ", "\xa0", "_"):
+        raw = raw.replace(sep, "")
     multiplier = 1.0
     if raw.endswith("k"):
         multiplier, raw = 1_000, raw[:-1]
@@ -64,3 +66,8 @@ def parse_amount(text: str) -> float | None:
         return float(raw) * multiplier
     except ValueError:
         return None
+
+
+def normalize_number_input(text: str) -> float | None:
+    """نام مستعار تابع parse_amount جهت نرمال‌سازی ورودی‌های عددی ادمین و بازیکنان."""
+    return parse_amount(text)

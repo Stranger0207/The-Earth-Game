@@ -161,6 +161,18 @@ INVESTMENT_LIMIT = 2
 # بدون این سقف، فهرست سرمایه‌گذاری‌ها بی‌انتها رشد می‌کرد و بازی نامتوازن می‌شد.
 INVESTMENT_ACTIVE_LIMIT = 20
 
+# ============================================================
+#  محدودیت‌های زمانی ثبت لایحه، رول اقتصادی و رول نظامی
+# ============================================================
+LEGISLATION_LIMIT_COUNT = 2
+LEGISLATION_LIMIT_HOURS = 12
+
+ECON_ROLE_LIMIT_COUNT = 2
+ECON_ROLE_LIMIT_HOURS = 24
+
+MIL_ROLE_LIMIT_COUNT = 1
+MIL_ROLE_LIMIT_HOURS = 24
+
 # سیستم اتحاد (v1.9): حداکثر تعداد کشورهایی که سازنده می‌تواند به اتحاد بیاورد (به‌جز خودش)
 ALLIANCE_MAX_MEMBERS = 6
 

@@ -99,10 +99,13 @@ async def update_price(
     absolute_price: float | None = None,
     reason_code: str = "ADMIN_MANUAL",
     custom_reason_text: str | None = None,
+    is_admin_override: bool = False,
 ) -> MarketPrice:
     """
     به‌روزرسانی قیمت یک ذخیره با رعایت سقف و کف نوسانات (۰.۳ تا ۴.۰ برابر پایه)،
     محاسبه درصد تغییر، روند (UP/DOWN/STABLE) و ثبت دلیل.
+    در صورت تغییر دستی توسط ادمین (is_admin_override=True یا absolute_price)،
+    محدودیت کف/سقف حذف شده و نرخ پایه نیز با نرخ جدید تطبیق می‌یابد.
     """
     res_key = _resource_key(resource)
     mp = await market_repo.get_market_price(session, res_key)
@@ -128,8 +131,14 @@ async def update_price(
     else:
         target_price = old_current
 
-    # اعمال کف و سقف قانونی بازار
-    new_price = max(min_allowed, min(max_allowed, target_price))
+    # اعمال کف و سقف قانونی بازار (مگر در تغییر دستی ادمین)
+    if is_admin_override or (absolute_price is not None):
+        # ادمین مجاز است هر قیمت مثبتی را بدون محدودیت ثبت کند
+        new_price = max(1.0, target_price)
+        # تطبیق نرخ پایه با قیمت جدید ادمین تا زمان‌بند آن را تغییر ندهد
+        base_p = new_price
+    else:
+        new_price = max(min_allowed, min(max_allowed, target_price))
 
     # محاسبه درصد تغییر نسبت به قیمت قبلی
     if old_current > 0:

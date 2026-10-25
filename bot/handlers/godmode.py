@@ -1440,6 +1440,7 @@ async def msg_god_value(message: Message, state: FSMContext, session: AsyncSessi
             absolute_price=new_price,
             reason_code="ADMIN_MANUAL",
             custom_reason_text=reason_text,
+            is_admin_override=True,
         )
         await session.commit()
         await message.answer(
@@ -2402,7 +2403,7 @@ async def cb_god_country_projects(call: CallbackQuery, session: AsyncSession) ->
             builder.button(text=f"🗑 حذف #{p.id} ({p.title[:12]})", callback_data=f"godproj_del:{p.id}")
 
     builder.adjust(1)
-    builder.row(InlineKeyboardButton(text="🔙 بازگشت به کشور", callback_data=f"godcountry:{cid}", style=STYLE_MAIN))
+    builder.row(InlineKeyboardButton(text="🔙 بازگشت به کشور", callback_data=f"godc:{cid}", style=STYLE_MAIN))
     await safe_edit(call, "\n".join(text_lines), reply_markup=builder.as_markup())
 
 
@@ -2770,6 +2771,7 @@ async def cb_god_market_apply_reason(
         delta_pct=delta_pct,
         absolute_price=new_price,
         reason_code=reason_code,
+        is_admin_override=True,
     )
     await session.commit()
 

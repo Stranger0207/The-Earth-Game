@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..models import EconomicProject
@@ -118,3 +118,55 @@ async def delete_project(session: AsyncSession, project: EconomicProject) -> Non
     """حذف کامل یک پروژه."""
     await session.delete(project)
     await session.flush()
+
+
+async def count_projects_by_country_since(
+    session: AsyncSession,
+    country_id: int,
+    since_dt: datetime,
+    valid_statuses: list[str] | None = None,
+) -> int:
+    """
+    شمارش رول‌های اقتصادی ثبت‌شده در بازه زمانی مشخص.
+    به‌طور پیش‌فرض وضعیت‌های DRAFT و REJECTED و CANCELLED شمارش نمی‌شوند.
+    """
+    if valid_statuses is None:
+        valid_statuses = [
+            EconomicProjectStatus.PENDING_REVIEW.value,
+            EconomicProjectStatus.APPROVED_AWAITING_LAUNCH.value,
+            EconomicProjectStatus.ACTIVE.value,
+        ]
+    q = select(func.count(EconomicProject.id)).where(
+        EconomicProject.country_id == country_id,
+        EconomicProject.created_at >= since_dt,
+        EconomicProject.status.in_(valid_statuses),
+    )
+    res = await session.execute(q)
+    return res.scalar_one() or 0
+
+
+async def get_earliest_project_since(
+    session: AsyncSession,
+    country_id: int,
+    since_dt: datetime,
+    valid_statuses: list[str] | None = None,
+) -> EconomicProject | None:
+    """قدیمی‌ترین رول اقتصادی معتبر در پنجره زمانی جهت محاسبه زمان آزادسازی سهمیه بعدی."""
+    if valid_statuses is None:
+        valid_statuses = [
+            EconomicProjectStatus.PENDING_REVIEW.value,
+            EconomicProjectStatus.APPROVED_AWAITING_LAUNCH.value,
+            EconomicProjectStatus.ACTIVE.value,
+        ]
+    q = (
+        select(EconomicProject)
+        .where(
+            EconomicProject.country_id == country_id,
+            EconomicProject.created_at >= since_dt,
+            EconomicProject.status.in_(valid_statuses),
+        )
+        .order_by(EconomicProject.created_at.asc())
+        .limit(1)
+    )
+    res = await session.execute(q)
+    return res.scalars().first()

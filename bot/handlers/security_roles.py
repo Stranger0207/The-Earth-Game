@@ -241,7 +241,12 @@ async def msg_sec_title(message: Message, state: FSMContext) -> None:
     await message.answer(
         f"✅ عنوان پروژه: <b>{title}</b>\n\n"
         f"اکنون <b>متن صفحه اول</b> رول امنیتی خود را ارسال کنید.\n"
-        f"⚠️ <b>توجه:</b> سقف مجاز هر صفحه حداکثر <b>{fa_number(MAX_ROLE_PAGE_LEN)}</b> کاراکتر است."
+        f"⚠️ <b>توجه:</b> سقف مجاز هر صفحه حداکثر <b>{fa_number(MAX_ROLE_PAGE_LEN)}</b> کاراکتر است.",
+        reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="❌ انصراف", callback_data="mil:security_roles", style=STYLE_NO)],
+            ]
+        ),
     )
 
 
@@ -791,3 +796,9 @@ async def msg_sec_reject_reason(
         f"علت: {reason}\n"
         f"ادمین: {admin_name}",
     )
+
+
+@router.callback_query(F.data.in_({"sec_noop", "noop"}))
+async def cb_sec_noop(call: CallbackQuery) -> None:
+    """پاسخ به دکمه‌های اینلاین غیرفعال (شمارنده صفحات)."""
+    await call.answer()

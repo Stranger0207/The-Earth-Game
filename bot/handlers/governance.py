@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone, timedelta
 from aiogram import F, Router
 from aiogram.filters import StateFilter
 from aiogram.fsm.context import FSMContext
@@ -12,6 +13,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..config import get_settings
 from ..constants import (
     GOVERNMENT_BONUSES,
+    LEGISLATION_LIMIT_COUNT,
+    LEGISLATION_LIMIT_HOURS,
     TAX_MAX_RATE,
     TAX_MIN_RATE,
 )
@@ -63,7 +66,7 @@ from ..services.governance_service import (
 from ..enums import AdminGroupType
 from ..services.news_service import send_log, send_to_admin_group
 from ..states import AdminLawResultForm, GovernanceForm, LawForm
-from ..utils.numbers import fa_money, fa_number, parse_amount
+from ..utils.numbers import _FA_TO_EN, fa_money, fa_number, parse_amount
 from ..utils.screens import safe_edit, show_menu
 from ..utils.ui import STYLE_MAIN, STYLE_NO, STYLE_OK, header
 from .deps import NO_COUNTRY_TEXT, assert_feature, get_player_country
@@ -529,9 +532,10 @@ async def cb_legislation(
 
 @router.callback_query(F.data == "gov:tax_law")
 async def cb_tax_law(
-    call: CallbackQuery, session: AsyncSession, db_user: User
+    call: CallbackQuery, state: FSMContext, session: AsyncSession, db_user: User
 ) -> None:
     await call.answer()
+    await state.clear()
     country = await get_player_country(session, db_user)
     if country is None:
         await safe_edit(call, NO_COUNTRY_TEXT)
@@ -574,6 +578,11 @@ async def cb_set_tax(
         f"نرخ مالیات مورد نظر را به‌صورت عدد (درصد) وارد کنید.\n"
         f"مثال: <code>15</code>\n\n"
         f"حداقل: {fa_number(TAX_MIN_RATE)}٪ | حداکثر: {fa_number(TAX_MAX_RATE)}٪",
+        reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="🔙 انصراف و بازگشت", callback_data="gov:tax_law", style=STYLE_NO)],
+            ]
+        ),
     )
 
 
@@ -589,9 +598,13 @@ async def msg_set_tax(
         return
 
     try:
-        rate = float(msg.text.replace("٪", "").replace("%", "").strip())
+        norm = (msg.text or "").replace("٪", "").replace("%", "").strip()
+        parsed = parse_amount(norm)
+        if parsed is None:
+            raise ValueError
+        rate = float(parsed)
     except (ValueError, AttributeError):
-        await msg.answer("⚠️ لطفاً یک عدد معتبر وارد کنید.")
+        await msg.answer("⚠️ لطفاً یک عدد معتبر وارد کنید:")
         return
 
     if rate < TAX_MIN_RATE or rate > TAX_MAX_RATE:
@@ -1264,21 +1277,97 @@ async def cb_visa_rm_all_confirm(call: CallbackQuery, session: AsyncSession, db_
 
 # ---------- مجلس ----------
 
+def _format_cooldown(rem_seconds: int | float) -> str:
+    rem_sec = max(0, int(rem_seconds))
+    h = rem_sec // 3600
+    m = (rem_sec % 3600) // 60
+    if h > 0 and m > 0:
+        return f"{fa_number(h)} ساعت و {fa_number(m)} دقیقه"
+    elif h > 0:
+        return f"{fa_number(h)} ساعت"
+    else:
+        return f"{fa_number(max(1, m))} دقیقه"
+
+
+def _aware_dt(dt: datetime | None) -> datetime | None:
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
 @router.callback_query(F.data == "gov:parliament")
-async def cb_parliament(call: CallbackQuery) -> None:
+async def cb_parliament(
+    call: CallbackQuery, session: AsyncSession, db_user: User
+) -> None:
     await call.answer()
-    await safe_edit(call, header("مجلس", "🏛"), reply_markup=parliament_menu_kb())
+    country = await get_player_country(session, db_user)
+    quota_line = ""
+    if country:
+        now = _utcnow()
+        since = now - timedelta(hours=LEGISLATION_LIMIT_HOURS)
+        used = await gov_repo.count_laws_by_country_since(session, country.id, since)
+        rem_quota = max(0, LEGISLATION_LIMIT_COUNT - used)
+        if rem_quota > 0:
+            quota_line = f"\n📊 <b>سهمیه لایحه شما:</b> {fa_number(rem_quota)} از {fa_number(LEGISLATION_LIMIT_COUNT)} (در {fa_number(LEGISLATION_LIMIT_HOURS)} ساعت)\n"
+        else:
+            earliest = await gov_repo.get_earliest_law_since(session, country.id, since)
+            rem_str = "به‌زودی"
+            if earliest and earliest.created_at:
+                earliest_aware = _aware_dt(earliest.created_at)
+                rem_sec = max(0, int((earliest_aware + timedelta(hours=LEGISLATION_LIMIT_HOURS) - now).total_seconds()))
+                rem_str = _format_cooldown(rem_sec)
+            quota_line = f"\n⏳ <b>سهمیه لایحه پر است.</b> آزادسازی سهمیه بعدی: {rem_str}\n"
+
+    text = (
+        header("مجلس شورای ملی", "🏛")
+        + f"{quota_line}\n"
+        "لوایح پیشنهادی شما جهت رای‌گیری به نمایندگان مجلس (ادمین‌ها) ارائه خواهد شد."
+    )
+    await safe_edit(call, text, reply_markup=parliament_menu_kb())
 
 
 @router.callback_query(F.data == "gov:submit_law")
-async def cb_submit_law(call: CallbackQuery, state: FSMContext) -> None:
-    """شروع فرم ارائه‌ی لایحه."""
+async def cb_submit_law(
+    call: CallbackQuery, state: FSMContext, session: AsyncSession, db_user: User
+) -> None:
+    """شروع فرم ارائه‌ی لایحه با بررسی گارد قفل و محدودیت زمانی."""
+    country = await get_player_country(session, db_user)
+    if country is None:
+        await safe_edit(call, NO_COUNTRY_TEXT)
+        return
+    if not await assert_feature(call, session, country, "gov.legislation"):
+        return
+
+    # ۱. بررسی محدودیت سهمیه ۲ لایحه در ۱۲ ساعت (Fail-Fast)
+    now = _utcnow()
+    since = now - timedelta(hours=LEGISLATION_LIMIT_HOURS)
+    used = await gov_repo.count_laws_by_country_since(session, country.id, since)
+    if used >= LEGISLATION_LIMIT_COUNT:
+        earliest = await gov_repo.get_earliest_law_since(session, country.id, since)
+        rem_str = "به‌زودی"
+        if earliest and earliest.created_at:
+            earliest_aware = _aware_dt(earliest.created_at)
+            rem_sec = max(0, int((earliest_aware + timedelta(hours=LEGISLATION_LIMIT_HOURS) - now).total_seconds()))
+            rem_str = _format_cooldown(rem_sec)
+        await call.answer(
+            f"⏳ شما به سقف مجاز ثبت لایحه رسیده‌اید ({fa_number(LEGISLATION_LIMIT_COUNT)} لایحه در {fa_number(LEGISLATION_LIMIT_HOURS)} ساعت).\n"
+            f"زمان باقیمانده تا ثبت بعدی: {rem_str}",
+            show_alert=True,
+        )
+        return
+
     await call.answer()
     await state.set_state(LawForm.entering_title)
+    cancel_kb = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="🔙 انصراف و بازگشت", callback_data="gov:parliament", style=STYLE_NO)
+    ]])
     await safe_edit(
         call,
         f"{header('ارائه لایحه به مجلس', '📝')}\n\n"
-        f"عنوان لایحه‌ی خود را وارد کنید:",
+        f"عنوان لایحه‌ی خود را وارد کنید (حداکثر ۲۰۰ کاراکتر):",
+        reply_markup=cancel_kb,
     )
 
 
@@ -1291,7 +1380,10 @@ async def msg_law_title(msg: Message, state: FSMContext) -> None:
         return
     await state.update_data(law_title=title)
     await state.set_state(LawForm.entering_body)
-    await msg.answer("📝 حالا متن لایحه را بنویسید:")
+    cancel_kb = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="🔙 انصراف و بازگشت", callback_data="gov:parliament", style=STYLE_NO)
+    ]])
+    await msg.answer("📝 حالا متن لایحه را بنویسید:", reply_markup=cancel_kb)
 
 
 @router.message(StateFilter(LawForm.entering_body))
@@ -1308,6 +1400,18 @@ async def msg_law_body(
     body = msg.text.strip() if msg.text else ""
     if not body:
         await msg.answer("⚠️ متن لایحه نمی‌تواند خالی باشد.")
+        return
+
+    # بررسی نهایی سهمیه ۲ لایحه در ۱۲ ساعت (Final Check)
+    now = _utcnow()
+    since = now - timedelta(hours=LEGISLATION_LIMIT_HOURS)
+    used = await gov_repo.count_laws_by_country_since(session, country.id, since)
+    if used >= LEGISLATION_LIMIT_COUNT:
+        await msg.answer(
+            f"⏳ متأسفانه سقف مجاز ثبت لایحه شما ({fa_number(LEGISLATION_LIMIT_COUNT)} لایحه در {fa_number(LEGISLATION_LIMIT_HOURS)} ساعت) پر شده است.",
+            reply_markup=parliament_menu_kb(),
+        )
+        await state.clear()
         return
 
     data = await state.get_data()
@@ -1458,7 +1562,7 @@ async def cb_admin_custom_stability(call: CallbackQuery, state: FSMContext) -> N
 @router.message(StateFilter(AdminLawResultForm.entering_custom_stability))
 async def msg_admin_custom_stability(msg: Message, state: FSMContext, session: AsyncSession) -> None:
     """دریافت عدد دستی ثبات و اعمال."""
-    raw = (msg.text or "").replace("٪", "").replace("%", "").replace("+", "").strip()
+    raw = (msg.text or "").replace("٪", "").replace("%", "").replace("+", "").strip().translate(_FA_TO_EN)
     try:
         val = float(raw)
         if "-" in (msg.text or ""):
@@ -1514,7 +1618,7 @@ async def cb_admin_custom_satisfaction(call: CallbackQuery, state: FSMContext) -
 @router.message(StateFilter(AdminLawResultForm.entering_custom_satisfaction))
 async def msg_admin_custom_satisfaction(msg: Message, state: FSMContext, session: AsyncSession) -> None:
     """دریافت عدد دستی رضایت و اعمال."""
-    raw = (msg.text or "").replace("٪", "").replace("%", "").replace("+", "").strip()
+    raw = (msg.text or "").replace("٪", "").replace("%", "").replace("+", "").strip().translate(_FA_TO_EN)
     try:
         val = float(raw)
         if "-" in (msg.text or ""):

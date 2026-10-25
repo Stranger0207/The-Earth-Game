@@ -139,6 +139,32 @@ async def cb_report(call: CallbackQuery, session: AsyncSession, db_user: User) -
     )
 
 
+@router.callback_query(F.data.startswith("econ:daily_yield"))
+async def cb_daily_yield(call: CallbackQuery, session: AsyncSession, db_user: User) -> None:
+    """نمایش ترازنامه کامل درآمد و بازدهی روزانه کشور."""
+    country = await get_player_country(session, db_user)
+    if country is None:
+        await safe_edit(call, NO_COUNTRY_TEXT)
+        return
+
+    from ..services.yield_service import compute_country_daily_yield, format_daily_yield_report
+    from ..keyboards.economy import daily_yield_kb
+
+    data = await compute_country_daily_yield(session, country)
+    text = format_daily_yield_report(country, data)
+
+    is_bank = "bank" in call.data
+    back_target = "econ:bank" if is_bank else "menu:economy"
+    refresh_target = "econ:daily_yield:refresh:bank" if is_bank else "econ:daily_yield:refresh"
+
+    if "refresh" in call.data:
+        await call.answer("ترازنامه به‌روز شد 🔄")
+    else:
+        await call.answer()
+
+    await safe_edit(call, text, reply_markup=daily_yield_kb(back_target, refresh_target))
+
+
 @router.callback_query(F.data == "econ:reserves")
 async def cb_reserves(call: CallbackQuery, session: AsyncSession, db_user: User) -> None:
     await call.answer()

@@ -149,6 +149,10 @@ class Meeting(Base):
     last_msg_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # آیا نشست در حاشیه سازمان ملل متحد است؟ (بدون پرواز و فوری)
+    is_un_sideline: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # موضوع نشست حاشیه
+    topic: Mapped[str | None] = mapped_column(String(256), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False
     )
@@ -226,6 +230,10 @@ class GroupMeeting(Base):
     last_msg_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # آیا نشست در حاشیه سازمان ملل متحد است؟ (بدون پرواز و فوری)
+    is_un_sideline: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # موضوع نشست حاشیه
+    topic: Mapped[str | None] = mapped_column(String(256), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False
     )

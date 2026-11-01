@@ -26,6 +26,7 @@ from ..loader import bot
 from ..services.news_service import send_to_admin_group
 from ..states import BroadcastForm, SetChannelForm, SetFolderForm
 from ..utils.numbers import fa_number
+from ..utils.screens import safe_edit
 from ..utils.ui import STYLE_MAIN, STYLE_NO, STYLE_OK, header
 
 router = Router(name="broadcast")
@@ -71,7 +72,7 @@ async def cb_broadcast_cancel(call: CallbackQuery, state: FSMContext) -> None:
         return
     await call.answer("لغو شد")
     await state.clear()
-    await call.message.edit_text("❌ ارسال پیام همگانی لغو شد.")
+    await safe_edit(call, "❌ ارسال پیام همگانی لغو شد.")
 
 
 @router.message(BroadcastForm.waiting_for_content, F.photo)
@@ -370,7 +371,7 @@ async def cb_channel_toggle(call: CallbackQuery, session: AsyncSession) -> None:
         f"<b>لینک ورود به کانال:</b> {link_text}\n\n"
         "جهت تغییر تنظیمات از کلیدهای زیر استفاده کنید:"
     )
-    await call.message.edit_text(text, reply_markup=_channel_settings_kb(new_status))
+    await safe_edit(call, text, reply_markup=_channel_settings_kb(new_status))
 
 
 @router.callback_query(F.data == "setchan:chat_id")

@@ -38,3 +38,10 @@ class HumanitarianForm(StatesGroup):
     """فرم ارسال کمک‌های بشردوستانه صندوق سازمان ملل."""
     choosing_recipient = State()
     entering_aid_amount = State()
+
+
+class UNSidelineForm(StatesGroup):
+    """فرم برگزاری نشست در حاشیه مجمع عمومی سازمان ملل (دوجانبه و چندجانبه)."""
+    entering_bi_topic = State()
+    selecting_multi_countries = State()
+    entering_multi_topic = State()

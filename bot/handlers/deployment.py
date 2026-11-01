@@ -98,13 +98,13 @@ async def cb_deploy_new(call: CallbackQuery, state: FSMContext, session: AsyncSe
     await call.answer()
     country = await get_player_country(session, db_user)
     if country is None:
-        await call.message.edit_text(NO_COUNTRY_TEXT)
+        await safe_edit(call, NO_COUNTRY_TEXT)
         return
     if not country.is_vip:
-        await call.message.edit_text(_NOT_VIP_TEXT, reply_markup=military_menu_kb())
+        await safe_edit(call, _NOT_VIP_TEXT, reply_markup=military_menu_kb())
         return
     await state.set_state(DeploymentForm.choosing_branch)
-    await call.message.edit_text(
+    await safe_edit(call, 
         "🪖 چه نوع نیرویی را به جنگ می‌برید؟", reply_markup=deploy_branch_kb()
     )
 
@@ -119,12 +119,12 @@ async def cb_deploy_branch(call: CallbackQuery, state: FSMContext, session: Asyn
     branch_fa, _stem, branches = DEPLOY_BRANCHES[key]
     country = await get_player_country(session, db_user)
     if country is None:
-        await call.message.edit_text(NO_COUNTRY_TEXT)
+        await safe_edit(call, NO_COUNTRY_TEXT)
         return
     assets = await mil_repo.list_assets(session, country.id)
     matching = [a for a in assets if a.branch in branches and a.count > 0]
     if not matching:
-        await call.message.edit_text(
+        await safe_edit(call, 
             f"⚠️ کشور شما در نیروی «{branch_fa}» تجهیزات قابل‌اعزامی ندارد.",
             reply_markup=_back_deploy_kb(),
         )
@@ -143,7 +143,7 @@ async def cb_deploy_branch(call: CallbackQuery, state: FSMContext, session: Asyn
         )
     builder.button(text="🔙 بازگشت", callback_data="dep:new", style=STYLE_MAIN)
     builder.adjust(1)
-    await call.message.edit_text(
+    await safe_edit(call, 
         f"کدام تجهیزات نیروی «{branch_fa}» را اعزام می‌کنید؟", reply_markup=builder.as_markup()
     )
 
@@ -160,7 +160,7 @@ async def cb_deploy_asset(call: CallbackQuery, state: FSMContext) -> None:
     pick = assets[idx]
     await state.update_data(asset_name=pick["name"], asset_unit=pick["unit"], asset_count=pick["count"])
     await state.set_state(DeploymentForm.entering_count)
-    await call.message.edit_text(
+    await safe_edit(call, 
         f"🔢 چه تعداد «{pick['name']}» اعزام می‌کنید؟ (موجودی: {fa_number(pick['count'])} {pick['unit']})",
         reply_markup=_back_deploy_kb(),
     )
@@ -205,10 +205,10 @@ async def cb_deploy_confirm(call: CallbackQuery, state: FSMContext, session: Asy
     await state.clear()
     country = await get_player_country(session, db_user)
     if country is None:
-        await call.message.edit_text(NO_COUNTRY_TEXT)
+        await safe_edit(call, NO_COUNTRY_TEXT)
         return
     if not country.is_vip:
-        await call.message.edit_text(_NOT_VIP_TEXT, reply_markup=military_menu_kb())
+        await safe_edit(call, _NOT_VIP_TEXT, reply_markup=military_menu_kb())
         return
 
     branch_key = data.get("branch_key")
@@ -220,7 +220,7 @@ async def cb_deploy_confirm(call: CallbackQuery, state: FSMContext, session: Asy
 
     # کفایت نفت
     if not await reserves_repo.has_enough(session, country.id, ResourceType.OIL, oil_cost):
-        await call.message.edit_text(
+        await safe_edit(call, 
             f"⛔️ نفت کافی ندارید. این استقرار {fa_number(oil_cost)} میلیون بشکه نفت نیاز دارد.",
             reply_markup=deploy_menu_kb(),
         )
@@ -239,7 +239,7 @@ async def cb_deploy_confirm(call: CallbackQuery, state: FSMContext, session: Asy
     )
     await dep_repo.add_deployment(session, dep)
 
-    await call.message.edit_text(
+    await safe_edit(call, 
         f"✅ استقرار ثبت شد.\n"
         f"🪖 {fa_number(count)} {data.get('asset_unit','')} {asset_name} به منطقه‌ی «{region}» اعزام شد.\n"
         f"🛢 {fa_number(oil_cost)} میلیون بشکه نفت کسر شد.",
@@ -281,30 +281,30 @@ async def cb_deploy_list(call: CallbackQuery, state: FSMContext, session: AsyncS
     await state.clear()
     country = await get_player_country(session, db_user)
     if country is None:
-        await call.message.edit_text(NO_COUNTRY_TEXT)
+        await safe_edit(call, NO_COUNTRY_TEXT)
         return
     if not country.is_vip:
-        await call.message.edit_text(_NOT_VIP_TEXT, reply_markup=military_menu_kb())
+        await safe_edit(call, _NOT_VIP_TEXT, reply_markup=military_menu_kb())
         return
     deployments = await dep_repo.list_active(session, country.id)
     if not deployments:
-        await call.message.edit_text("📋 هنوز هیچ نیرویی مستقر نکرده‌اید.", reply_markup=_back_deploy_kb())
+        await safe_edit(call, "📋 هنوز هیچ نیرویی مستقر نکرده‌اید.", reply_markup=_back_deploy_kb())
         return
     lines = [header("نیروهای مستقر", "📋"), ""]
     for d in deployments:
         lines.append(f"• {d.branch_fa} — {fa_number(d.count)} {d.asset_name} 📍 {d.region}")
-    await call.message.edit_text("\n".join(lines), reply_markup=deployed_actions_kb())
+    await safe_edit(call, "\n".join(lines), reply_markup=deployed_actions_kb())
 
 
 async def _list_deployments_for(call: CallbackQuery, session: AsyncSession, db_user: User, action: str) -> None:
     """فهرست نیروهای مستقر با دکمه‌ی action (upd/rm) برای هر گروه."""
     country = await get_player_country(session, db_user)
     if country is None:
-        await call.message.edit_text(NO_COUNTRY_TEXT)
+        await safe_edit(call, NO_COUNTRY_TEXT)
         return
     deployments = await dep_repo.list_active(session, country.id)
     if not deployments:
-        await call.message.edit_text("📋 هیچ نیروی مستقری ندارید.", reply_markup=_back_deploy_kb())
+        await safe_edit(call, "📋 هیچ نیروی مستقری ندارید.", reply_markup=_back_deploy_kb())
         return
     prefix = "dep_upd" if action == "upd" else "dep_rm"
     style = STYLE_MAIN if action == "upd" else STYLE_NO
@@ -318,7 +318,7 @@ async def _list_deployments_for(call: CallbackQuery, session: AsyncSession, db_u
     builder.button(text="🔙 بازگشت", callback_data="dep:list", style=STYLE_MAIN)
     builder.adjust(1)
     title = "📍 کدام گروه را جابه‌جا می‌کنید؟" if action == "upd" else "🗑 کدام گروه را حذف می‌کنید؟"
-    await call.message.edit_text(title, reply_markup=builder.as_markup())
+    await safe_edit(call, title, reply_markup=builder.as_markup())
 
 
 @router.callback_query(F.data == "dep:upd")
@@ -344,7 +344,7 @@ async def cb_deploy_upd_pick(call: CallbackQuery, state: FSMContext, session: As
         return
     await state.set_state(DeploymentForm.updating_region)
     await state.update_data(upd_dep_id=dep_id)
-    await call.message.edit_text(
+    await safe_edit(call, 
         f"📍 منطقه‌ی جدید برای «{dep.asset_name}» ({dep.branch_fa}) را وارد کنید:",
         reply_markup=_back_deploy_kb(),
     )
@@ -387,7 +387,7 @@ async def cb_deploy_rm(call: CallbackQuery, session: AsyncSession, db_user: User
         return
     label = f"{fa_number(dep.count)} {dep.asset_name} ({dep.branch_fa}) 📍 {dep.region}"
     await dep_repo.remove(session, dep_id)
-    await call.message.edit_text(
+    await safe_edit(call, 
         f"🗑 گروه نیروی «{label}» حذف شد.", reply_markup=deploy_menu_kb()
     )
     await send_log(

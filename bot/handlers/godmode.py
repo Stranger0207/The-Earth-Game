@@ -188,7 +188,7 @@ async def cb_home(call: CallbackQuery, state: FSMContext) -> None:
         return
     await call.answer()
     await state.clear()
-    await call.message.edit_text(_HOME_TEXT, reply_markup=_home_kb())
+    await safe_edit(call, _HOME_TEXT, reply_markup=_home_kb())
 
 
 @router.callback_query(F.data == "god:endseason")
@@ -209,7 +209,7 @@ async def cb_god_endseason(call: CallbackQuery, state: FSMContext) -> None:
             [InlineKeyboardButton(text="❌ انصراف", callback_data="god:home", style=STYLE_MAIN)],
         ]
     )
-    await call.message.edit_text(
+    await safe_edit(call, 
         "⚠️ <b>پایان فصل و ریست کامل بازی</b>\n\n"
         "با این کار تمام تغییرات فصل به حالت اولیه برمی‌گردد:\n"
         "• اقتصاد، ذخایر و رضایت همه‌ی کشورها بازنشانی می‌شود\n"
@@ -254,7 +254,7 @@ async def cb_god_force_join(call: CallbackQuery, session: AsyncSession) -> None:
         f"<b>لینک ورود به کانال:</b> {link_text}\n\n"
         "جهت تغییر تنظیمات از کلیدهای زیر استفاده کنید:"
     )
-    await call.message.edit_text(text, reply_markup=kb)
+    await safe_edit(call, text, reply_markup=kb)
 
 
 @router.callback_query(F.data == "god:force_join_toggle")
@@ -286,7 +286,7 @@ async def cb_god_set_folder(call: CallbackQuery, state: FSMContext, session: Asy
             [InlineKeyboardButton(text="🔙 انصراف و بازگشت", callback_data="god:home", style=STYLE_NO)]
         ]
     )
-    await call.message.edit_text(
+    await safe_edit(call, 
         f"📁 <b>تنظیم لینک فولدر رسمی بازی</b>\n\n"
         f"لینک فعلی: <code>{curr}</code>\n\n"
         "لطفاً لینک جدید فولدر تلگرام (مانند <code>https://t.me/addlist/...</code>) را ارسال کنید:",
@@ -307,7 +307,7 @@ async def cb_god_broadcast(call: CallbackQuery, state: FSMContext) -> None:
             [InlineKeyboardButton(text="❌ انصراف", callback_data="god:home", style=STYLE_NO)]
         ]
     )
-    await call.message.edit_text(
+    await safe_edit(call, 
         "📢 <b>ارسال پیام همگانی به کل کاربران ربات</b>\n\n"
         "لطفاً پیام خود را ارسال کنید. می‌توانید <b>فقط متن</b> بفرستید و یا "
         "<b>یک عکس به همراه کپشن (متن زیر عکس)</b> ارسال کنید:",
@@ -330,7 +330,7 @@ async def cb_countries(call: CallbackQuery, session: AsyncSession) -> None:
         builder.button(text=f"{mark} {c.flag} {c.name_fa}", callback_data=f"godc:{c.id}", style=STYLE_MAIN)
     builder.button(text="🔙 بازگشت", callback_data="god:home", style=STYLE_MAIN)
     builder.adjust(2)
-    await call.message.edit_text("🏳 یک کشور را برای مدیریت انتخاب کنید:", reply_markup=builder.as_markup())
+    await safe_edit(call, "🏳 یک کشور را برای مدیریت انتخاب کنید:", reply_markup=builder.as_markup())
 
 
 async def _country_panel_kb(country: Country) -> InlineKeyboardMarkup:
@@ -368,7 +368,7 @@ async def _country_panel_kb(country: Country) -> InlineKeyboardMarkup:
 async def _show_country_panel(call: CallbackQuery, session: AsyncSession, country_id: int) -> None:
     country = await countries_repo.get_country(session, country_id)
     if country is None:
-        await call.message.edit_text("کشور یافت نشد.", reply_markup=_home_kb())
+        await safe_edit(call, "کشور یافت نشد.", reply_markup=_home_kb())
         return
     owner_txt = "—"
     if country.owner_user_id:
@@ -383,7 +383,7 @@ async def _show_country_panel(call: CallbackQuery, session: AsyncSession, countr
         f"💸 بودجه: {fa_money(country.budget)}\n"
         f"💰 قدرت اقتصاد: {fa_number(country.economic_power)} | 😊 رضایت: {fa_number(country.public_satisfaction)} | 🏛 ثبات: {fa_number(country.stability)}"
     )
-    await call.message.edit_text(text, reply_markup=await _country_panel_kb(country))
+    await safe_edit(call, text, reply_markup=await _country_panel_kb(country))
 
 
 @router.callback_query(F.data.startswith("godc:"))
@@ -439,7 +439,7 @@ async def _render_god_facilities(
     """
     country = await countries_repo.get_country(session, cid)
     if country is None:
-        await call.message.edit_text("کشور یافت نشد.", reply_markup=_home_kb())
+        await safe_edit(call, "کشور یافت نشد.", reply_markup=_home_kb())
         return
 
     facilities = await fac_repo.list_facilities(session, cid)
@@ -543,7 +543,7 @@ async def _render_god_facilities(
     builder.row(
         InlineKeyboardButton(text="🔙 بازگشت", callback_data=f"godc:{cid}", style=STYLE_MAIN)
     )
-    await call.message.edit_text("\n".join(lines), reply_markup=builder.as_markup())
+    await safe_edit(call, "\n".join(lines), reply_markup=builder.as_markup())
 
 
 @router.callback_query(F.data.startswith("godfacpg:"))
@@ -601,7 +601,7 @@ async def cb_god_fac_add(call: CallbackQuery, session: AsyncSession) -> None:
         builder.button(text=FACILITY_FA[ft], callback_data=f"godfact:{cid}:{ft.value}", style=STYLE_OK)
     builder.button(text="🔙 بازگشت", callback_data=f"godfac:{cid}", style=STYLE_MAIN)
     builder.adjust(2)
-    await call.message.edit_text("🏗 نوع تأسیسات جدید را انتخاب کنید:", reply_markup=builder.as_markup())
+    await safe_edit(call, "🏗 نوع تأسیسات جدید را انتخاب کنید:", reply_markup=builder.as_markup())
 
 
 @router.callback_query(F.data.startswith("godfact:"))
@@ -617,11 +617,11 @@ async def cb_god_fac_type(call: CallbackQuery, state: FSMContext, session: Async
             builder.button(text=RESOURCE_FA[r], callback_data=f"godfacr:{cid}:{ftype}:{r.value}", style=STYLE_OK)
         builder.button(text="🔙 بازگشت", callback_data=f"godfacadd:{cid}", style=STYLE_MAIN)
         builder.adjust(2)
-        await call.message.edit_text("⛏ منبع معدن را انتخاب کنید:", reply_markup=builder.as_markup())
+        await safe_edit(call, "⛏ منبع معدن را انتخاب کنید:", reply_markup=builder.as_markup())
         return
     await state.set_state(GodForm.entering_value)
     await state.update_data(god_kind="facadd_loc", god_country=cid, god_ftype=ftype, god_resource=None)
-    await call.message.edit_text(
+    await safe_edit(call, 
         "📍 محل احداث تأسیسات را وارد کنید:",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
             InlineKeyboardButton(text="🔙 لغو", callback_data=f"godfac:{cid}", style=STYLE_MAIN)
@@ -638,7 +638,7 @@ async def cb_god_fac_resource(call: CallbackQuery, state: FSMContext) -> None:
     cid = int(cid_s)
     await state.set_state(GodForm.entering_value)
     await state.update_data(god_kind="facadd_loc", god_country=cid, god_ftype=ftype, god_resource=resource)
-    await call.message.edit_text(
+    await safe_edit(call, 
         "📍 محل احداث معدن را وارد کنید:",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
             InlineKeyboardButton(text="🔙 لغو", callback_data=f"godfac:{cid}", style=STYLE_MAIN)
@@ -658,7 +658,7 @@ async def cb_god_mf_add(call: CallbackQuery, session: AsyncSession) -> None:
         builder.button(text=MIL_FACTORY_FA[ft], callback_data=f"godmft:{cid}:{ft.value}", style=STYLE_OK)
     builder.button(text="🔙 بازگشت", callback_data=f"godfac:{cid}", style=STYLE_MAIN)
     builder.adjust(2)
-    await call.message.edit_text("🏭 نوع کارخانه‌ی جدید را انتخاب کنید:", reply_markup=builder.as_markup())
+    await safe_edit(call, "🏭 نوع کارخانه‌ی جدید را انتخاب کنید:", reply_markup=builder.as_markup())
 
 
 @router.callback_query(F.data.startswith("godmft:"))
@@ -670,7 +670,7 @@ async def cb_god_mf_type(call: CallbackQuery, state: FSMContext) -> None:
     cid = int(cid_s)
     await state.set_state(GodForm.entering_value)
     await state.update_data(god_kind="mfadd_name", god_country=cid, god_ftype=ftype)
-    await call.message.edit_text(
+    await safe_edit(call, 
         "📦 نام قلم تجهیزاتی که این کارخانه بازتولید می‌کند را وارد کنید:",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
             InlineKeyboardButton(text="🔙 لغو", callback_data=f"godfac:{cid}", style=STYLE_MAIN)
@@ -684,7 +684,7 @@ async def cb_god_mf_type(call: CallbackQuery, state: FSMContext) -> None:
 async def _render_god_tech(call: CallbackQuery, session: AsyncSession, cid: int) -> None:
     country = await countries_repo.get_country(session, cid)
     if country is None:
-        await call.message.edit_text("کشور یافت نشد.", reply_markup=_home_kb())
+        await safe_edit(call, "کشور یافت نشد.", reply_markup=_home_kb())
         return
 
     licenses = await tech_repo.list_licenses_for_country(session, cid)
@@ -711,7 +711,7 @@ async def _render_god_tech(call: CallbackQuery, session: AsyncSession, cid: int)
     builder.button(text="➕ اعطای لایسنس دستی", callback_data=f"godtechadd:{cid}", style=STYLE_OK)
     builder.button(text="🔙 بازگشت به مدیریت کشور", callback_data=f"godc:{cid}", style=STYLE_MAIN)
     builder.adjust(1)
-    await call.message.edit_text("\n".join(lines), reply_markup=builder.as_markup())
+    await safe_edit(call, "\n".join(lines), reply_markup=builder.as_markup())
 
 
 @router.callback_query(F.data == "god:tech")
@@ -726,7 +726,7 @@ async def cb_god_tech_countries(call: CallbackQuery, session: AsyncSession) -> N
         builder.button(text=f"{mark} {c.flag} {c.name_fa}", callback_data=f"godtech:{c.id}", style=STYLE_MAIN)
     builder.button(text="🔙 بازگشت", callback_data="god:home", style=STYLE_MAIN)
     builder.adjust(2)
-    await call.message.edit_text(
+    await safe_edit(call, 
         header("مدیریت لایسنس‌های تکنولوژی تسلیحاتی", "🔬") + "\n\nکشور مورد نظر را انتخاب کنید:",
         reply_markup=builder.as_markup(),
     )
@@ -766,7 +766,7 @@ async def cb_god_tech_add(call: CallbackQuery, state: FSMContext) -> None:
     cid = int(call.data.split(":")[1])
     await state.set_state(GodForm.entering_value)
     await state.update_data(god_kind="techadd_name", god_country=cid)
-    await call.message.edit_text(
+    await safe_edit(call, 
         "🔬 نام تجهیزاتی که می‌خواهید لایسنس آن به این کشور اعطا شود را وارد کنید (دقیقاً مشابه نام در سیستم):",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
             InlineKeyboardButton(text="🔙 لغو", callback_data=f"godtech:{cid}", style=STYLE_MAIN)
@@ -808,7 +808,7 @@ async def _render_god_sanctions(call: CallbackQuery, session: AsyncSession) -> N
     builder.button(text="➕ افزودن تحریم", callback_data="godsancadd", style=STYLE_OK)
     builder.button(text="🔙 بازگشت", callback_data="god:home", style=STYLE_MAIN)
     builder.adjust(1)
-    await call.message.edit_text("\n".join(lines), reply_markup=builder.as_markup())
+    await safe_edit(call, "\n".join(lines), reply_markup=builder.as_markup())
 
 
 @router.callback_query(F.data.startswith("godsancdel:"))
@@ -842,7 +842,7 @@ async def cb_god_sanction_add(call: CallbackQuery, session: AsyncSession) -> Non
         return
     await call.answer()
     countries = await countries_repo.list_countries(session)
-    await call.message.edit_text(
+    await safe_edit(call, 
         "🚫 کشور وضع‌کننده‌ی تحریم را انتخاب کنید:",
         reply_markup=_god_countries_kb(countries, "godsancf", "god:sanctions"),
     )
@@ -855,7 +855,7 @@ async def cb_god_sanction_from(call: CallbackQuery, session: AsyncSession) -> No
     await call.answer()
     frm = int(call.data.split(":")[1])
     countries = [c for c in await countries_repo.list_countries(session) if c.id != frm]
-    await call.message.edit_text(
+    await safe_edit(call, 
         "🎯 کشور هدف تحریم را انتخاب کنید:",
         reply_markup=_god_countries_kb(countries, f"godsanct:{frm}", "godsancadd"),
     )
@@ -873,7 +873,7 @@ async def cb_god_sanction_to(call: CallbackQuery, session: AsyncSession) -> None
         builder.button(text=SANCTION_FA[st], callback_data=f"godsancok:{frm}:{to}:{st.value}", style=STYLE_NO)
     builder.button(text="🔙 بازگشت", callback_data="godsancadd", style=STYLE_MAIN)
     builder.adjust(2)
-    await call.message.edit_text("🚫 نوع تحریم را انتخاب کنید:", reply_markup=builder.as_markup())
+    await safe_edit(call, "🚫 نوع تحریم را انتخاب کنید:", reply_markup=builder.as_markup())
 
 
 @router.callback_query(F.data.startswith("godsancok:"))
@@ -968,7 +968,7 @@ async def _render_god_invest(
     builder.row(InlineKeyboardButton(
         text="🔙 بازگشت", callback_data="god:home", style=STYLE_MAIN
     ))
-    await call.message.edit_text("\n".join(lines), reply_markup=builder.as_markup())
+    await safe_edit(call, "\n".join(lines), reply_markup=builder.as_markup())
 
 
 @router.callback_query(F.data.startswith("godinvpg:"))
@@ -1001,7 +1001,7 @@ async def cb_god_invest_add(call: CallbackQuery, session: AsyncSession) -> None:
         return
     await call.answer()
     countries = await countries_repo.list_countries(session)
-    await call.message.edit_text(
+    await safe_edit(call, 
         "📈 کشور سرمایه‌گذار را انتخاب کنید:",
         reply_markup=_god_countries_kb(countries, "godinvf", "god:invest"),
     )
@@ -1014,7 +1014,7 @@ async def cb_god_invest_from(call: CallbackQuery, session: AsyncSession) -> None
     await call.answer()
     frm = int(call.data.split(":")[1])
     countries = await countries_repo.list_countries(session)
-    await call.message.edit_text(
+    await safe_edit(call, 
         "🎯 کشور هدف سرمایه‌گذاری را انتخاب کنید (می‌تواند خودش باشد = داخلی):",
         reply_markup=_god_countries_kb(countries, f"godinvt:{frm}", "godinvadd"),
     )
@@ -1032,7 +1032,7 @@ async def cb_god_invest_to(call: CallbackQuery, session: AsyncSession) -> None:
         builder.button(text=f"{fa} ({int(pct)}٪)", callback_data=f"godinvc:{frm}:{to}:{key}", style=STYLE_OK)
     builder.button(text="🔙 بازگشت", callback_data="godinvadd", style=STYLE_MAIN)
     builder.adjust(2)
-    await call.message.edit_text("📊 دسته‌ی سرمایه‌گذاری را انتخاب کنید:", reply_markup=builder.as_markup())
+    await safe_edit(call, "📊 دسته‌ی سرمایه‌گذاری را انتخاب کنید:", reply_markup=builder.as_markup())
 
 
 @router.callback_query(F.data.startswith("godinvc:"))
@@ -1045,7 +1045,7 @@ async def cb_god_invest_category(call: CallbackQuery, state: FSMContext) -> None
     await state.update_data(
         god_kind="invadd_amount", god_inv_from=int(frm_s), god_inv_to=int(to_s), god_inv_cat=key
     )
-    await call.message.edit_text(
+    await safe_edit(call, 
         "💵 مبلغ سرمایه‌گذاری را وارد کنید (مثلاً 1b):",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
             InlineKeyboardButton(text="🔙 لغو", callback_data="god:invest", style=STYLE_MAIN)
@@ -1062,7 +1062,7 @@ async def cb_god_casualty(call: CallbackQuery, session: AsyncSession) -> None:
         return
     await call.answer()
     countries = await countries_repo.list_countries(session)
-    await call.message.edit_text(
+    await safe_edit(call, 
         header("سیستم تلفات", "💥") + "\n\nکشور موردنظر را انتخاب کنید:",
         reply_markup=_god_countries_kb(countries, "godcasc", "god:home"),
     )
@@ -1080,7 +1080,7 @@ async def cb_god_casualty_country(call: CallbackQuery, session: AsyncSession) ->
         builder.button(text=f"{icons.get(key,'')} {fa}", callback_data=f"godcasb:{cid}:{key}", style=STYLE_NO)
     builder.button(text="🔙 بازگشت", callback_data="god:casualty", style=STYLE_MAIN)
     builder.adjust(1)
-    await call.message.edit_text("💥 نوع نیرو را انتخاب کنید:", reply_markup=builder.as_markup())
+    await safe_edit(call, "💥 نوع نیرو را انتخاب کنید:", reply_markup=builder.as_markup())
 
 
 @router.callback_query(F.data.startswith("godcasb:"))
@@ -1097,7 +1097,7 @@ async def cb_god_casualty_branch(call: CallbackQuery, state: FSMContext, session
     assets = await mil_repo.list_assets(session, cid)
     matching = [a for a in assets if a.branch in branches and a.count > 0]
     if not matching:
-        await call.message.edit_text(
+        await safe_edit(call, 
             "⚠️ این کشور در این نیرو تجهیزاتی ندارد.",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
                 InlineKeyboardButton(text="🔙 بازگشت", callback_data=f"godcasc:{cid}", style=STYLE_MAIN)
@@ -1110,7 +1110,7 @@ async def cb_god_casualty_branch(call: CallbackQuery, state: FSMContext, session
         builder.button(text=f"{a.name} ({fa_number(a.count)})", callback_data=f"godcasa:{cid}:{idx}", style=STYLE_NO)
     builder.button(text="🔙 بازگشت", callback_data=f"godcasc:{cid}", style=STYLE_MAIN)
     builder.adjust(1)
-    await call.message.edit_text("💥 کدام قلم تلفات داشته است؟", reply_markup=builder.as_markup())
+    await safe_edit(call, "💥 کدام قلم تلفات داشته است؟", reply_markup=builder.as_markup())
 
 
 @router.callback_query(F.data.startswith("godcasa:"))
@@ -1128,7 +1128,7 @@ async def cb_god_casualty_asset(call: CallbackQuery, state: FSMContext) -> None:
     name = assets[idx]
     await state.set_state(GodForm.entering_value)
     await state.update_data(god_kind="casualty", god_country=cid, god_asset=name)
-    await call.message.edit_text(
+    await safe_edit(call, 
         f"🔢 تعداد تلفات «{name}» را وارد کنید (از موجودی کسر می‌شود):",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
             InlineKeyboardButton(text="🔙 لغو", callback_data=f"godcasc:{cid}", style=STYLE_MAIN)
@@ -1147,7 +1147,7 @@ async def cb_eco_menu(call: CallbackQuery, session: AsyncSession) -> None:
     cid = int(call.data.split(":")[1])
     country = await countries_repo.get_country(session, cid)
     if country is None:
-        await call.message.edit_text("کشور یافت نشد.", reply_markup=_home_kb())
+        await safe_edit(call, "کشور یافت نشد.", reply_markup=_home_kb())
         return
     builder = InlineKeyboardBuilder()
     for field, fa in _NUMERIC_FIELDS.items():
@@ -1156,7 +1156,7 @@ async def cb_eco_menu(call: CallbackQuery, session: AsyncSession) -> None:
         builder.button(text=fa, callback_data=f"gset:{cid}:{field}", style=STYLE_MAIN)
     builder.button(text="🔙 بازگشت", callback_data=f"godc:{cid}", style=STYLE_MAIN)
     builder.adjust(2)
-    await call.message.edit_text(
+    await safe_edit(call, 
         f"✏️ کدام شاخص {country.flag} {country.name_fa} را ویرایش می‌کنید؟\n"
         + render_economy_panel(country),
         reply_markup=builder.as_markup(),
@@ -1179,14 +1179,14 @@ async def cb_eco_field(call: CallbackQuery, state: FSMContext, session: AsyncSes
             builder.button(text=val_fa, callback_data=f"gsetv:{cid}:{field}:{val}", style=STYLE_OK)
         builder.button(text="🔙 بازگشت", callback_data=f"godeco:{cid}", style=STYLE_MAIN)
         builder.adjust(2)
-        await call.message.edit_text(f"مقدار جدید «{fa}» را انتخاب کنید:", reply_markup=builder.as_markup())
+        await safe_edit(call, f"مقدار جدید «{fa}» را انتخاب کنید:", reply_markup=builder.as_markup())
         return
 
     # فیلد عددی: درخواست مقدار
     fa = _NUMERIC_FIELDS.get(field, field)
     await state.set_state(GodForm.entering_value)
     await state.update_data(god_kind="eco", god_country=cid, god_field=field)
-    await call.message.edit_text(
+    await safe_edit(call, 
         f"🔢 مقدار جدید «{fa}» را وارد کنید (می‌توانید از k/m/b استفاده کنید):",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
             InlineKeyboardButton(text="🔙 لغو", callback_data=f"godeco:{cid}", style=STYLE_MAIN)
@@ -1203,7 +1203,7 @@ async def cb_eco_set_enum(call: CallbackQuery, session: AsyncSession) -> None:
     cid = int(cid_s)
     country = await countries_repo.get_country(session, cid)
     if country is None or field not in _ENUM_FIELDS:
-        await call.message.edit_text("خطا.", reply_markup=_home_kb())
+        await safe_edit(call, "خطا.", reply_markup=_home_kb())
         return
     setattr(country, field, value)
     await _show_country_panel(call, session, cid)
@@ -1220,7 +1220,7 @@ async def cb_res_menu(call: CallbackQuery, session: AsyncSession) -> None:
     cid = int(call.data.split(":")[1])
     country = await countries_repo.get_country(session, cid)
     if country is None:
-        await call.message.edit_text("کشور یافت نشد.", reply_markup=_home_kb())
+        await safe_edit(call, "کشور یافت نشد.", reply_markup=_home_kb())
         return
     reserves = await reserves_repo.list_reserves(session, cid)
     builder = InlineKeyboardBuilder()
@@ -1228,7 +1228,7 @@ async def cb_res_menu(call: CallbackQuery, session: AsyncSession) -> None:
         builder.button(text=RESOURCE_FA[r], callback_data=f"gres:{cid}:{r.value}", style=STYLE_OK)
     builder.button(text="🔙 بازگشت", callback_data=f"godc:{cid}", style=STYLE_MAIN)
     builder.adjust(2)
-    await call.message.edit_text(
+    await safe_edit(call, 
         render_reserves_panel(country, reserves) + "\n\n📦 کدام ذخیره را ویرایش می‌کنید؟",
         reply_markup=builder.as_markup(),
     )
@@ -1248,7 +1248,7 @@ async def cb_res_field(call: CallbackQuery, state: FSMContext) -> None:
         unit, rname = "", resource
     await state.set_state(GodForm.entering_value)
     await state.update_data(god_kind="res", god_country=cid, god_resource=resource)
-    await call.message.edit_text(
+    await safe_edit(call, 
         f"🔢 مقدار جدید «{rname}» را وارد کنید (به {unit}):",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
             InlineKeyboardButton(text="🔙 لغو", callback_data=f"godres:{cid}", style=STYLE_MAIN)
@@ -1267,11 +1267,11 @@ async def cb_mil_menu(call: CallbackQuery, state: FSMContext, session: AsyncSess
     cid = int(call.data.split(":")[1])
     country = await countries_repo.get_country(session, cid)
     if country is None:
-        await call.message.edit_text("کشور یافت نشد.", reply_markup=_home_kb())
+        await safe_edit(call, "کشور یافت نشد.", reply_markup=_home_kb())
         return
     assets = await mil_repo.list_assets(session, cid)
     if not assets:
-        await call.message.edit_text(
+        await safe_edit(call, 
             "⚠️ این کشور تجهیزاتی ندارد.",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
                 InlineKeyboardButton(text="🔙 بازگشت", callback_data=f"godc:{cid}", style=STYLE_MAIN)
@@ -1289,7 +1289,7 @@ async def cb_mil_menu(call: CallbackQuery, state: FSMContext, session: AsyncSess
         )
     builder.button(text="🔙 بازگشت", callback_data=f"godc:{cid}", style=STYLE_MAIN)
     builder.adjust(1)
-    await call.message.edit_text("⚔️ کدام قلم تجهیزات را ویرایش می‌کنید؟", reply_markup=builder.as_markup())
+    await safe_edit(call, "⚔️ کدام قلم تجهیزات را ویرایش می‌کنید؟", reply_markup=builder.as_markup())
 
 
 @router.callback_query(F.data.startswith("gmil:"))
@@ -1307,7 +1307,7 @@ async def cb_mil_field(call: CallbackQuery, state: FSMContext) -> None:
     name = assets[idx]
     await state.set_state(GodForm.entering_value)
     await state.update_data(god_kind="mil", god_country=cid, god_asset=name)
-    await call.message.edit_text(
+    await safe_edit(call, 
         f"🔢 تعداد جدید «{name}» را وارد کنید:",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
             InlineKeyboardButton(text="🔙 لغو", callback_data=f"godmil:{cid}", style=STYLE_MAIN)
@@ -1565,7 +1565,7 @@ async def cb_release_confirm(call: CallbackQuery) -> None:
         InlineKeyboardButton(text="🔴 بله، آزاد کن", callback_data=f"godrelease2:{cid}", style=STYLE_NO),
         InlineKeyboardButton(text="❌ انصراف", callback_data=f"godc:{cid}", style=STYLE_MAIN),
     ]])
-    await call.message.edit_text(
+    await safe_edit(call, 
         "⚠️ با آزادسازی، مالکیت این کشور حذف می‌شود و بازیکن از آن اخراج می‌گردد. مطمئنید؟",
         reply_markup=kb,
     )
@@ -1579,7 +1579,7 @@ async def cb_release_do(call: CallbackQuery, session: AsyncSession) -> None:
     cid = int(call.data.split(":")[1])
     country = await countries_repo.get_country(session, cid)
     if country is None:
-        await call.message.edit_text("کشور یافت نشد.", reply_markup=_home_kb())
+        await safe_edit(call, "کشور یافت نشد.", reply_markup=_home_kb())
         return
     former_owner = country.owner_user_id
     await countries_repo.release_country(session, cid)
@@ -1668,7 +1668,7 @@ async def cb_ban_list(call: CallbackQuery, session: AsyncSession) -> None:
 
     builder.button(text="🔙 بازگشت به گاد مود", callback_data="god:home", style=STYLE_MAIN)
     builder.adjust(1)
-    await call.message.edit_text("\n".join(lines), reply_markup=builder.as_markup())
+    await safe_edit(call, "\n".join(lines), reply_markup=builder.as_markup())
 
 
 @router.callback_query(F.data.startswith("god_unban_uid:"))
@@ -1776,9 +1776,9 @@ async def _render_ship_list(call: CallbackQuery, session: AsyncSession) -> None:
     builder.button(text="🔙 بازگشت", callback_data="god:home", style=STYLE_MAIN)
     builder.adjust(1)
     if not res_sales and not mil_sales:
-        await call.message.edit_text("🚚 هیچ محموله‌ی در راهی وجود ندارد.", reply_markup=builder.as_markup())
+        await safe_edit(call, "🚚 هیچ محموله‌ی در راهی وجود ندارد.", reply_markup=builder.as_markup())
         return
-    await call.message.edit_text(
+    await safe_edit(call, 
         "🚚 یک محموله را برای رساندن فوری انتخاب کنید:", reply_markup=builder.as_markup()
     )
 
@@ -1873,9 +1873,9 @@ async def _render_flights_list(call: CallbackQuery, session: AsyncSession) -> No
     builder.button(text="🔙 بازگشت", callback_data="god:home", style=STYLE_MAIN)
     builder.adjust(1)
     if shown == 0:
-        await call.message.edit_text("✈️ هیچ پرواز/نشست در انتظاری وجود ندارد.", reply_markup=builder.as_markup())
+        await safe_edit(call, "✈️ هیچ پرواز/نشست در انتظاری وجود ندارد.", reply_markup=builder.as_markup())
         return
-    await call.message.edit_text(
+    await safe_edit(call, 
         "✈️ یک مورد را برای رساندن فوری/آغاز نشست انتخاب کنید:", reply_markup=builder.as_markup()
     )
 
@@ -1947,7 +1947,7 @@ async def _render_god_unasmb(call: CallbackQuery, session: AsyncSession) -> None
         )
         builder.button(text="🔙 بازگشت", callback_data="god:home", style=STYLE_MAIN)
         builder.adjust(1)
-        await call.message.edit_text(txt, reply_markup=builder.as_markup())
+        await safe_edit(call, txt, reply_markup=builder.as_markup())
         return
 
     # دریافت آمار حاضران
@@ -2009,7 +2009,7 @@ async def _render_god_unasmb(call: CallbackQuery, session: AsyncSession) -> None
     builder.button(text="🔄 بروزرسانی وضعیت", callback_data="god:unasmb", style=STYLE_MAIN)
     builder.button(text="🔙 بازگشت به پنل اصلی", callback_data="god:home", style=STYLE_MAIN)
     builder.adjust(1)
-    await call.message.edit_text(txt, reply_markup=builder.as_markup())
+    await safe_edit(call, txt, reply_markup=builder.as_markup())
 
 
 @router.callback_query(F.data.startswith("god:unasmb_land_all:"))
@@ -2122,7 +2122,7 @@ async def _render_god_nuclear_list(call: CallbackQuery, session: AsyncSession) -
 
     builder.button(text="🔙 بازگشت", callback_data="god:home", style=STYLE_MAIN)
     builder.adjust(2)
-    await call.message.edit_text("\n".join(lines), reply_markup=builder.as_markup())
+    await safe_edit(call, "\n".join(lines), reply_markup=builder.as_markup())
 
 
 @router.callback_query(F.data.startswith("godnuc:"))
@@ -2189,7 +2189,7 @@ async def _render_god_nuclear_country(
     builder.button(text="🗑 حذف کامل برنامه", callback_data=f"godnucwipe:{cid}", style=STYLE_NO)
     builder.button(text="🔙 بازگشت", callback_data="god:nuclear", style=STYLE_MAIN)
     builder.adjust(1)
-    await call.message.edit_text("\n".join(lines), reply_markup=builder.as_markup())
+    await safe_edit(call, "\n".join(lines), reply_markup=builder.as_markup())
 
 
 @router.callback_query(F.data.startswith("godnucreveal:"))
@@ -2294,7 +2294,7 @@ async def cb_god_nuclear_wipe_ask(call: CallbackQuery, session: AsyncSession) ->
     builder.button(text="✅ بله، همه‌چیز حذف شود", callback_data=f"godnucwipeok:{cid}", style=STYLE_NO)
     builder.button(text="❌ انصراف", callback_data=f"godnuc:{cid}", style=STYLE_MAIN)
     builder.adjust(1)
-    await call.message.edit_text(
+    await safe_edit(call, 
         header("حذف کامل برنامه‌ی هسته‌ای", "⚠️") + "\n\n"
         f"کشور: {country.flag} <b>{country.name_fa}</b>\n\n"
         "🚨 این عملیات <b>غیرقابل‌بازگشت</b> است: تمام تأسیسات، تحقیقات، سانتریفیوژها، "

@@ -695,6 +695,7 @@ LOCKABLE_FEATURES: dict[str, tuple[str, str]] = {
     "un.assembly": ("🏛 مجمع عمومی سازمان ملل", FEATURE_CAT_DIPLOMACY),
     "un.court": ("⚖️ دادگاه بین‌المللی لاهه", FEATURE_CAT_DIPLOMACY),
     "un.resolution": ("📜 قطعنامه‌های بین‌المللی", FEATURE_CAT_DIPLOMACY),
+    "un.sideline": ("🤝 نشست در حاشیه سازمان ملل", FEATURE_CAT_DIPLOMACY),
 }
 
 # نگاشت کلیدهای مستعار به کلید رسمی (برای سازگاری با رکوردهای احتمالی گذشته در دیتابیس)

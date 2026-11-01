@@ -170,7 +170,7 @@ async def cb_roles_admin_country_sec(
 
 @router.callback_query(F.data.startswith("roles_admin:sec_v:"))
 async def cb_roles_admin_sec_view(
-    call: CallbackQuery, session: AsyncSession
+    call: CallbackQuery, session: AsyncSession, state: FSMContext | None = None
 ) -> None:
     """مشاهده و ورق زدن رول امنیتی در پنل /roles."""
     if not _is_admin(call.from_user.id):
@@ -178,8 +178,11 @@ async def cb_roles_admin_sec_view(
         return
 
     await call.answer()
+    if state:
+        await state.clear()
     parts = call.data.split(":")
-    role_id, page_num, mode = int(parts[2]), int(parts[3]), parts[4]
+    role_id, page_num = int(parts[2]), int(parts[3])
+    mode = ":".join(parts[4:]) if len(parts) > 4 else "arch"
 
     role = await sec_repo.get_security_role(session, role_id)
     if not role:
@@ -204,7 +207,7 @@ async def cb_roles_admin_sec_view(
 
 @router.callback_query(F.data == "roles_admin:sec_pending")
 async def cb_roles_admin_sec_pending(
-    call: CallbackQuery, session: AsyncSession
+    call: CallbackQuery, session: AsyncSession, state: FSMContext | None = None
 ) -> None:
     """فهرست رول‌های امنیتی در صف انتظار تایید."""
     if not _is_admin(call.from_user.id):
@@ -212,6 +215,8 @@ async def cb_roles_admin_sec_pending(
         return
 
     await call.answer()
+    if state:
+        await state.clear()
     pending = await sec_repo.list_all_pending(session)
     if not pending:
         await safe_edit(
@@ -325,9 +330,15 @@ async def cb_roles_admin_sec_reject(
         admin_chat_id=settings.role_security_group_id,
         admin_message_id=role.admin_message_id,
     )
+    cancel_kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="🔙 انصراف و بازگشت", callback_data=f"roles_admin:sec_v:{role_id}:1:pend", style=STYLE_NO)]
+        ]
+    )
     await call.message.reply(
         f"❌ <b>رد پروژه امنیتی «{role.title}»</b>\n\n"
-        f"لطفاً <b>علت رد</b> را ارسال کنید (مبلغ ۲۰M$ خودکار به بودجه کشور عودت داده می‌شود):"
+        f"لطفاً <b>علت رد</b> را ارسال کنید (مبلغ ۲۰M$ خودکار به بودجه کشور عودت داده می‌شود):",
+        reply_markup=cancel_kb,
     )
 
 

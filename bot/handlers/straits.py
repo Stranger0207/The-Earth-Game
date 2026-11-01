@@ -418,7 +418,7 @@ async def cb_admin_strait_block_decision(
         await call.answer("درخواست مسدودسازی رد شد.", show_alert=True)
         if call.message:
             try:
-                await call.message.edit_text(
+                await safe_edit(call, 
                     call.message.html_text + f"\n\n❌ <b>رد شد</b> توسط ادمین {admin_mention}",
                     reply_markup=None,
                 )
@@ -433,7 +433,7 @@ async def cb_admin_strait_block_decision(
     await call.answer("مسدودسازی تنگه با موفقیت تأیید و اعمال شد 🔴", show_alert=True)
     if call.message:
         try:
-            await call.message.edit_text(
+            await safe_edit(call, 
                 call.message.html_text + f"\n\n✅ <b>تأیید و مسدود شد</b> توسط ادمین {admin_mention}",
                 reply_markup=None,
             )

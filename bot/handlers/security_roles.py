@@ -632,7 +632,7 @@ async def cb_admin_group_page(
 
     msg_text = render_security_role_message(role, country, page_num)
     try:
-        await call.message.edit_text(
+        await safe_edit(call, 
             msg_text,
             reply_markup=admin_group_security_role_kb(role, page_num),
         )
@@ -666,7 +666,7 @@ async def cb_admin_group_approve(
     # بستن دکمه‌ها و ثبت نام ادمین در پیام گروه
     admin_name = call.from_user.full_name
     try:
-        await call.message.edit_text(
+        await safe_edit(call, 
             call.message.html_text + f"\n\n✅ <b>توسط {admin_name} تایید شد و به آرشیو امنیتی کشور پیوست.</b>",
             reply_markup=None,
         )
@@ -754,8 +754,15 @@ async def msg_sec_reject_reason(
     await session.commit()
     await state.clear()
 
+    back_kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="🔙 بازگشت به صف رول‌های امنیتی", callback_data="roles_admin:sec_pending", style=STYLE_MAIN)],
+            [InlineKeyboardButton(text="🎖 بازگشت به پنل اصلی رول‌ها", callback_data="roles_admin:home", style=STYLE_MAIN)],
+        ]
+    )
     await message.reply(
-        f"✅ رول رد شد، مبلغ ۲۰ میلیون دلار به بودجه {country.name_fa} مسترد گردید."
+        f"✅ رول رد شد، مبلغ ۲۰ میلیون دلار به بودجه {country.name_fa} مسترد گردید.",
+        reply_markup=back_kb,
     )
 
     # ویرایش پیام در گروه

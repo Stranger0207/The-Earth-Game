@@ -24,7 +24,7 @@ from ..constants import (
     DIPLOMATIC_FLIGHT_MIN_MINUTES,
     UN_ASSEMBLY_SPEECH_DURATION_MINUTES,
 )
-from ..database.models import Country, PhoneCall, User
+from ..database.models import Country, GroupMeeting, GroupMeetingParticipant, Meeting, PhoneCall, User
 from ..database.models.nuclear import NuclearInspection, NuclearProgram
 from ..database.models.united_nations import (
     CourtParty,
@@ -60,9 +60,15 @@ from ..keyboards.united_nations import (
     un_iaea_summon_call_kb,
     un_main_menu_kb,
     un_resolutions_menu_kb,
+    un_sideline_active_kb,
+    un_sideline_countries_kb,
+    un_sideline_home_kb,
+    un_sideline_invite_kb,
+    un_sideline_recent_kb,
 )
 from ..loader import bot
 from ..services import geo_service as geo
+from ..services.media import send_photo_news
 from ..services.news_service import publish_news, send_log
 from ..services.un_speech_service import analyze_and_publish_speech
 from ..states.united_nations import (
@@ -71,10 +77,11 @@ from ..states.united_nations import (
     IAEAForm,
     ResolutionForm,
     UNAssemblyForm,
+    UNSidelineForm,
 )
 from ..utils.numbers import fa_number
 from ..utils.screens import safe_edit, show_menu
-from ..utils.ui import DIVIDER, STYLE_MAIN, STYLE_NO, STYLE_OK, header
+from ..utils.ui import DIVIDER, PICK_OFF, PICK_ON, STYLE_MAIN, STYLE_NO, STYLE_OK, header
 from .deps import NO_COUNTRY_TEXT, assert_feature, get_player_country
 
 logger = logging.getLogger(__name__)
@@ -958,80 +965,807 @@ async def cb_asmb_lobby(call: CallbackQuery, session: AsyncSession) -> None:
     )
 
 
-@router.callback_query(F.data.startswith("asmb_sideline_meet:"))
-async def cb_asmb_sideline_meet(call: CallbackQuery, session: AsyncSession, db_user: User) -> None:
-    """دیدار دوجانبه در حاشیه اجلاس نیویورک با کشورهای حاضر در نیویورک."""
+# ============================================================
+#  🤝 نشست در حاشیه مجمع عمومی سازمان ملل (Bilateral & Multilateral)
+# ============================================================
+
+@router.callback_query(
+    F.data.in_({"un:sideline", "un_side:home"})
+    | F.data.startswith("asmb_sideline_meet:")
+    | F.data.startswith("un:sideline:")
+)
+async def cb_un_sideline_home(
+    call: CallbackQuery, session: AsyncSession, db_user: User, state: FSMContext | None = None
+) -> None:
+    """منوی اصلی نشست‌های در حاشیه سازمان ملل متحد."""
     await call.answer()
-    session_id = int(call.data.split(":")[1])
+    if state:
+        await state.clear()
     country = await get_player_country(session, db_user)
-    if not country:
+    if country is None:
+        await safe_edit(call, NO_COUNTRY_TEXT)
+        return
+    if not await assert_feature(call, session, country, "un.sideline"):
         return
 
-    parts = await un_repo.list_participants(session, session_id)
-    ny_country_ids = [p.country_id for p in parts if p.status in ("in_new_york", "inside_hall") and p.country_id != country.id]
-    if not ny_country_ids:
-        await call.answer("کشور دیگری در حال حاضر در نیویورک در دسترس نیست.", show_alert=True)
+    text = (
+        header("نشست در حاشیه مجمع عمومی سازمان ملل متحد", "🏛") + "\n\n"
+        "به بخش برگزاری نشست‌های دیپلماتیک در حاشیه مجمع عمومی سازمان ملل متحد خوش آمدید.\n\n"
+        "⚡ <b>ویژگی اختصاصی نشست حاشیه UN:</b> با توجه به استقرار دیپلمات‌ها و هیئت‌ها در مقر دائمی "
+        "سازمان ملل در نیویورک، <b>زمان پرواز صفر (۰ دقیقه)</b> بوده و نشست‌ها به محض پذیرش طرفین فوراً آغاز می‌شوند.\n\n"
+        "🤝 <b>نشست دوجانبه:</b> گفتگوی مستقیم ۱ به ۱ با رهبر کشور دیگر پیرامون موضوع مشخص.\n"
+        "🌐 <b>نشست چندجانبه:</b> تشکیل میزگرد بین‌المللی هم‌زمان تا سقف ۶ کشور با قابلیت امضای معاهده.\n"
+        "🕘 <b>نشست‌های اخیر:</b> مشاهده و پایان‌بخشی اضطراری نشست‌های فعال جهت جلوگیری از قفل شدن وضعیت کشور.\n\n"
+        "جهت آغاز، لطفاً یکی از گزینه‌های زیر را انتخاب نمایید:"
+    )
+    await show_menu(call, session, "ui_un", text, reply_markup=un_sideline_home_kb())
+
+
+# ---------- نشست دوجانبه در حاشیه UN ----------
+
+@router.callback_query(F.data == "un_side:bi")
+async def cb_un_side_bi(
+    call: CallbackQuery, session: AsyncSession, db_user: User, state: FSMContext | None = None
+) -> None:
+    """انتخاب کشور برای نشست دوجانبه."""
+    await call.answer()
+    if state:
+        await state.clear()
+    country = await get_player_country(session, db_user)
+    if country is None:
+        await safe_edit(call, NO_COUNTRY_TEXT)
         return
 
-    builder = InlineKeyboardBuilder()
-    for cid in ny_country_ids:
-        c = await countries_repo.get_country(session, cid)
-        if c:
-            builder.button(text=f"🤝 {c.flag} {c.name_fa}", callback_data=f"asmb_side_call:{c.id}")
-    builder.button(text="🔙 بازگشت به لابی", callback_data=f"asmb_lobby:{session_id}")
-    builder.adjust(2)
+    busy_label = await dip_repo.get_active_engagement_label(session, country.id)
+    if busy_label:
+        await call.answer(f"⚠️ شما در حال حاضر مشغول {busy_label} هستید.", show_alert=True)
+        return
 
+    all_countries = await countries_repo.list_countries(session)
+    target_countries = [c for c in all_countries if c.id != country.id and c.owner_user_id is not None]
+    if not target_countries:
+        await call.answer("کشور فعالی جهت برگزاری نشست یافت نشد.", show_alert=True)
+        return
+
+    busy_map = {}
+    for c in target_countries:
+        lbl = await dip_repo.get_active_engagement_label(session, c.id)
+        if lbl:
+            busy_map[c.id] = lbl
+
+    kb = un_sideline_countries_kb(target_countries, mode="bi", busy_map=busy_map, page=1)
+    text = (
+        header("نشست دوجانبه در حاشیه سازمان ملل", "🤝") + "\n\n"
+        "کشور مورد نظر خود را جهت ارسال دعوت‌نامه رسمی و آغاز گفتگو در حاشیه مجمع عمومی انتخاب کنید:\n"
+        "<i>(کشورهای دارای علامت ⛔ در حال حاضر در نشست یا تماسی دیگر مشغول هستند)</i>"
+    )
+    await safe_edit(call, text, reply_markup=kb)
+
+
+@router.callback_query(F.data.startswith("un_side:page_bi:"))
+async def cb_un_side_page_bi(
+    call: CallbackQuery, session: AsyncSession, db_user: User
+) -> None:
+    await call.answer()
+    page = int(call.data.split(":")[2])
+    country = await get_player_country(session, db_user)
+    if country is None:
+        return
+
+    all_countries = await countries_repo.list_countries(session)
+    target_countries = [c for c in all_countries if c.id != country.id and c.owner_user_id is not None]
+    busy_map = {}
+    for c in target_countries:
+        lbl = await dip_repo.get_active_engagement_label(session, c.id)
+        if lbl:
+            busy_map[c.id] = lbl
+
+    kb = un_sideline_countries_kb(target_countries, mode="bi", busy_map=busy_map, page=page)
+    text = (
+        header("نشست دوجانبه در حاشیه سازمان ملل", "🤝") + "\n\n"
+        "کشور مورد نظر خود را جهت ارسال دعوت‌نامه رسمی و آغاز گفتگو در حاشیه مجمع عمومی انتخاب کنید:"
+    )
+    await safe_edit(call, text, reply_markup=kb)
+
+
+@router.callback_query(F.data.startswith("un_side:pick_bi:"))
+async def cb_un_side_pick_bi(
+    call: CallbackQuery, session: AsyncSession, db_user: User, state: FSMContext
+) -> None:
+    await call.answer()
+    target_id = int(call.data.split(":")[2])
+    country = await get_player_country(session, db_user)
+    target = await countries_repo.get_country(session, target_id)
+    if country is None or target is None:
+        return
+
+    busy_label = await dip_repo.get_active_engagement_label(session, target.id)
+    if busy_label:
+        await call.answer(f"⚠️ کشور {target.name_fa} در حال حاضر مشغول {busy_label} است.", show_alert=True)
+        return
+
+    await state.set_state(UNSidelineForm.entering_bi_topic)
+    await state.update_data(target_id=target.id)
+
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    cancel_kb = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="🔙 انصراف و بازگشت", callback_data="un_side:bi", style=STYLE_NO)
+    ]])
     await safe_edit(
         call,
-        "🤝 <b>دیدار در حاشیه اجلاس نیویورک:</b>\n"
-        "کشورهای زیر هم‌اکنون در نیویورک حضور دارند و می‌توانید بدون اتلاف وقت و پرواز با آن‌ها تماس بگیرید یا دیدار کنید:",
-        reply_markup=builder.as_markup(),
+        f"🏛 <b>برگزاری نشست دوجانبه در حاشیه مجمع عمومی سازمان ملل</b>\n\n"
+        f"طرف گفتگو: {target.flag} <b>{target.name_fa}</b>\n\n"
+        f"✍️ لطفاً <b>موضوع نشست</b> را ارسال کنید (حداکثر ۱۰۰ حرف):\n"
+        f"<i>(مثال: مذاکرات پیرامون کاهش تنش‌های مرزی و گسترش همکاری‌های اقتصادی)</i>",
+        reply_markup=cancel_kb,
     )
 
 
-@router.callback_query(F.data.startswith("asmb_side_call:"))
-async def cb_asmb_side_call(call: CallbackQuery, session: AsyncSession, db_user: User) -> None:
-    """آغاز ارتباط فوری در حاشیه اجلاس نیویورک."""
-    await call.answer()
-    target_id = int(call.data.split(":")[1])
-    caller = await get_player_country(session, db_user)
+@router.message(StateFilter(UNSidelineForm.entering_bi_topic))
+async def msg_un_side_bi_topic(
+    message: Message, state: FSMContext, session: AsyncSession, db_user: User
+) -> None:
+    topic = (message.text or "").strip()
+    if not topic or len(topic) < 3:
+        await message.answer("⚠️ لطفاً موضوع معتبری وارد کنید (حداقل ۳ حرف):")
+        return
+    topic = topic[:100]
+
+    data = await state.get_data()
+    target_id = data.get("target_id")
+    await state.clear()
+
+    country = await get_player_country(session, db_user)
     target = await countries_repo.get_country(session, target_id)
-    if not caller or not target:
-        await call.answer("کشور هدف نامعتبر است.", show_alert=True)
+    if country is None or target is None or target.owner_user_id is None:
+        await message.answer("❌ کشور مقصد یافت نشد.")
         return
 
-    existing = await dip_repo.get_active_call_for_country(session, caller.id)
-    if existing:
-        await call.answer("شما هم‌اکنون یک ارتباط فعال دارید.", show_alert=True)
+    # چک انحصار مجدد
+    if await dip_repo.get_active_engagement_label(session, country.id):
+        await message.answer("⚠️ شما در حال حاضر در یک نشست یا تماس دیگر مشغول هستید.")
+        return
+    if await dip_repo.get_active_engagement_label(session, target.id):
+        await message.answer(f"⚠️ کشور {target.name_fa} در حال حاضر مشغول فعالیت دیپلماتیک دیگری است.")
         return
 
-    from ..keyboards.diplomacy import end_call_kb
-    new_call = PhoneCall(
-        caller_country=caller.id,
-        receiver_country=target.id,
-        status=DiplomacyStatus.ACTIVE,
-        created_at=_utcnow(),
+    now = _utcnow()
+    meeting = Meeting(
+        traveler_country=country.id,
+        host_country=target.id,
+        status=DiplomacyStatus.PENDING,
+        is_un_sideline=True,
+        topic=topic,
+        travel_eta=now,
+        meeting_ends_at=now + timedelta(minutes=60),
+        last_msg_at=now,
     )
-    session.add(new_call)
-    await session.flush()
+    await dip_repo.add_meeting(session, meeting)
+    await session.commit()
 
-    caller_txt = (
-        f"🤝 <b>دیدار رسمی در حاشیه اجلاس نیویورک:</b>\n\n"
-        f"ارتباط دیپلماتیک شما با رهبر کشور {target.flag} <b>{target.name_fa}</b> برقرار شد.\n"
-        "پیام‌های ارسالی شما مستقیماً برای طرف مقابل رله خواهد شد."
+    # ارسال دعوت‌نامه رسمی به پیوی کشور مدعو
+    inv_text = (
+        "🏛 <b>دعوت‌نامه رسمی: نشست در حاشیه مجمع عمومی سازمان ملل متحد</b>\n\n"
+        f"فرستنده: {country.flag} <b>{country.name_fa}</b>\n"
+        f"📌 موضوع نشست: <b>{topic}</b>\n"
+        "⚡ <b>زمان پرواز:</b> ۰ دقیقه (حضور در مقر نیویورک)\n"
+        "⏳ <b>مدت زمان نشست:</b> ۶۰ دقیقه\n\n"
+        "آیا تمایل به برگزاری این نشست در حاشیه مجمع عمومی دارید؟"
     )
-    await safe_edit(call, caller_txt, reply_markup=end_call_kb())
-
-    if target.owner_user_id:
-        target_txt = (
-            f"🤝 <b>دیدار رسمی در حاشیه اجلاس نیویورک:</b>\n\n"
-            f"رهبر کشور {caller.flag} <b>{caller.name_fa}</b> در حاشیه اجلاس مجمع عمومی با شما وارد گفتگو شد.\n"
-            "پیام‌های ارسالی شما برای یکدیگر رله خواهد شد."
+    try:
+        await bot.send_message(
+            target.owner_user_id,
+            inv_text,
+            reply_markup=un_sideline_invite_kb(meeting.id, is_group=False),
         )
+    except Exception:
+        pass
+
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    back_kb = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="🔙 بازگشت به منوی نشست‌ها", callback_data="un_side:home", style=STYLE_MAIN)
+    ]])
+    await message.answer(
+        f"✅ دعوت‌نامه رسمی برگزاری نشست در حاشیه مجمع عمومی با موضوع <b>«{topic}»</b> برای کشور {target.flag} <b>{target.name_fa}</b> ارسال شد.\n"
+        "به محض پذیرش، نشست فوراً فعال شده و چت زنده آغاز خواهد شد.",
+        reply_markup=back_kb,
+    )
+
+
+@router.callback_query(F.data.startswith("un_side:ok_bi:"))
+async def cb_un_side_ok_bi(
+    call: CallbackQuery, session: AsyncSession, db_user: User
+) -> None:
+    await call.answer("نشست آغاز شد ✅")
+    meeting_id = int(call.data.split(":")[2])
+    meeting = await dip_repo.get_meeting(session, meeting_id)
+    if meeting is None or meeting.status != DiplomacyStatus.PENDING:
+        await safe_edit(call, "❌ این دعوت‌نامه منقضی شده یا قبلاً پاسخ داده شده است.")
+        return
+
+    traveler = await countries_repo.get_country(session, meeting.traveler_country)
+    host = await countries_repo.get_country(session, meeting.host_country)
+    if traveler is None or host is None:
+        return
+
+    # چک انحصار
+    t_busy = await dip_repo.get_active_engagement_label(session, traveler.id)
+    h_busy = await dip_repo.get_active_engagement_label(session, host.id)
+    if t_busy or h_busy:
+        await call.answer("⚠️ یکی از طرفین در حال حاضر در تعامل دیپلماتیک دیگری مشغول است.", show_alert=True)
+        return
+
+    now = _utcnow()
+    meeting.status = DiplomacyStatus.ACTIVE
+    meeting.travel_eta = now  # ۰ دقیقه پرواز!
+    meeting.meeting_ends_at = now + timedelta(minutes=60)
+    meeting.last_msg_at = now
+    meeting.start_announced = True
+    await session.commit()
+
+    room_text = (
+        "🏛 <b>نشست دوجانبه در حاشیه مجمع عمومی سازمان ملل متحد آغاز شد!</b>\n\n"
+        f"👥 طرفین گفتگو: {traveler.flag} <b>{traveler.name_fa}</b> و {host.flag} <b>{host.name_fa}</b>\n"
+        f"📌 موضوع مذاکرات: <b>{meeting.topic or 'مذاکرات صلح و دیپلماسی'}</b>\n"
+        "⏳ مدت زمان نشست: ۶۰ دقیقه (اتمام خودکار پس از ۱۰ دقیقه سکوت)\n\n"
+        "💬 از هم‌اکنون هر پیامی در این پیوی ارسال کنید مستقیماً برای رهبر کشور مقابل رله خواهد شد (پشتیبانی از ریپلای).\n"
+        "📜 جهت امضای معاهده رسمی بین‌المللی با تصویر گرافیکی، از دستور /contract استفاده فرمایید."
+    )
+
+    kb = un_sideline_active_kb(meeting.id, is_group=False)
+    await safe_edit(call, room_text, reply_markup=kb)
+
+    if traveler.owner_user_id:
         try:
-            await bot.send_message(target.owner_user_id, target_txt, reply_markup=end_call_kb())
+            await bot.send_message(traveler.owner_user_id, room_text, reply_markup=kb)
         except Exception:
             pass
+
+    # خبر آغاز نشست در کانال دیپلماسی
+    news_text = (
+        "🏛 | نشست دیپلماتیک در حاشیه مجمع عمومی سازمان ملل متحد\n\n"
+        f"🤝 دیدار دوجانبه میان سران کشورهای {traveler.flag} {traveler.name_fa} و {host.flag} {host.name_fa} "
+        f"دقایقی پیش در مقر سازمان ملل متحد در نیویورک آغاز شد.\n"
+        f"📌 موضوع نشست: <b>{meeting.topic or 'مسائل دوجانبه و بین‌المللی'}</b>\n"
+        "⏳ مدت زمان گفتگو ۶۰ دقیقه پیش‌بینی شده است."
+    )
+    if settings.news_diplomacy_channel_id:
+        await send_photo_news(bot, settings.news_diplomacy_channel_id, "meeting", news_text)
+    await send_log(
+        bot,
+        f"🏛 <b>آغاز نشست حاشیه UN:</b> {traveler.name_fa} و {host.name_fa} | موضوع: {meeting.topic}"
+    )
+
+
+@router.callback_query(F.data.startswith("un_side:no_bi:"))
+async def cb_un_side_no_bi(call: CallbackQuery, session: AsyncSession) -> None:
+    await call.answer()
+    meeting_id = int(call.data.split(":")[2])
+    meeting = await dip_repo.get_meeting(session, meeting_id)
+    if meeting and meeting.status == DiplomacyStatus.PENDING:
+        meeting.status = DiplomacyStatus.REJECTED
+        await session.commit()
+        traveler = await countries_repo.get_country(session, meeting.traveler_country)
+        host = await countries_repo.get_country(session, meeting.host_country)
+        if traveler and traveler.owner_user_id:
+            try:
+                await bot.send_message(
+                    traveler.owner_user_id,
+                    f"❌ دعوت شما برای نشست در حاشیه سازمان ملل با موضوع «{meeting.topic}» توسط کشور {host.flag if host else ''} {host.name_fa if host else ''} رد شد."
+                )
+            except Exception:
+                pass
+    await safe_edit(call, "❌ دعوت به نشست در حاشیه سازمان ملل رد شد.")
+
+
+@router.callback_query(F.data.startswith("un_side:end_bi:"))
+async def cb_un_side_end_bi(call: CallbackQuery, session: AsyncSession) -> None:
+    await call.answer("نشست به پایان رسید.")
+    meeting_id = int(call.data.split(":")[2])
+    meeting = await dip_repo.get_meeting(session, meeting_id)
+    if meeting and meeting.status == DiplomacyStatus.ACTIVE:
+        meeting.status = DiplomacyStatus.COMPLETED
+        await session.commit()
+        traveler = await countries_repo.get_country(session, meeting.traveler_country)
+        host = await countries_repo.get_country(session, meeting.host_country)
+        end_text = (
+            f"🏁 <b>نشست دوجانبه در حاشیه سازمان ملل متحد پایان یافت.</b>\n\n"
+            f"📌 موضوع: {meeting.topic or 'مذاکرات دیپلماتیک'}\n"
+            f"طرفین گفتگو: {traveler.name_fa if traveler else ''} و {host.name_fa if host else ''}\n"
+            "وضعیت کشورها از قفل خارج شد."
+        )
+        for c in (traveler, host):
+            if c and c.owner_user_id:
+                try:
+                    await bot.send_message(
+                        c.owner_user_id,
+                        end_text,
+                        reply_markup=un_sideline_home_kb(),
+                    )
+                except Exception:
+                    pass
+        await send_log(
+            bot,
+            f"🏁 پایان نشست حاشیه UN #{meeting.id} ({traveler.name_fa if traveler else ''} & {host.name_fa if host else ''})"
+        )
+    await safe_edit(call, "🏁 نشست با موفقیت به پایان رسید.", reply_markup=un_sideline_home_kb())
+
+
+@router.callback_query(F.data.startswith("un_side:status_bi:"))
+async def cb_un_side_status_bi(call: CallbackQuery, session: AsyncSession) -> None:
+    await call.answer()
+    meeting_id = int(call.data.split(":")[2])
+    meeting = await dip_repo.get_meeting(session, meeting_id)
+    if not meeting:
+        await safe_edit(call, "❌ نشست یافت نشد.", reply_markup=un_sideline_home_kb())
+        return
+    traveler = await countries_repo.get_country(session, meeting.traveler_country)
+    host = await countries_repo.get_country(session, meeting.host_country)
+    m_status = getattr(meeting.status, "value", str(meeting.status))
+    status_fa = "🟢 در حال برگزاری (فعال)" if m_status == "active" else ("⏳ در انتظار پذیرش" if m_status == "pending" else "🏁 پایان‌یافته")
+    text = (
+        header("وضعیت نشست دوجانبه حاشیه UN", "🏛") + "\n\n"
+        f"📌 موضوع: <b>{meeting.topic or 'عمومی'}</b>\n"
+        f"وضعیت: <b>{status_fa}</b>\n"
+        f"طرفین: {traveler.flag if traveler else ''} {traveler.name_fa if traveler else ''} و {host.flag if host else ''} {host.name_fa if host else ''}\n"
+    )
+    kb = un_sideline_active_kb(meeting.id, is_group=False) if m_status == "active" else un_sideline_home_kb()
+    await safe_edit(call, text, reply_markup=kb)
+
+
+# ---------- نشست چندجانبه در حاشیه UN ----------
+
+@router.callback_query(F.data == "un_side:multi")
+async def cb_un_side_multi(
+    call: CallbackQuery, session: AsyncSession, db_user: User, state: FSMContext | None = None
+) -> None:
+    """آغاز انتخاب کشورهای شرکت‌کننده در نشست چندجانبه."""
+    await call.answer()
+    country = await get_player_country(session, db_user)
+    if country is None:
+        await safe_edit(call, NO_COUNTRY_TEXT)
+        return
+
+    busy_label = await dip_repo.get_active_engagement_label(session, country.id)
+    if busy_label:
+        await call.answer(f"⚠️ شما در حال حاضر مشغول {busy_label} هستید.", show_alert=True)
+        return
+
+    all_countries = await countries_repo.list_countries(session)
+    target_countries = [c for c in all_countries if c.id != country.id and c.owner_user_id is not None]
+    if not target_countries:
+        await call.answer("کشور فعالی جهت دعوت یافت نشد.", show_alert=True)
+        return
+
+    busy_map = {}
+    for c in target_countries:
+        lbl = await dip_repo.get_active_engagement_label(session, c.id)
+        if lbl:
+            busy_map[c.id] = lbl
+
+    await state.set_state(UNSidelineForm.selecting_multi_countries)
+    await state.update_data(selected_ids=[])
+
+    kb = un_sideline_countries_kb(target_countries, mode="multi", selected_ids=[], busy_map=busy_map, page=1)
+    text = (
+        header("نشست چندجانبه در حاشیه سازمان ملل", "🌐") + "\n\n"
+        "کشورهای مورد نظر خود را برای حضور در میزگرد چندجانبه انتخاب کنید (حداکثر ۶ کشور):\n"
+        "<i>با کلیک روی نام هر کشور، تیک انتخاب آن ثبت می‌شود.</i>"
+    )
+    await safe_edit(call, text, reply_markup=kb)
+
+
+@router.callback_query(F.data == "un_side:noop")
+async def cb_un_side_noop(call: CallbackQuery) -> None:
+    await call.answer()
+
+
+@router.callback_query(F.data.startswith("un_side:page_multi:"))
+async def cb_un_side_page_multi(
+    call: CallbackQuery, session: AsyncSession, db_user: User, state: FSMContext
+) -> None:
+    await call.answer()
+    page = int(call.data.split(":")[2])
+    country = await get_player_country(session, db_user)
+    if country is None:
+        return
+
+    data = await state.get_data()
+    selected_ids = data.get("selected_ids", [])
+
+    all_countries = await countries_repo.list_countries(session)
+    target_countries = [c for c in all_countries if c.id != country.id and c.owner_user_id is not None]
+    busy_map = {}
+    for c in target_countries:
+        lbl = await dip_repo.get_active_engagement_label(session, c.id)
+        if lbl:
+            busy_map[c.id] = lbl
+
+    kb = un_sideline_countries_kb(target_countries, mode="multi", selected_ids=selected_ids, busy_map=busy_map, page=page)
+    text = (
+        header("نشست چندجانبه در حاشیه سازمان ملل", "🌐") + "\n\n"
+        "کشورهای مورد نظر خود را برای حضور در میزگرد چندجانبه انتخاب کنید (حداکثر ۶ کشور):"
+    )
+    await safe_edit(call, text, reply_markup=kb)
+
+
+@router.callback_query(F.data.startswith("un_side:toggle_m:"))
+async def cb_un_side_toggle_m(
+    call: CallbackQuery, session: AsyncSession, db_user: User, state: FSMContext
+) -> None:
+    await call.answer()
+    parts = call.data.split(":")
+    target_id = int(parts[2])
+    page = int(parts[3]) if len(parts) > 3 else 1
+
+    country = await get_player_country(session, db_user)
+    target = await countries_repo.get_country(session, target_id)
+    if country is None or target is None:
+        return
+
+    data = await state.get_data()
+    selected_ids = list(data.get("selected_ids", []))
+
+    if target_id in selected_ids:
+        selected_ids.remove(target_id)
+    else:
+        busy_lbl = await dip_repo.get_active_engagement_label(session, target_id)
+        if busy_lbl:
+            await call.answer(f"⚠️ کشور {target.name_fa} در حال حاضر مشغول {busy_lbl} است.", show_alert=True)
+            return
+        if len(selected_ids) >= 6:
+            await call.answer("⚠️ سقف مجاز انتخاب در نشست چندجانبه ۶ کشور است.", show_alert=True)
+            return
+        selected_ids.append(target_id)
+
+    await state.update_data(selected_ids=selected_ids)
+
+    all_countries = await countries_repo.list_countries(session)
+    target_countries = [c for c in all_countries if c.id != country.id and c.owner_user_id is not None]
+    busy_map = {}
+    for c in target_countries:
+        lbl = await dip_repo.get_active_engagement_label(session, c.id)
+        if lbl:
+            busy_map[c.id] = lbl
+
+    kb = un_sideline_countries_kb(target_countries, mode="multi", selected_ids=selected_ids, busy_map=busy_map, page=page)
+    text = (
+        header("نشست چندجانبه در حاشیه سازمان ملل", "🌐") + "\n\n"
+        "کشورهای مورد نظر خود را برای حضور در میزگرد چندجانبه انتخاب کنید (حداکثر ۶ کشور):"
+    )
+    await safe_edit(call, text, reply_markup=kb)
+
+
+@router.callback_query(F.data == "un_side:confirm_m")
+async def cb_un_side_confirm_m(
+    call: CallbackQuery, session: AsyncSession, db_user: User, state: FSMContext
+) -> None:
+    await call.answer()
+    data = await state.get_data()
+    selected_ids = data.get("selected_ids", [])
+    if not selected_ids:
+        await call.answer("⚠️ لطفاً حداقل ۱ کشور را انتخاب کنید.", show_alert=True)
+        return
+
+    await state.set_state(UNSidelineForm.entering_multi_topic)
+
+    names = []
+    for cid in selected_ids:
+        c = await countries_repo.get_country(session, cid)
+        if c:
+            names.append(f"{c.flag} {c.name_fa}")
+
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    cancel_kb = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="🔙 انصراف و بازگشت", callback_data="un_side:multi", style=STYLE_NO)
+    ]])
+    await safe_edit(
+        call,
+        f"🌐 <b>برگزاری نشست چندجانبه در حاشیه سازمان ملل</b>\n\n"
+        f"کشورهای مدعو: {', '.join(names)}\n\n"
+        f"✍️ لطفاً <b>موضوع نشست چندجانبه</b> را وارد کنید (حداکثر ۱۰۰ حرف):\n"
+        f"<i>(مثال: ائتلاف منطقه‌ای جهت امنیت دریانوردی و کریدورهای تجاری)</i>",
+        reply_markup=cancel_kb,
+    )
+
+
+@router.message(StateFilter(UNSidelineForm.entering_multi_topic))
+async def msg_un_side_multi_topic(
+    message: Message, state: FSMContext, session: AsyncSession, db_user: User
+) -> None:
+    topic = (message.text or "").strip()
+    if not topic or len(topic) < 3:
+        await message.answer("⚠️ لطفاً موضوع معتبری وارد کنید (حداقل ۳ حرف):")
+        return
+    topic = topic[:100]
+
+    data = await state.get_data()
+    selected_ids = data.get("selected_ids", [])
+    await state.clear()
+
+    country = await get_player_country(session, db_user)
+    if country is None:
+        await message.answer(NO_COUNTRY_TEXT)
+        return
+
+    if await dip_repo.get_active_engagement_label(session, country.id):
+        await message.answer("⚠️ شما در حال حاضر در یک نشست یا تماس دیگر مشغول هستید.")
+        return
+
+    now = _utcnow()
+    group = GroupMeeting(
+        host_country=country.id,
+        title=f"نشست حاشیه UN: {topic}",
+        topic=topic,
+        is_un_sideline=True,
+        status=DiplomacyStatus.PENDING,
+        meeting_ends_at=now + timedelta(minutes=60),
+        last_msg_at=now,
+    )
+    await dip_repo.add_group_meeting(session, group)
+    await session.flush()
+
+    # ثبت میزبان به عنوان شرکت‌کننده
+    await dip_repo.add_group_participant(session, group.id, country.id)
+
+    invited_names = []
+    for cid in selected_ids:
+        tgt = await countries_repo.get_country(session, cid)
+        if tgt and tgt.owner_user_id:
+            await dip_repo.add_group_participant(session, group.id, cid)
+            invited_names.append(f"{tgt.flag} {tgt.name_fa}")
+            inv_text = (
+                "🏛 <b>دعوت‌نامه رسمی: نشست چندجانبه در حاشیه مجمع عمومی سازمان ملل</b>\n\n"
+                f"میزبان: {country.flag} <b>{country.name_fa}</b>\n"
+                f"📌 موضوع میزگرد: <b>{topic}</b>\n"
+                "⚡ <b>زمان پرواز:</b> ۰ دقیقه (مقر نیویورک)\n"
+                "⏳ <b>مدت نشست:</b> ۶۰ دقیقه\n\n"
+                "آیا تمایل به ورود به این نشست چندجانبه دارید؟"
+            )
+            try:
+                await bot.send_message(
+                    tgt.owner_user_id,
+                    inv_text,
+                    reply_markup=un_sideline_invite_kb(group.id, is_group=True),
+                )
+            except Exception:
+                pass
+
+    await session.commit()
+
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    back_kb = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="🔙 بازگشت به منوی نشست‌ها", callback_data="un_side:home", style=STYLE_MAIN)
+    ]])
+    await message.answer(
+        f"✅ دعوت‌نامه نشست چندجانبه با موضوع <b>«{topic}»</b> برای کشورهای زیر ارسال شد:\n"
+        f"{', '.join(invited_names)}\n\n"
+        f"به محض پذیرش اولین کشور، نشست رسماً آغاز شده و چت روم فعال می‌گردد.",
+        reply_markup=back_kb,
+    )
+
+
+@router.callback_query(F.data.startswith("un_side:ok_grp:"))
+async def cb_un_side_ok_grp(
+    call: CallbackQuery, session: AsyncSession, db_user: User
+) -> None:
+    await call.answer("ورود به نشست چندجانبه ✅")
+    group_id = int(call.data.split(":")[2])
+    group = await dip_repo.get_group_meeting(session, group_id)
+    if group is None or group.status not in (DiplomacyStatus.PENDING, DiplomacyStatus.ACTIVE):
+        await safe_edit(call, "❌ این نشست چندجانبه منقضی شده یا به پایان رسیده است.")
+        return
+
+    country = await get_player_country(session, db_user)
+    if country is None:
+        return
+
+    busy_lbl = await dip_repo.get_active_engagement_label(session, country.id)
+    if busy_lbl:
+        await call.answer(f"⚠️ شما در حال حاضر مشغول {busy_lbl} هستید.", show_alert=True)
+        return
+
+    p = await dip_repo.get_group_participant(session, group.id, country.id)
+    if p:
+        p.response = DiplomacyStatus.ACTIVE
+
+    now = _utcnow()
+    is_first_activation = (group.status == DiplomacyStatus.PENDING)
+    if is_first_activation:
+        group.status = DiplomacyStatus.ACTIVE
+        group.meeting_ends_at = now + timedelta(minutes=60)
+        group.last_msg_at = now
+
+    await session.commit()
+
+    room_text = (
+        "🏛 <b>نشست چندجانبه در حاشیه مجمع عمومی سازمان ملل متحد</b>\n\n"
+        f"📌 موضوع نشست: <b>{group.topic or group.title}</b>\n"
+        "⏳ مدت زمان نشست: ۶۰ دقیقه (اتمام پس از ۱۰ دقیقه سکوت)\n\n"
+        "💬 پیام‌های ارسالی شما مستقیماً برای تمامی اعضای حاضر در نشست ارسال خواهد شد.\n"
+        "📜 جهت امضای معاهده چندجانبه بین‌المللی می‌توانید از دستور /contract استفاده کنید."
+    )
+    kb = un_sideline_active_kb(group.id, is_group=True, is_host=(country.id == group.host_country))
+    await safe_edit(call, room_text, reply_markup=kb)
+
+    # اطلاع به سایر اعضا
+    member_ids = await dip_repo.group_member_country_ids(session, group)
+    for cid in member_ids:
+        if cid == country.id:
+            continue
+        mem = await countries_repo.get_country(session, cid)
+        if mem and mem.owner_user_id:
+            try:
+                await bot.send_message(
+                    mem.owner_user_id,
+                    f"🏛 {country.flag} <b>{country.name_fa}</b> وارد نشست چندجانبه «{group.topic or group.title}» شد.",
+                    reply_markup=un_sideline_active_kb(group.id, is_group=True, is_host=(cid == group.host_country)),
+                )
+            except Exception:
+                pass
+
+    if is_first_activation:
+        host = await countries_repo.get_country(session, group.host_country)
+        news_text = (
+            "🏛 | آغاز نشست چندجانبه در حاشیه مجمع عمومی سازمان ملل متحد\n\n"
+            f"🌐 میزگرد دیپلماتیک با میزبانی {host.flag if host else ''} {host.name_fa if host else ''} "
+            f"پیرامون <b>«{group.topic or group.title}»</b> با حضور کشورهای عضو در نیویورک رسمیت یافت.\n"
+            "⏳ پیش‌بینی می‌شود این نشست ۶۰ دقیقه ادامه یابد."
+        )
+        if settings.news_diplomacy_channel_id:
+            await send_photo_news(bot, settings.news_diplomacy_channel_id, "meeting", news_text)
+        await send_log(bot, f"🏛 آغاز نشست چندجانبه حاشیه UN #{group.id}: {group.title}")
+
+
+@router.callback_query(F.data.startswith("un_side:no_grp:"))
+async def cb_un_side_no_grp(call: CallbackQuery) -> None:
+    await call.answer()
+    await safe_edit(call, "❌ دعوت به نشست چندجانبه رد شد.")
+
+
+@router.callback_query(F.data.startswith("un_side:end_grp:"))
+async def cb_un_side_end_grp(
+    call: CallbackQuery, session: AsyncSession, db_user: User
+) -> None:
+    await call.answer("نشست چندجانبه پایان یافت.")
+    group_id = int(call.data.split(":")[2])
+    group = await dip_repo.get_group_meeting(session, group_id)
+    if group and group.status == DiplomacyStatus.ACTIVE:
+        country = await get_player_country(session, db_user)
+        if country and country.id == group.host_country:
+            group.status = DiplomacyStatus.COMPLETED
+            await session.commit()
+            member_ids = await dip_repo.group_member_country_ids(session, group)
+            end_msg = (
+                f"🏁 <b>نشست چندجانبه در حاشیه سازمان ملل متحد توسط میزبان پایان یافت.</b>\n"
+                f"📌 موضوع: {group.topic or group.title}\n"
+                "وضعیت تمامی کشورهای شرکت‌کننده از قفل خارج شد."
+            )
+            for cid in member_ids:
+                mem = await countries_repo.get_country(session, cid)
+                if mem and mem.owner_user_id:
+                    try:
+                        await bot.send_message(mem.owner_user_id, end_msg, reply_markup=un_sideline_home_kb())
+                    except Exception:
+                        pass
+            await send_log(bot, f"🏁 پایان نشست چندجانبه حاشیه UN #{group.id}")
+    await safe_edit(call, "🏁 نشست چندجانبه با موفقیت بسته شد.", reply_markup=un_sideline_home_kb())
+
+
+@router.callback_query(F.data.startswith("un_side:leave_grp:"))
+async def cb_un_side_leave_grp(
+    call: CallbackQuery, session: AsyncSession, db_user: User
+) -> None:
+    await call.answer("شما از نشست خارج شدید.")
+    group_id = int(call.data.split(":")[2])
+    group = await dip_repo.get_group_meeting(session, group_id)
+    country = await get_player_country(session, db_user)
+    if group and country:
+        await dip_repo.remove_group_participant(session, group.id, country.id)
+        await session.commit()
+        member_ids = await dip_repo.group_member_country_ids(session, group)
+        for cid in member_ids:
+            mem = await countries_repo.get_country(session, cid)
+            if mem and mem.owner_user_id:
+                try:
+                    await bot.send_message(
+                        mem.owner_user_id,
+                        f"🚪 {country.flag} <b>{country.name_fa}</b> از نشست خارج شد."
+                    )
+                except Exception:
+                    pass
+    await safe_edit(call, "🚪 شما از نشست چندجانبه خارج شدید.", reply_markup=un_sideline_home_kb())
+
+
+@router.callback_query(F.data.startswith("un_side:status_grp:"))
+async def cb_un_side_status_grp(call: CallbackQuery, session: AsyncSession) -> None:
+    await call.answer()
+    group_id = int(call.data.split(":")[2])
+    group = await dip_repo.get_group_meeting(session, group_id)
+    if not group:
+        await safe_edit(call, "❌ نشست یافت نشد.", reply_markup=un_sideline_home_kb())
+        return
+    host = await countries_repo.get_country(session, group.host_country)
+    members = await dip_repo.group_member_country_ids(session, group)
+    member_names = []
+    for cid in members:
+        c = await countries_repo.get_country(session, cid)
+        if c:
+            member_names.append(f"{c.flag} {c.name_fa}")
+
+    gm_status = getattr(group.status, "value", str(group.status))
+    status_fa = "🟢 در حال برگزاری" if gm_status == "active" else ("⏳ در انتظار شرکت‌کنندگان" if gm_status == "pending" else "🏁 پایان‌یافته")
+    text = (
+        header("وضعیت نشست چندجانبه حاشیه UN", "🏛") + "\n\n"
+        f"📌 موضوع: <b>{group.topic or group.title}</b>\n"
+        f"وضعیت: <b>{status_fa}</b>\n"
+        f"میزبان: {host.flag if host else ''} {host.name_fa if host else ''}\n"
+        f"حاضران ({len(member_names)}): {', '.join(member_names)}\n"
+    )
+    kb = un_sideline_active_kb(group.id, is_group=True) if gm_status == "active" else un_sideline_home_kb()
+    await safe_edit(call, text, reply_markup=kb)
+
+
+# ---------- نشست‌های اخیر و پایان اضطراری ----------
+
+@router.callback_query(F.data == "un_side:recent")
+async def cb_un_side_recent(
+    call: CallbackQuery, session: AsyncSession, db_user: User
+) -> None:
+    """مشاهده نشست‌های حاشیه‌ای اخیر با امکان پایان اضطراری."""
+    await call.answer()
+    country = await get_player_country(session, db_user)
+    if country is None:
+        await safe_edit(call, NO_COUNTRY_TEXT)
+        return
+
+    bi_meetings = await dip_repo.list_recent_un_sideline_meetings_for_country(session, country.id)
+    grp_meetings = await dip_repo.list_recent_un_sideline_group_meetings_for_country(session, country.id)
+
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    if not bi_meetings and not grp_meetings:
+        kb = InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="🔙 بازگشت به منوی نشست‌ها", callback_data="un_side:home", style=STYLE_MAIN)
+        ]])
+        await safe_edit(
+            call,
+            header("نشست‌های حاشیه‌ای من", "🕘") + "\n\n"
+            "شما در حال حاضر هیچ نشست حاشیه‌ای فعال یا اخیری در مقر سازمان ملل ندارید.",
+            reply_markup=kb,
+        )
+        return
+
+    kb = un_sideline_recent_kb(bi_meetings, grp_meetings, country.id)
+    text = (
+        header("نشست‌های حاشیه‌ای اخیر و فعال من", "🕘") + "\n\n"
+        "فهرست نشست‌های اخیر شما در حاشیه سازمان ملل متحد:\n"
+        "💡 <i>در صورت قفل ماندن وضعیت به دلیل نشست‌های قبلی، می‌توانید از دکمه‌ی «🛑 پایان اضطراری» استفاده کنید.</i>"
+    )
+    await safe_edit(call, text, reply_markup=kb)
+
+
+@router.callback_query(F.data.startswith("un_side:force_end:"))
+async def cb_un_side_force_end(
+    call: CallbackQuery, session: AsyncSession, db_user: User
+) -> None:
+    """پایان اضطراری نشست حاشیه UN جهت رفع قفل کشور."""
+    await call.answer("پایان اضطراری اعمال شد ✅")
+    parts = call.data.split(":")
+    m_type = parts[2]
+    m_id = int(parts[3])
+
+    if m_type == "bi":
+        meeting = await dip_repo.get_meeting(session, m_id)
+        if meeting and meeting.status == DiplomacyStatus.ACTIVE:
+            meeting.status = DiplomacyStatus.COMPLETED
+            await session.commit()
+    elif m_type == "grp":
+        group = await dip_repo.get_group_meeting(session, m_id)
+        if group and group.status == DiplomacyStatus.ACTIVE:
+            group.status = DiplomacyStatus.COMPLETED
+            await session.commit()
+
+    await cb_un_side_recent(call, session, db_user)
 
 
 # ============================================================

@@ -288,18 +288,18 @@ def admin_group_military_role_kb(
 
 
 def admin_military_casualty_side_kb(
-    role_id: int, attacker_name: str, target_name: str, back_cb: str
+    role_id: int, attacker_name: str, target_name: str, back_cb: str, panel_suffix: str = ""
 ) -> InlineKeyboardMarkup:
     """انتخاب طرف درگیر جهت ثبت تلفات و خسارات."""
     builder = InlineKeyboardBuilder()
     builder.button(
         text=f"⚔️ ثبت تلفات کشور مهاجم ({attacker_name})",
-        callback_data=f"mil_cas_side:{role_id}:attacker",
+        callback_data=f"mil_cas_side:{role_id}:attacker{panel_suffix}",
         style=STYLE_NO,
     )
     builder.button(
         text=f"🛡 ثبت تلفات و خسارت کشور هدف ({target_name})",
-        callback_data=f"mil_cas_side:{role_id}:target",
+        callback_data=f"mil_cas_side:{role_id}:target{panel_suffix}",
         style=STYLE_NO,
     )
     builder.button(text="🔙 بازگشت به عملیات", callback_data=back_cb, style=STYLE_MAIN)
@@ -308,13 +308,16 @@ def admin_military_casualty_side_kb(
 
 
 def admin_military_end_confirm_kb(
-    role_id: int, back_cb: str
+    role_id: int, back_cb: str | None = None, is_panel: bool = False
 ) -> InlineKeyboardMarkup:
     """تأیید پایان دادن به عملیات نظامی و ارسال گزارش به طرفین."""
+    if back_cb is None:
+        back_cb = f"roles_admin:mil_v:{role_id}:1" if is_panel else "mil_open"
     builder = InlineKeyboardBuilder()
+    confirm_cb = f"mil_end_do:{role_id}:panel" if is_panel else f"mil_end_do:{role_id}"
     builder.button(
         text="🏁 تأیید اتمام عملیات و ابلاغ به بازیکنان",
-        callback_data=f"mil_end_do:{role_id}",
+        callback_data=confirm_cb,
         style=STYLE_OK,
     )
     builder.button(text="❌ انصراف", callback_data=back_cb, style=STYLE_NO)

@@ -298,6 +298,17 @@ async def add_group_participant(
     return participant
 
 
+async def remove_group_participant(
+    session: AsyncSession, meeting_id: int, country_id: int
+) -> None:
+    await session.execute(
+        delete(GroupMeetingParticipant).where(
+            (GroupMeetingParticipant.meeting_id == meeting_id)
+            & (GroupMeetingParticipant.country_id == country_id)
+        )
+    )
+
+
 async def list_group_participants(
     session: AsyncSession, meeting_id: int
 ) -> list[GroupMeetingParticipant]:
@@ -604,6 +615,52 @@ async def list_granted_visa_waivers(
     return list((await session.execute(q)).scalars().all())
 
 
+# ------------------------- نشست‌های حاشیه سازمان ملل (UN Sideline) -------------------------
+
+
+async def list_recent_un_sideline_meetings_for_country(
+    session: AsyncSession, country_id: int, limit: int = 6
+) -> list[Meeting]:
+    """دیدارهای دوجانبه‌ی اخیر در حاشیه سازمان ملل برای این کشور."""
+    result = await session.execute(
+        select(Meeting)
+        .where(
+            Meeting.is_un_sideline.is_(True),
+            or_(
+                Meeting.traveler_country == country_id,
+                Meeting.host_country == country_id,
+            ),
+        )
+        .order_by(Meeting.id.desc())
+        .limit(limit)
+    )
+    return list(result.scalars().all())
+
+
+async def list_recent_un_sideline_group_meetings_for_country(
+    session: AsyncSession, country_id: int, limit: int = 6
+) -> list[GroupMeeting]:
+    """نشست‌های چندجانبه‌ی اخیر در حاشیه سازمان ملل برای این کشور."""
+    # کشور یا میزبان است، یا در جدول شرکت‌کنندگان حضور دارد
+    part_subq = (
+        select(GroupMeetingParticipant.meeting_id)
+        .where(GroupMeetingParticipant.country_id == country_id)
+    )
+    result = await session.execute(
+        select(GroupMeeting)
+        .where(
+            GroupMeeting.is_un_sideline.is_(True),
+            or_(
+                GroupMeeting.host_country == country_id,
+                GroupMeeting.id.in_(part_subq),
+            ),
+        )
+        .order_by(GroupMeeting.id.desc())
+        .limit(limit)
+    )
+    return list(result.scalars().all())
+
+
 async def list_received_visa_waivers(
     session: AsyncSession, country_id: int
 ) -> list[VisaWaiver]:
@@ -614,4 +671,50 @@ async def list_received_visa_waivers(
         .order_by(VisaWaiver.created_at.desc())
     )
     return list((await session.execute(q)).scalars().all())
+
+
+# ------------------------- نشست‌های حاشیه سازمان ملل (UN Sideline) -------------------------
+
+
+async def list_recent_un_sideline_meetings_for_country(
+    session: AsyncSession, country_id: int, limit: int = 6
+) -> list[Meeting]:
+    """دیدارهای دوجانبه‌ی اخیر در حاشیه سازمان ملل برای این کشور."""
+    result = await session.execute(
+        select(Meeting)
+        .where(
+            Meeting.is_un_sideline.is_(True),
+            or_(
+                Meeting.traveler_country == country_id,
+                Meeting.host_country == country_id,
+            ),
+        )
+        .order_by(Meeting.id.desc())
+        .limit(limit)
+    )
+    return list(result.scalars().all())
+
+
+async def list_recent_un_sideline_group_meetings_for_country(
+    session: AsyncSession, country_id: int, limit: int = 6
+) -> list[GroupMeeting]:
+    """نشست‌های چندجانبه‌ی اخیر در حاشیه سازمان ملل برای این کشور."""
+    # کشور یا میزبان است، یا در جدول شرکت‌کنندگان حضور دارد
+    part_subq = (
+        select(GroupMeetingParticipant.meeting_id)
+        .where(GroupMeetingParticipant.country_id == country_id)
+    )
+    result = await session.execute(
+        select(GroupMeeting)
+        .where(
+            GroupMeeting.is_un_sideline.is_(True),
+            or_(
+                GroupMeeting.host_country == country_id,
+                GroupMeeting.id.in_(part_subq),
+            ),
+        )
+        .order_by(GroupMeeting.id.desc())
+        .limit(limit)
+    )
+    return list(result.scalars().all())
 

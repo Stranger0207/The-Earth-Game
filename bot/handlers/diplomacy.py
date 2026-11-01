@@ -2115,7 +2115,7 @@ async def cb_visa_waiver_confirm(call: CallbackQuery, session: AsyncSession, db_
     await call.answer("توافق لغو روادید با موفقیت منعقد شد ✅")
 
     try:
-        await call.message.edit_text(
+        await safe_edit(call, 
             f"✅ <b>توافق لغو روادید (Visa Waiver) با {target.flag} {target.name_fa} رسماً اجرایی شد.</b>\n\n"
             f"• عوارض پایه ارسال محموله‌های هوایی و دریایی بین طرفین ۵۰٪ کاهش یافت.\n"
             f"• هزینه‌های اداری ({fa_money(VISA_WAIVER_ADMIN_COST)}) و تغییرات ثبات و رضایت بر کشور شما اعمال شد.",
@@ -2854,18 +2854,21 @@ async def relay_chat_message(message: Message, session: AsyncSession, db_user: U
                 meeting.host_country if meeting.traveler_country == country.id else meeting.traveler_country
             )
             partner = await countries_repo.get_country(session, partner_id)
+            is_un = bool(getattr(meeting, "is_un_sideline", False))
+            tag = "🏛 [نشست حاشیه UN] " if is_un else "🤝 "
             if partner and partner.owner_user_id:
                 try:
                     await bot.send_message(
                         partner.owner_user_id,
-                        f"🤝 {country.flag} {country.name_fa}: {prefix}{text}",
+                        f"{tag}{country.flag} {country.name_fa}: {prefix}{text}",
                     )
                 except Exception:  # noqa: BLE001
                     pass
             # لاگ صحبت‌های دیدار دوجانبه به گروه لاگ (v1.6)
+            log_tag = "🏛 [نشست حاشیه UN]" if is_un else "🤝"
             await send_log(
                 bot,
-                f"🤝 [{country.name_fa} → {partner.name_fa if partner else '?'}]: {text}",
+                f"{log_tag} [{country.name_fa} → {partner.name_fa if partner else '?'}]: {text}",
             )
             return
 
@@ -2876,6 +2879,8 @@ async def relay_chat_message(message: Message, session: AsyncSession, db_user: U
         if not ended:
             group.last_msg_at = now  # تایم‌اوت سکوت (v1.10.1)
             member_ids = await dip_repo.group_member_country_ids(session, group)
+            is_un = bool(getattr(group, "is_un_sideline", False))
+            tag = "🏛 [نشست حاشیه UN] " if is_un else "👥 "
             for cid in member_ids:
                 if cid == country.id:
                     continue
@@ -2884,14 +2889,15 @@ async def relay_chat_message(message: Message, session: AsyncSession, db_user: U
                     try:
                         await bot.send_message(
                             member.owner_user_id,
-                            f"👥 {country.flag} {country.name_fa}: {prefix}{text}",
+                            f"{tag}{country.flag} {country.name_fa}: {prefix}{text}",
                         )
                     except Exception:  # noqa: BLE001
                         pass
             # لاگ صحبت‌های نشست چندجانبه به گروه لاگ (v1.6)
+            log_tag = "🏛 [نشست حاشیه UN]" if is_un else "👥"
             await send_log(
                 bot,
-                f"👥 [{group.title}] {country.name_fa}: {text}",
+                f"{log_tag} [{group.title}] {country.name_fa}: {text}",
             )
             return
 

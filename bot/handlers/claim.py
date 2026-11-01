@@ -27,6 +27,7 @@ from ..keyboards.common import countries_kb
 from ..loader import bot
 from ..services.news_service import send_photo_to_admin_group, send_to_admin_group
 from ..states import ClaimForm
+from ..utils.screens import safe_edit
 from ..utils.ui import STYLE_NO, STYLE_OK
 from .deps import get_player_country
 
@@ -311,7 +312,7 @@ async def cb_claim_cancel(call: CallbackQuery, state: FSMContext) -> None:
     """انصراف از کشورگیری در مرحله‌ی تأیید."""
     await call.answer("لغو شد")
     await state.clear()
-    await call.message.edit_text("❌ کشورگیری لغو شد. هر زمان خواستید دوباره /claim بزنید.")
+    await safe_edit(call, "❌ کشورگیری لغو شد. هر زمان خواستید دوباره /claim بزنید.")
 
 
 @router.callback_query(ClaimForm.confirming, F.data == "claim:confirm")
@@ -327,7 +328,7 @@ async def cb_claim_confirm(
 
     country = await countries_repo.get_country(session, country_id)
     if country is None or country.is_claimed:
-        await call.message.edit_text("این کشور دیگر در دسترس نیست.")
+        await safe_edit(call, "این کشور دیگر در دسترس نیست.")
         await state.clear()
         return
 
@@ -335,7 +336,7 @@ async def cb_claim_confirm(
     pending = await claims_repo.get_pending_for_user(session, db_user.telegram_id)
     if pending is not None:
         await state.clear()
-        await call.message.edit_text("⏳ درخواست شما در انتظار تأیید مالک است.")
+        await safe_edit(call, "⏳ درخواست شما در انتظار تأیید مالک است.")
         return
 
     claim = await claims_repo.create_claim(
@@ -344,7 +345,7 @@ async def cb_claim_confirm(
     await session.flush()
     await state.clear()
 
-    await call.message.edit_text(
+    await safe_edit(call, 
         "✅ درخواست شما ثبت شد و برای تأیید به مالک بازی ارسال گردید.\n"
         "پس از تأیید، پنل کشورتان فعال می‌شود."
     )

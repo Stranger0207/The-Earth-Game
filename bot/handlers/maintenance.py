@@ -34,6 +34,7 @@ from ..loader import bot
 from ..services.news_service import send_log
 from ..states import MaintenanceForm
 from ..utils.numbers import fa_number
+from ..utils.screens import safe_edit
 from ..utils.ui import STYLE_MAIN, STYLE_NO, STYLE_OK, header
 
 router = Router(name="maintenance")
@@ -90,7 +91,7 @@ async def cb_power_off(call: CallbackQuery, session: AsyncSession) -> None:
         return
     state = await bot_state_repo.update_state(session, maintenance=True)
     await call.answer("ربات خاموش شد ✅")
-    await call.message.edit_text(_status_text(state), reply_markup=_panel_kb(state))
+    await safe_edit(call, _status_text(state), reply_markup=_panel_kb(state))
     await send_log(call.bot, "🔴 <b>ربات به‌صورت دستی خاموش شد</b> (مالک).")
 
 
@@ -102,7 +103,7 @@ async def cb_power_on(call: CallbackQuery, session: AsyncSession) -> None:
         return
     state = await bot_state_repo.update_state(session, maintenance=False)
     await call.answer("ربات روشن شد ✅")
-    await call.message.edit_text(_status_text(state), reply_markup=_panel_kb(state))
+    await safe_edit(call, _status_text(state), reply_markup=_panel_kb(state))
     await send_log(call.bot, "🟢 <b>ربات دوباره روشن شد</b> (مالک).")
 
 
@@ -114,7 +115,7 @@ async def cb_clear_window(call: CallbackQuery, session: AsyncSession) -> None:
         return
     state = await bot_state_repo.update_state(session, auto_off_enabled=False)
     await call.answer("بازه‌ی روزانه غیرفعال شد ✅")
-    await call.message.edit_text(_status_text(state), reply_markup=_panel_kb(state))
+    await safe_edit(call, _status_text(state), reply_markup=_panel_kb(state))
     await send_log(call.bot, "⏰ <b>بازه‌ی خاموشی روزانه غیرفعال شد</b> (مالک).")
 
 
@@ -126,7 +127,7 @@ async def cb_set_window(call: CallbackQuery, state: FSMContext) -> None:
         return
     await call.answer()
     await state.set_state(MaintenanceForm.entering_window)
-    await call.message.edit_text(
+    await safe_edit(call, 
         "⏰ بازه‌ی خاموشی روزانه را به وقت <b>تهران</b> وارد کنید (شروع و پایان):\n\n"
         "مثال: <code>02:00 08:00</code>\n"
         "برای بازه‌ای که از نیمه‌شب عبور می‌کند هم پشتیبانی می‌شود (مثلاً <code>23:00 06:00</code>)."
@@ -278,7 +279,7 @@ async def _show_freeze_panel(target: Message | CallbackQuery, session: AsyncSess
     text = await _freeze_status_text(session)
     kb = await _freeze_panel_kb(session)
     if isinstance(target, CallbackQuery):
-        await target.message.edit_text(text, reply_markup=kb)
+        await safe_edit(target, text, reply_markup=kb)
     else:
         await target.answer(text, reply_markup=kb)
 
@@ -424,11 +425,11 @@ async def cb_pick_suspend(call: CallbackQuery, session: AsyncSession) -> None:
     await call.answer()
     pairs = [p for p in await _owner_users(session) if not getattr(p[1], "is_suspended", False)]
     if not pairs:
-        await call.message.edit_text(
+        await safe_edit(call, 
             "همه‌ی پلیرها از قبل معلق‌اند.", reply_markup=await _freeze_panel_kb(session)
         )
         return
-    await call.message.edit_text(
+    await safe_edit(call, 
         "⏸ کدام کشور معلق شود؟", reply_markup=_freeze_countries_kb(pairs, "frz_sp")
     )
 
@@ -442,11 +443,11 @@ async def cb_pick_unsuspend(call: CallbackQuery, session: AsyncSession) -> None:
     await call.answer()
     pairs = [p for p in await _owner_users(session) if getattr(p[1], "is_suspended", False)]
     if not pairs:
-        await call.message.edit_text(
+        await safe_edit(call, 
             "هیچ پلیر معلقی وجود ندارد.", reply_markup=await _freeze_panel_kb(session)
         )
         return
-    await call.message.edit_text(
+    await safe_edit(call, 
         "▶️ تعلیق کدام کشور برداشته شود؟",
         reply_markup=_freeze_countries_kb(pairs, "frz_un"),
     )
@@ -528,5 +529,5 @@ async def cb_freeze_list(call: CallbackQuery, session: AsyncSession) -> None:
     kb = InlineKeyboardMarkup(inline_keyboard=[[
         InlineKeyboardButton(text="🔙 بازگشت", callback_data="frz:panel", style=STYLE_MAIN)
     ]])
-    await call.message.edit_text("\n".join(lines), reply_markup=kb)
+    await safe_edit(call, "\n".join(lines), reply_markup=kb)
 

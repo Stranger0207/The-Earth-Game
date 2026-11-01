@@ -466,7 +466,7 @@ async def cb_admin_ref_ok(call: CallbackQuery, session: AsyncSession) -> None:
     pid = int(call.data.split(":")[-1])
     await gov_repo.update_protest_status(session, pid, "referendum", "مجلس اجازه‌ی رفراندوم داد")
     await session.commit()
-    await call.message.edit_text(
+    await safe_edit(call, 
         call.message.text + "\n\n✅ <b>رفراندوم تأیید شد</b>",
     )
 
@@ -478,7 +478,7 @@ async def cb_admin_ref_no(call: CallbackQuery, session: AsyncSession) -> None:
     pid = int(call.data.split(":")[-1])
     await gov_repo.update_protest_status(session, pid, "resolved", "مجلس رفراندوم را رد کرد")
     await session.commit()
-    await call.message.edit_text(
+    await safe_edit(call, 
         call.message.text + "\n\n❌ <b>رفراندوم رد شد</b>",
     )
 
@@ -1683,7 +1683,7 @@ async def cb_admin_law_apply(call: CallbackQuery, session: AsyncSession) -> None
     admin_name = call.from_user.full_name
 
     try:
-        await call.message.edit_text(
+        await safe_edit(call, 
             f"{call.message.text}\n\n"
             f"✅ <b>لایحه رسماً تصویب، اعمال و بسته شد.</b>\n"
             f"• تغییر ثبات داخلی: <b>{stab_sign}{stab_delta:.1f}٪</b> (میزان فعلی: {country.stability:.1f}٪)\n"
@@ -1740,7 +1740,7 @@ async def cb_admin_law_no(call: CallbackQuery, session: AsyncSession) -> None:
                 pass
 
         try:
-            await call.message.edit_text(
+            await safe_edit(call, 
                 call.message.text + "\n\n❌ <b>لایحه توسط مجلس رد شد.</b>",
                 reply_markup=None,
             )

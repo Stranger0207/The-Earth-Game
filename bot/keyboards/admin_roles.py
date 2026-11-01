@@ -195,6 +195,16 @@ def admin_roles_view_security_kb(
                 style=STYLE_MAIN,
             )
         )
+    elif mode.startswith("mil_back"):
+        mil_id = mode.split(":")[1] if ":" in mode else ""
+        back_cb = f"roles_admin:mil_tgt_sec:{mil_id}" if mil_id else "roles_admin:mil_open"
+        builder.row(
+            InlineKeyboardButton(
+                text="🔙 بازگشت به عملیات نظامی",
+                callback_data=back_cb,
+                style=STYLE_MAIN,
+            )
+        )
     else:
         builder.row(
             InlineKeyboardButton(

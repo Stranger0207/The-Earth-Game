@@ -114,13 +114,13 @@ async def cb_bank_debt_pay(call: CallbackQuery, state: FSMContext, session: Asyn
     await call.answer()
     country = await get_player_country(session, db_user)
     if country is None:
-        await call.message.edit_text(NO_COUNTRY_TEXT)
+        await safe_edit(call, NO_COUNTRY_TEXT)
         return
     if (country.govt_debt or 0.0) <= 0:
-        await call.message.edit_text("شما بدهی فعالی ندارید.", reply_markup=_back_bank_kb())
+        await safe_edit(call, "شما بدهی فعالی ندارید.", reply_markup=_back_bank_kb())
         return
     await state.set_state(DebtPayForm.entering_amount)
-    await call.message.edit_text(
+    await safe_edit(call, 
         "💸 چه مقدار از بدهی را می‌خواهید پرداخت کنید؟ (به دلار، مثلاً 500m)",
         reply_markup=_back_bank_kb(),
     )
@@ -161,17 +161,17 @@ async def cb_debt_confirm(call: CallbackQuery, state: FSMContext, session: Async
     await state.clear()
     country = await get_player_country(session, db_user)
     if country is None:
-        await call.message.edit_text(NO_COUNTRY_TEXT)
+        await safe_edit(call, NO_COUNTRY_TEXT)
         return
     amount = float(data.get("pay_amount", 0))
     debt = country.govt_debt or 0.0
     amount = min(amount, debt, country.budget)
     if amount <= 0:
-        await call.message.edit_text("پرداختی انجام نشد.", reply_markup=_back_bank_kb())
+        await safe_edit(call, "پرداختی انجام نشد.", reply_markup=_back_bank_kb())
         return
     country.budget -= amount
     country.govt_debt = debt - amount
-    await call.message.edit_text(
+    await safe_edit(call, 
         f"✅ {fa_money(amount)} از بدهی شما پرداخت شد.\n"
         f"بدهی باقی‌مانده: {fa_money(country.govt_debt)}\n"
         f"موجودی خزانه: {fa_money(country.budget)}",
@@ -216,11 +216,11 @@ async def cb_transfer_to(call: CallbackQuery, state: FSMContext, session: AsyncS
     await call.answer()
     target = await countries_repo.get_country(session, int(call.data.split(":")[1]))
     if target is None:
-        await call.message.edit_text("کشور مقصد یافت نشد.", reply_markup=_back_bank_kb())
+        await safe_edit(call, "کشور مقصد یافت نشد.", reply_markup=_back_bank_kb())
         return
     await state.update_data(target_id=target.id)
     await state.set_state(BankTransferForm.entering_amount)
-    await call.message.edit_text(
+    await safe_edit(call, 
         f"💵 چه مبلغی به {target.flag} {target.name_fa} منتقل می‌کنید؟ (به دلار، مثلاً 1b)",
         reply_markup=_back_bank_kb(),
     )
@@ -265,21 +265,21 @@ async def cb_transfer_confirm(call: CallbackQuery, state: FSMContext, session: A
     await state.clear()
     country = await get_player_country(session, db_user)
     if country is None:
-        await call.message.edit_text(NO_COUNTRY_TEXT)
+        await safe_edit(call, NO_COUNTRY_TEXT)
         return
     amount = float(data.get("amount", 0))
     target = await countries_repo.get_country(session, data.get("target_id"))
     if target is None:
-        await call.message.edit_text("کشور مقصد یافت نشد.", reply_markup=_back_bank_kb())
+        await safe_edit(call, "کشور مقصد یافت نشد.", reply_markup=_back_bank_kb())
         return
     if amount <= 0 or country.budget < amount:
-        await call.message.edit_text(
+        await safe_edit(call, 
             "⛔️ انتقال انجام نشد (بودجه‌ی ناکافی).", reply_markup=_back_bank_kb()
         )
         return
     country.budget -= amount
     target.budget = (target.budget or 0.0) + amount
-    await call.message.edit_text(
+    await safe_edit(call, 
         f"✅ {fa_money(amount)} با موفقیت به {target.flag} {target.name_fa} منتقل شد.\n"
         f"موجودی خزانه‌ی شما: {fa_money(country.budget)}",
         reply_markup=_back_bank_kb(),
@@ -475,7 +475,7 @@ async def cb_bank_loan_take(
     max_limit = _loan_limit_for_country(country)
     await state.set_state(LoanTakeForm.entering_amount)
     await state.update_data(max_limit=max_limit)
-    await call.message.edit_text(
+    await safe_edit(call, 
         f"💵 <b>درخواست اخذ وام بانکی</b>\n\n"
         f"سقف مجاز شما: {fa_money(max_limit)}\n\n"
         "چه مبلغی را به عنوان وام می‌خواهید دریافت کنید؟ (مثلاً 20m یا 50m یا 100m):",
@@ -533,22 +533,22 @@ async def cb_loan_take_confirm(
 
     country = await get_player_country(session, db_user)
     if country is None:
-        await call.message.edit_text(NO_COUNTRY_TEXT)
+        await safe_edit(call, NO_COUNTRY_TEXT)
         return
 
     # اعتبارسنجی مجدد
     if (country.govt_debt or 0.0) > 0:
-        await call.message.edit_text("⛔️ به دلیل وجود بدهی، اخذ وام متوقف شد.", reply_markup=_back_bank_kb())
+        await safe_edit(call, "⛔️ به دلیل وجود بدهی، اخذ وام متوقف شد.", reply_markup=_back_bank_kb())
         return
     active_loan = await loans_repo.get_active_loan(session, country.id)
     if active_loan:
-        await call.message.edit_text("⛔️ شما در حال حاضر وام فعال دارید.", reply_markup=_back_bank_kb())
+        await safe_edit(call, "⛔️ شما در حال حاضر وام فعال دارید.", reply_markup=_back_bank_kb())
         return
 
     # بررسی کول‌داون دریافت وام
     cd_rem = await cd_repo.remaining_seconds(session, country.id, "bank_loan", LOAN_COOLDOWN_HOURS)
     if cd_rem > 0:
-        await call.message.edit_text(
+        await safe_edit(call, 
             f"⛔️ کول‌داون {fa_number(LOAN_COOLDOWN_DAYS)} روزه وام هنوز به پایان نرسیده است.\nزمان باقی‌مانده: {_format_seconds(cd_rem)}",
             reply_markup=_back_bank_kb(),
         )
@@ -558,7 +558,7 @@ async def cb_loan_take_confirm(
     total_repay = float(data.get("total_repay", round(amount * (1.0 + LOAN_INTEREST_RATE), 2)))
     max_limit = _loan_limit_for_country(country)
     if amount <= 0 or amount > max_limit:
-        await call.message.edit_text("⛔️ مبلغ نامعتبر است.", reply_markup=_back_bank_kb())
+        await safe_edit(call, "⛔️ مبلغ نامعتبر است.", reply_markup=_back_bank_kb())
         return
 
     now = datetime.now(timezone.utc)
@@ -578,7 +578,7 @@ async def cb_loan_take_confirm(
     # ثبت کول‌داون اخذ وام
     await cd_repo.touch(session, country.id, "bank_loan")
 
-    await call.message.edit_text(
+    await safe_edit(call, 
         f"✅ <b>وام بانکی با موفقیت دریافت و واریز شد!</b>\n\n"
         f"💰 <b>مبلغ واریزشده به خزانه:</b> {fa_money(amount)}\n"
         f"💳 <b>مجموع مانده بازپرداخت (با ۵٪ سود):</b> {fa_money(total_repay)}\n"
@@ -615,7 +615,7 @@ async def cb_bank_loan_repay(
 
     await state.set_state(LoanRepayForm.entering_amount)
     await state.update_data(loan_id=active_loan.id, rem=active_loan.remaining_amount)
-    await call.message.edit_text(
+    await safe_edit(call, 
         f"💳 <b>بازپرداخت وام بانکی</b>\n\n"
         f"مبلغ مانده وام: {fa_money(active_loan.remaining_amount)}\n"
         f"موجودی خزانه‌ی شما: {fa_money(country.budget)}\n\n"
@@ -673,18 +673,18 @@ async def cb_loan_repay_confirm(
 
     country = await get_player_country(session, db_user)
     if country is None:
-        await call.message.edit_text(NO_COUNTRY_TEXT)
+        await safe_edit(call, NO_COUNTRY_TEXT)
         return
 
     active_loan = await loans_repo.get_active_loan(session, country.id)
     if not active_loan:
-        await call.message.edit_text("وام فعالی یافت نشد.", reply_markup=_back_bank_kb())
+        await safe_edit(call, "وام فعالی یافت نشد.", reply_markup=_back_bank_kb())
         return
 
     amount = float(data.get("repay_amount", 0))
     amount = min(amount, active_loan.remaining_amount, country.budget)
     if amount <= 0:
-        await call.message.edit_text("پرداختی انجام نشد.", reply_markup=_back_bank_kb())
+        await safe_edit(call, "پرداختی انجام نشد.", reply_markup=_back_bank_kb())
         return
 
     country.budget -= amount
@@ -724,7 +724,7 @@ async def cb_loan_repay_confirm(
     else:
         status_note = f"\n\nبدهی باقی‌مانده از وام: {fa_money(active_loan.remaining_amount)}"
 
-    await call.message.edit_text(
+    await safe_edit(call, 
         f"✅ مبلغ {fa_money(amount)} بابت بازپرداخت وام کسر گردید.\n"
         f"موجودی جدید خزانه: {fa_money(country.budget)}"
         f"{status_note}",

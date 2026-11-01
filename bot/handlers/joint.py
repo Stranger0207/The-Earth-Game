@@ -249,7 +249,7 @@ async def cb_joint_ok(call: CallbackQuery, session: AsyncSession, db_user: User)
     await call.answer("تأسیسات مشترک ساخته شد ✅")
 
     label = FACILITY_FA[ftype]
-    await call.message.edit_text(
+    await safe_edit(call, 
         call.message.html_text + "\n\n✅ <b>تأیید شد</b> — تأسیسات مشترک احداث شد."
     )
     if initiator.owner_user_id:
@@ -277,7 +277,7 @@ async def cb_joint_no(call: CallbackQuery, session: AsyncSession, db_user: User)
         return
     req.status = "rejected"
     await call.answer("رد شد")
-    await call.message.edit_text(call.message.html_text + "\n\n❌ <b>رد شد</b>")
+    await safe_edit(call, call.message.html_text + "\n\n❌ <b>رد شد</b>")
     initiator = await countries_repo.get_country(session, req.initiator_country)
     if initiator and initiator.owner_user_id:
         try:

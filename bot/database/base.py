@@ -121,6 +121,11 @@ _COLUMN_MIGRATIONS = [
     ("military_factories", "active", "BOOLEAN NOT NULL DEFAULT TRUE"),
     # رای‌گیری صحن علنی مجمع عمومی سازمان ملل
     ("un_assembly_participants", "last_vote", "VARCHAR(16)"),
+    # نشست در حاشیه سازمان ملل (UN Sideline Meetings)
+    ("meetings", "is_un_sideline", "BOOLEAN NOT NULL DEFAULT FALSE"),
+    ("meetings", "topic", "VARCHAR(256)"),
+    ("group_meetings", "is_un_sideline", "BOOLEAN NOT NULL DEFAULT FALSE"),
+    ("group_meetings", "topic", "VARCHAR(256)"),
 ]
 
 

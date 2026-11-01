@@ -45,7 +45,7 @@ from ..services.economic_project_service import (
     render_project_message,
     validate_role_page,
 )
-from ..services.news_service import send_log, send_to_admin_group
+from ..services.news_service import get_admin_group_id, send_log, send_to_admin_group
 from ..states.forms import AdminProjectReviewForm, EconProjectDraftForm
 from ..utils.numbers import fa_money, fa_number, parse_amount
 from ..utils.screens import safe_edit
@@ -129,8 +129,12 @@ async def cb_projects_home(
 # ============================================================
 
 @router.callback_query(F.data == "econ_proj:drafts")
-async def cb_drafts_list(call: CallbackQuery, session: AsyncSession, db_user: User) -> None:
+async def cb_drafts_list(
+    call: CallbackQuery, session: AsyncSession, db_user: User, state: FSMContext | None = None
+) -> None:
     await call.answer()
+    if state:
+        await state.clear()
     country = await get_player_country(session, db_user)
     if country is None:
         await safe_edit(call, NO_COUNTRY_TEXT)
@@ -155,8 +159,12 @@ async def cb_drafts_list(call: CallbackQuery, session: AsyncSession, db_user: Us
 
 
 @router.callback_query(F.data == "econ_proj:pending")
-async def cb_pending_list(call: CallbackQuery, session: AsyncSession, db_user: User) -> None:
+async def cb_pending_list(
+    call: CallbackQuery, session: AsyncSession, db_user: User, state: FSMContext | None = None
+) -> None:
     await call.answer()
+    if state:
+        await state.clear()
     country = await get_player_country(session, db_user)
     if country is None:
         await safe_edit(call, NO_COUNTRY_TEXT)
@@ -180,8 +188,12 @@ async def cb_pending_list(call: CallbackQuery, session: AsyncSession, db_user: U
 
 
 @router.callback_query(F.data == "econ_proj:active")
-async def cb_active_list(call: CallbackQuery, session: AsyncSession, db_user: User) -> None:
+async def cb_active_list(
+    call: CallbackQuery, session: AsyncSession, db_user: User, state: FSMContext | None = None
+) -> None:
     await call.answer()
+    if state:
+        await state.clear()
     country = await get_player_country(session, db_user)
     if country is None:
         await safe_edit(call, NO_COUNTRY_TEXT)
@@ -209,8 +221,12 @@ async def cb_active_list(call: CallbackQuery, session: AsyncSession, db_user: Us
 # ============================================================
 
 @router.callback_query(F.data.startswith("ep_view:"))
-async def cb_view_project(call: CallbackQuery, session: AsyncSession, db_user: User) -> None:
+async def cb_view_project(
+    call: CallbackQuery, session: AsyncSession, db_user: User, state: FSMContext | None = None
+) -> None:
     await call.answer()
+    if state:
+        await state.clear()
     parts = call.data.split(":")
     proj_id = int(parts[1])
     page_num = int(parts[2]) if len(parts) > 2 else 1
@@ -634,26 +650,33 @@ async def cb_grp_page(call: CallbackQuery, session: AsyncSession) -> None:
     text = render_project_message(country, project, page_num)
     kb = admin_group_project_kb(project, page_num)
     try:
-        await call.message.edit_text(text, reply_markup=kb)
+        await safe_edit(call, text, reply_markup=kb)
     except Exception:
         pass
 
 
 @router.callback_query(F.data.startswith("ep_grp_reject:"))
-async def cb_grp_reject_menu(call: CallbackQuery) -> None:
-    """نمایش منوی دلایل رد رول در گروه."""
+async def cb_grp_reject_menu(call: CallbackQuery, state: FSMContext | None = None) -> None:
+    """نمایش منوی دلایل رد رول در گروه یا پنل /roles."""
     await call.answer()
-    proj_id = int(call.data.split(":")[1])
-    await call.message.edit_reply_markup(reply_markup=admin_rejection_reasons_kb(proj_id))
+    if state:
+        await state.clear()
+    parts = call.data.split(":")
+    proj_id = int(parts[1])
+    is_panel = len(parts) > 2 and parts[-1] == "panel"
+    await call.message.edit_reply_markup(reply_markup=admin_rejection_reasons_kb(proj_id, is_panel=is_panel))
 
 
 @router.callback_query(F.data.startswith("ep_rj_quick:"))
-async def cb_grp_reject_quick(call: CallbackQuery, session: AsyncSession) -> None:
+async def cb_grp_reject_quick(call: CallbackQuery, session: AsyncSession, state: FSMContext | None = None) -> None:
     """رد رول با یکی از دلایل سریع و آماده."""
     await call.answer()
+    if state:
+        await state.clear()
     parts = call.data.split(":")
     proj_id = int(parts[1])
     reason = parts[2]
+    is_panel = len(parts) > 3 and parts[-1] == "panel"
 
     project = await proj_repo.get_project(session, proj_id)
     if not project:
@@ -665,15 +688,36 @@ async def cb_grp_reject_quick(call: CallbackQuery, session: AsyncSession) -> Non
     await reject_project(session, project, admin_user.id, reason)
     await session.commit()
 
-    # به‌روزرسانی پیام گروه
-    new_text = (call.message.text or "") + f"\n\n❌ <b>رد شد توسط {admin_name}</b>\n<b>دلیل:</b> {reason}"
-    try:
-        await call.message.edit_text(new_text, reply_markup=None)
-    except Exception:
-        pass
+    country = await countries_repo.get_country(session, project.country_id)
+
+    if is_panel:
+        # در پنل /roles: آپدیت پیام گروه اقتصادی و نمایش نتیجه در PV
+        econ_grp = get_admin_group_id(AdminGroupType.ECONOMIC_PROJECTS)
+        if econ_grp and project.admin_message_id:
+            try:
+                grp_text = f"❌ رد شد توسط {admin_name}\nدلیل: {reason}"
+                await bot.edit_message_text(
+                    chat_id=econ_grp,
+                    message_id=project.admin_message_id,
+                    text=(render_project_message(country, project, 1) if country else "") + f"\n\n❌ <b>رد شد توسط {admin_name}</b>\n<b>دلیل:</b> {reason}",
+                    reply_markup=None,
+                )
+            except Exception:
+                pass
+        back_kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔙 بازگشت به صف رول‌های اقتصادی", callback_data="roles_admin:econ_pending", style=STYLE_MAIN)],
+            [InlineKeyboardButton(text="🎖 بازگشت به پنل اصلی رول‌ها", callback_data="roles_admin:home", style=STYLE_MAIN)],
+        ])
+        await safe_edit(call, f"❌ پروژه <b>«{project.title}»</b> رد شد.\n<b>دلیل:</b> {reason}", reply_markup=back_kb)
+    else:
+        # در گروه اقتصادی: آپدیت پیام گروه
+        new_text = (call.message.text or "") + f"\n\n❌ <b>رد شد توسط {admin_name}</b>\n<b>دلیل:</b> {reason}"
+        try:
+            await safe_edit(call, new_text, reply_markup=None)
+        except Exception:
+            pass
 
     # پیام به پیوی بازیکن
-    country = await countries_repo.get_country(session, project.country_id)
     if country and country.owner_user_id:
         try:
             await bot.send_message(
@@ -701,31 +745,35 @@ async def cb_grp_reject_quick(call: CallbackQuery, session: AsyncSession) -> Non
 async def cb_admin_approve_router(call: CallbackQuery, session: AsyncSession) -> None:
     """هدایت دکمه تخصیص بودجه و تایید از پنل /roles."""
     proj_id = int(call.data.split(":")[1])
-    call.data = f"ep_grp_approve:{proj_id}"
+    call.data = f"ep_grp_approve:{proj_id}:panel"
     await cb_grp_approve_menu(call, session)
 
 
 @router.callback_query(F.data.startswith("ep_admin_reject:"))
-async def cb_admin_reject_router(call: CallbackQuery) -> None:
+async def cb_admin_reject_router(call: CallbackQuery, state: FSMContext | None = None) -> None:
     """هدایت دکمه رد پروژه از پنل /roles."""
     proj_id = int(call.data.split(":")[1])
-    call.data = f"ep_grp_reject:{proj_id}"
-    await cb_grp_reject_menu(call)
+    call.data = f"ep_grp_reject:{proj_id}:panel"
+    await cb_grp_reject_menu(call, state)
 
 
 @router.callback_query(F.data.startswith("ep_rj_custom:"))
 async def cb_grp_reject_custom(call: CallbackQuery, state: FSMContext) -> None:
     """درخواست وارد کردن دلیل رد اختصاصی."""
     await call.answer()
-    proj_id = int(call.data.split(":")[1])
+    parts = call.data.split(":")
+    proj_id = int(parts[1])
+    is_panel = len(parts) > 2 and parts[-1] == "panel"
     await state.set_state(AdminProjectReviewForm.entering_reject_reason)
     await state.update_data(
         project_id=proj_id,
         admin_chat_id=call.message.chat.id,
         admin_message_id=call.message.message_id,
+        is_panel=is_panel,
     )
+    panel_suffix = ":panel" if is_panel else ""
     cancel_kb = InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(text="🔙 انصراف و بازگشت", callback_data=f"ep_grp_cancel:{proj_id}", style=STYLE_NO),
+        InlineKeyboardButton(text="🔙 انصراف و بازگشت", callback_data=f"ep_grp_cancel:{proj_id}{panel_suffix}", style=STYLE_NO),
     ]])
     await call.message.reply(
         "✍️ لطفاً <b>علت رد پروژه</b> را ارسال کنید تا به اطلاع بازیکن برسد:",
@@ -745,6 +793,7 @@ async def msg_custom_reject_reason(
 
     data = await state.get_data()
     proj_id = data.get("project_id")
+    is_panel = data.get("is_panel", False)
     await state.clear()
 
     project = await proj_repo.get_project(session, proj_id)
@@ -758,20 +807,43 @@ async def msg_custom_reject_reason(
     await reject_project(session, project, admin_user.id, reason)
     await session.commit()
 
-    admin_chat_id = data.get("admin_chat_id")
-    admin_msg_id = data.get("admin_message_id")
-    if admin_chat_id and admin_msg_id:
-        try:
-            await bot.edit_message_text(
-                chat_id=admin_chat_id,
-                message_id=admin_msg_id,
-                text=(message.text or "") + f"\n\n❌ <b>رد شد توسط {admin_name}</b>\n<b>دلیل:</b> {reason}",
-                reply_markup=None,
-            )
-        except Exception:
-            pass
-
     country = await countries_repo.get_country(session, project.country_id)
+
+    if is_panel:
+        # آپدیت پیام گروه اقتصادی و نمایش نتیجه در PV
+        econ_grp = get_admin_group_id(AdminGroupType.ECONOMIC_PROJECTS)
+        if econ_grp and project.admin_message_id:
+            try:
+                grp_text = (render_project_message(country, project, 1) if country else "") + f"\n\n❌ <b>رد شد توسط {admin_name}</b>\n<b>دلیل:</b> {reason}"
+                await bot.edit_message_text(
+                    chat_id=econ_grp, message_id=project.admin_message_id,
+                    text=grp_text, reply_markup=None,
+                )
+            except Exception:
+                pass
+        back_kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔙 بازگشت به صف رول‌های اقتصادی", callback_data="roles_admin:econ_pending", style=STYLE_MAIN)],
+            [InlineKeyboardButton(text="🎖 بازگشت به پنل اصلی رول‌ها", callback_data="roles_admin:home", style=STYLE_MAIN)],
+        ])
+        await message.answer(
+            f"❌ پروژه <b>«{project.title}»</b> رد شد.\n<b>دلیل:</b> {reason}",
+            reply_markup=back_kb,
+        )
+    else:
+        admin_chat_id = data.get("admin_chat_id")
+        admin_msg_id = data.get("admin_message_id")
+        if admin_chat_id and admin_msg_id:
+            try:
+                await bot.edit_message_text(
+                    chat_id=admin_chat_id,
+                    message_id=admin_msg_id,
+                    text=(message.text or "") + f"\n\n❌ <b>رد شد توسط {admin_name}</b>\n<b>دلیل:</b> {reason}",
+                    reply_markup=None,
+                )
+            except Exception:
+                pass
+        await message.answer("✅ پروژه با موفقیت رد شد و پیام به پیوی بازیکن ارسال گردید.")
+
     if country and country.owner_user_id:
         try:
             await bot.send_message(
@@ -792,26 +864,47 @@ async def msg_custom_reject_reason(
         f"بررسی‌کننده: {admin_name}\n"
         f"دلیل: {reason}",
     )
-    await message.answer("✅ پروژه با موفقیت رد شد و پیام به پیوی بازیکن ارسال گردید.")
 
 
 @router.callback_query(F.data.startswith("ep_grp_cancel:"))
-async def cb_grp_cancel(call: CallbackQuery, session: AsyncSession) -> None:
-    """بازگشت به دکمه‌های اصلی داوری در گروه."""
+async def cb_grp_cancel(call: CallbackQuery, session: AsyncSession, state: FSMContext | None = None) -> None:
+    """بازگشت به دکمه‌های اصلی داوری در گروه یا پنل /roles."""
     await call.answer()
-    proj_id = int(call.data.split(":")[1])
+    if state:
+        await state.clear()
+    parts = call.data.split(":")
+    proj_id = int(parts[1])
+    is_panel = len(parts) > 2 and parts[-1] == "panel"
+
     project = await proj_repo.get_project(session, proj_id)
-    if project:
+    if not project:
+        return
+
+    if is_panel:
+        # بازگشت به نمای پروژه در پنل /roles
+        back_kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔙 بازگشت به صف رول‌های اقتصادی", callback_data="roles_admin:econ_pending", style=STYLE_MAIN)],
+            [InlineKeyboardButton(text="🎖 بازگشت به پنل اصلی رول‌ها", callback_data="roles_admin:home", style=STYLE_MAIN)],
+        ])
+        country = await countries_repo.get_country(session, project.country_id)
+        text = render_project_message(country, project, 1) if country else f"📋 پروژه: {project.title}"
+        await safe_edit(call, text, reply_markup=back_kb)
+    else:
         await call.message.edit_reply_markup(reply_markup=admin_group_project_kb(project, 1))
 
 
 # ---------- تأیید رول و تنظیمات بازدهی ----------
 
 @router.callback_query(F.data.startswith("ep_grp_approve:"))
-async def cb_grp_approve_menu(call: CallbackQuery, session: AsyncSession) -> None:
+async def cb_grp_approve_menu(call: CallbackQuery, session: AsyncSession, state: FSMContext | None = None) -> None:
     """باز کردن منوی تعاملی تنظیم هزینه‌ها و بازدهی."""
     await call.answer()
-    proj_id = int(call.data.split(":")[1])
+    if state:
+        await state.clear()
+    parts = call.data.split(":")
+    proj_id = int(parts[1])
+    is_panel = len(parts) > 2 and parts[-1] == "panel"
+
     project = await proj_repo.get_project(session, proj_id)
     if not project:
         return
@@ -826,17 +919,19 @@ async def cb_grp_approve_menu(call: CallbackQuery, session: AsyncSession) -> Non
     project.yield_cash_72h = yield_cash
     await session.commit()
 
-    kb = admin_approve_settings_kb(proj_id, launch_cash, l_res_count, yield_cash, y_res_count)
+    kb = admin_approve_settings_kb(proj_id, launch_cash, l_res_count, yield_cash, y_res_count, is_panel=is_panel)
     await call.message.edit_reply_markup(reply_markup=kb)
 
 
 @router.callback_query(F.data.startswith("ep_cfg_cash:"))
 async def cb_cfg_cash(call: CallbackQuery, session: AsyncSession) -> None:
     await call.answer()
-    proj_id = int(call.data.split(":")[1])
+    parts = call.data.split(":")
+    proj_id = int(parts[1])
+    is_panel = len(parts) > 2 and parts[-1] == "panel"
     project = await proj_repo.get_project(session, proj_id)
     if project:
-        await call.message.edit_reply_markup(reply_markup=admin_quick_cash_kb(proj_id, project.proposed_budget))
+        await call.message.edit_reply_markup(reply_markup=admin_quick_cash_kb(proj_id, project.proposed_budget, is_panel=is_panel))
 
 
 @router.callback_query(F.data.startswith("ep_set_cash:"))
@@ -845,6 +940,7 @@ async def cb_set_cash(call: CallbackQuery, session: AsyncSession) -> None:
     parts = call.data.split(":")
     proj_id = int(parts[1])
     val = float(parts[2])
+    is_panel = len(parts) > 3 and parts[-1] == "panel"
 
     project = await proj_repo.get_project(session, proj_id)
     if project:
@@ -856,6 +952,7 @@ async def cb_set_cash(call: CallbackQuery, session: AsyncSession) -> None:
             len(project.launch_resources_dict),
             project.yield_cash_72h,
             len(project.yield_resources_dict),
+            is_panel=is_panel,
         )
         await call.message.edit_reply_markup(reply_markup=kb)
 
@@ -863,10 +960,12 @@ async def cb_set_cash(call: CallbackQuery, session: AsyncSession) -> None:
 @router.callback_query(F.data.startswith("ep_cfg_ycash:"))
 async def cb_cfg_ycash(call: CallbackQuery, session: AsyncSession) -> None:
     await call.answer()
-    proj_id = int(call.data.split(":")[1])
+    parts = call.data.split(":")
+    proj_id = int(parts[1])
+    is_panel = len(parts) > 2 and parts[-1] == "panel"
     project = await proj_repo.get_project(session, proj_id)
     if project:
-        await call.message.edit_reply_markup(reply_markup=admin_quick_yield_kb(proj_id, project.proposed_budget))
+        await call.message.edit_reply_markup(reply_markup=admin_quick_yield_kb(proj_id, project.proposed_budget, is_panel=is_panel))
 
 
 @router.callback_query(F.data.startswith("ep_set_ycash:"))
@@ -875,6 +974,7 @@ async def cb_set_ycash(call: CallbackQuery, session: AsyncSession) -> None:
     parts = call.data.split(":")
     proj_id = int(parts[1])
     val = float(parts[2])
+    is_panel = len(parts) > 3 and parts[-1] == "panel"
 
     project = await proj_repo.get_project(session, proj_id)
     if project:
@@ -886,6 +986,7 @@ async def cb_set_ycash(call: CallbackQuery, session: AsyncSession) -> None:
             len(project.launch_resources_dict),
             project.yield_cash_72h,
             len(project.yield_resources_dict),
+            is_panel=is_panel,
         )
         await call.message.edit_reply_markup(reply_markup=kb)
 
@@ -1015,15 +1116,19 @@ async def msg_custom_yield(
 @router.callback_query(F.data.startswith("ep_cfg_res:"))
 async def cb_cfg_res(call: CallbackQuery) -> None:
     await call.answer()
-    proj_id = int(call.data.split(":")[1])
-    await call.message.edit_reply_markup(reply_markup=admin_resource_picker_kb(proj_id, "cost"))
+    parts = call.data.split(":")
+    proj_id = int(parts[1])
+    is_panel = len(parts) > 2 and parts[-1] == "panel"
+    await call.message.edit_reply_markup(reply_markup=admin_resource_picker_kb(proj_id, "cost", is_panel=is_panel))
 
 
 @router.callback_query(F.data.startswith("ep_cfg_yres:"))
 async def cb_cfg_yres(call: CallbackQuery) -> None:
     await call.answer()
-    proj_id = int(call.data.split(":")[1])
-    await call.message.edit_reply_markup(reply_markup=admin_resource_picker_kb(proj_id, "yield"))
+    parts = call.data.split(":")
+    proj_id = int(parts[1])
+    is_panel = len(parts) > 2 and parts[-1] == "panel"
+    await call.message.edit_reply_markup(reply_markup=admin_resource_picker_kb(proj_id, "yield", is_panel=is_panel))
 
 
 @router.callback_query(F.data.startswith("ep_clear_res:"))
@@ -1032,6 +1137,7 @@ async def cb_clear_res(call: CallbackQuery, session: AsyncSession) -> None:
     parts = call.data.split(":")
     proj_id = int(parts[1])
     mode = parts[2]
+    is_panel = len(parts) > 3 and parts[-1] == "panel"
 
     project = await proj_repo.get_project(session, proj_id)
     if project:
@@ -1047,6 +1153,7 @@ async def cb_clear_res(call: CallbackQuery, session: AsyncSession) -> None:
             len(project.launch_resources_dict),
             project.yield_cash_72h,
             len(project.yield_resources_dict),
+            is_panel=is_panel,
         )
         await call.message.edit_reply_markup(reply_markup=kb)
 
@@ -1059,6 +1166,7 @@ async def cb_pick_res(call: CallbackQuery, session: AsyncSession) -> None:
     proj_id = int(parts[1])
     mode = parts[2]
     rtype_str = parts[3]
+    is_panel = len(parts) > 4 and parts[-1] == "panel"
 
     project = await proj_repo.get_project(session, proj_id)
     if not project:
@@ -1093,6 +1201,7 @@ async def cb_pick_res(call: CallbackQuery, session: AsyncSession) -> None:
         len(project.launch_resources_dict),
         project.yield_cash_72h,
         len(project.yield_resources_dict),
+        is_panel=is_panel,
     )
     await call.message.edit_reply_markup(reply_markup=kb)
 
@@ -1101,7 +1210,10 @@ async def cb_pick_res(call: CallbackQuery, session: AsyncSession) -> None:
 async def cb_adm_confirm(call: CallbackQuery, session: AsyncSession) -> None:
     """تأیید نهایی، کسر هزینه و اعمال بازدهی به کشور."""
     await call.answer()
-    proj_id = int(call.data.split(":")[1])
+    parts = call.data.split(":")
+    proj_id = int(parts[1])
+    is_panel = len(parts) > 2 and parts[-1] == "panel"
+
     project = await proj_repo.get_project(session, proj_id)
     if not project:
         return
@@ -1139,10 +1251,35 @@ async def cb_adm_confirm(call: CallbackQuery, session: AsyncSession) -> None:
             f"📈 سود هر ۷۲ ساعت: {yield_cash_str} | {yield_res_str}\n"
             f"🟢 <b>وضعیت: فعال و در حال سوددهی</b>"
         )
-        try:
-            await call.message.edit_text((call.message.text or "") + status_line, reply_markup=None)
-        except Exception:
-            pass
+
+        if is_panel:
+            # آپدیت پیام گروه اقتصادی
+            econ_grp = get_admin_group_id(AdminGroupType.ECONOMIC_PROJECTS)
+            if econ_grp and project.admin_message_id:
+                try:
+                    grp_text = render_project_message(country, project, 1) + status_line
+                    await bot.edit_message_text(
+                        chat_id=econ_grp, message_id=project.admin_message_id,
+                        text=grp_text, reply_markup=None,
+                    )
+                except Exception:
+                    pass
+            # نمایش نتیجه در PV با دکمه بازگشت
+            back_kb = InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="🔙 بازگشت به صف رول‌های اقتصادی", callback_data="roles_admin:econ_pending", style=STYLE_MAIN)],
+                [InlineKeyboardButton(text="🎖 بازگشت به پنل اصلی رول‌ها", callback_data="roles_admin:home", style=STYLE_MAIN)],
+            ])
+            await safe_edit(
+                call,
+                f"✅ پروژه <b>«{project.title}»</b> تأیید و افتتاح شد!\n"
+                f"💵 هزینه: {launch_cash_str}\n📈 سود ۷۲ ساعته: {yield_cash_str}",
+                reply_markup=back_kb,
+            )
+        else:
+            try:
+                await safe_edit(call, (call.message.text or "") + status_line, reply_markup=None)
+            except Exception:
+                pass
 
         # پیام به پیوی بازیکن
         if country.owner_user_id:
@@ -1178,10 +1315,33 @@ async def cb_adm_confirm(call: CallbackQuery, session: AsyncSession) -> None:
             f"📦 ذخایر افتتاح: {launch_res_str}\n"
             f"📈 سود ۷۲ساعته: {yield_cash_str} | {yield_res_str}"
         )
-        try:
-            await call.message.edit_text((call.message.text or "") + status_line, reply_markup=None)
-        except Exception:
-            pass
+
+        if is_panel:
+            econ_grp = get_admin_group_id(AdminGroupType.ECONOMIC_PROJECTS)
+            if econ_grp and project.admin_message_id:
+                try:
+                    grp_text = render_project_message(country, project, 1) + status_line
+                    await bot.edit_message_text(
+                        chat_id=econ_grp, message_id=project.admin_message_id,
+                        text=grp_text, reply_markup=None,
+                    )
+                except Exception:
+                    pass
+            back_kb = InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="🔙 بازگشت به صف رول‌های اقتصادی", callback_data="roles_admin:econ_pending", style=STYLE_MAIN)],
+                [InlineKeyboardButton(text="🎖 بازگشت به پنل اصلی رول‌ها", callback_data="roles_admin:home", style=STYLE_MAIN)],
+            ])
+            await safe_edit(
+                call,
+                f"🟡 پروژه <b>«{project.title}»</b> تأیید شد اما بودجه کشور کافی نبود.\n"
+                f"💵 هزینه: {launch_cash_str} | کسری: {fa_money(res['missing_cash'])}",
+                reply_markup=back_kb,
+            )
+        else:
+            try:
+                await safe_edit(call, (call.message.text or "") + status_line, reply_markup=None)
+            except Exception:
+                pass
 
         if country.owner_user_id:
             try:

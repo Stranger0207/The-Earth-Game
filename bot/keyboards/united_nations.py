@@ -8,7 +8,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from ..config import get_settings
-from ..utils.ui import STYLE_MAIN, STYLE_NO, STYLE_OK
+from ..utils.ui import PICK_OFF, PICK_ON, STYLE_MAIN, STYLE_NO, STYLE_OK
 
 
 def un_main_menu_kb() -> InlineKeyboardMarkup:
@@ -21,6 +21,7 @@ def un_main_menu_kb() -> InlineKeyboardMarkup:
     builder.button(text="⚖️ دیوان بین‌المللی دادگستری (ICJ)", callback_data="un:court", style=STYLE_MAIN)
     builder.button(text="📜 صدور قطعنامه و رای‌گیری", callback_data="un:resolutions", style=STYLE_MAIN)
     builder.button(text="🕊 صندوق کمک‌های بشردوستانه", callback_data="un:humanitarian", style=STYLE_MAIN)
+    builder.button(text="🤝 نشست در حاشیه سازمان ملل", callback_data="un:sideline", style=STYLE_MAIN)
     builder.button(text="🏛 وضعیت دبیرخانه", callback_data="menu:status", style=STYLE_MAIN)
 
     # امکانات دیپلماتیک سازمان ملل متحد
@@ -176,8 +177,8 @@ def assembly_ny_lobby_kb(session_id: int, is_closed: bool = False) -> InlineKeyb
             style=STYLE_OK,
         )
     builder.button(
-        text="🤝 دیدار در حاشیه اجلاس نیویورک",
-        callback_data=f"asmb_sideline_meet:{session_id}",
+        text="🤝 برگزاری نشست در حاشیه سازمان ملل",
+        callback_data="un:sideline",
         style=STYLE_MAIN,
     )
     builder.button(
@@ -396,4 +397,157 @@ def resolution_admin_kb(res_id: int) -> InlineKeyboardMarkup:
     )
     builder.button(text="🔙 بازگشت به قطعنامه‌ها", callback_data="un_res_list")
     builder.adjust(1)
+    return builder.as_markup()
+
+
+# ============================================================
+#  نشست‌های در حاشیه سازمان ملل متحد (Bilateral & Multilateral)
+# ============================================================
+
+
+def un_sideline_home_kb(back_target: str = "menu:main") -> InlineKeyboardMarkup:
+    """منوی اصلی نشست در حاشیه مجمع عمومی سازمان ملل متحد."""
+    builder = InlineKeyboardBuilder()
+    builder.button(text="🤝 نشست دوجانبه در حاشیه UN", callback_data="un_side:bi", style=STYLE_MAIN)
+    builder.button(text="🌐 نشست چندجانبه در حاشیه UN", callback_data="un_side:multi", style=STYLE_MAIN)
+    builder.button(text="🕘 نشست‌های حاشیه‌ای اخیر / فعال من", callback_data="un_side:recent", style=STYLE_MAIN)
+    builder.button(text="🔙 بازگشت به مقر سازمان ملل", callback_data=back_target)
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def un_sideline_countries_kb(
+    countries: list,
+    mode: str = "bi",
+    selected_ids: set[int] | list[int] | None = None,
+    busy_map: dict[int, str] | None = None,
+    page: int = 1,
+    per_page: int = 8,
+    back_target: str = "un_side:home",
+) -> InlineKeyboardMarkup:
+    """کیبورد انتخاب کشورها جهت برگزاری نشست حاشیه سازمان ملل."""
+    selected_set = set(selected_ids or [])
+    busy_map = busy_map or {}
+    builder = InlineKeyboardBuilder()
+
+    total_count = len(countries)
+    total_pages = max(1, (total_count + per_page - 1) // per_page)
+    page = max(1, min(page, total_pages))
+
+    start = (page - 1) * per_page
+    end = start + per_page
+    page_countries = countries[start:end]
+
+    for c in page_countries:
+        busy_label = busy_map.get(c.id)
+        busy_suffix = " (⛔ مشغول)" if busy_label else ""
+        if mode == "bi":
+            builder.button(
+                text=f"🤝 {c.flag} {c.name_fa}{busy_suffix}",
+                callback_data=f"un_side:pick_bi:{c.id}",
+            )
+        else:
+            tick = PICK_ON if c.id in selected_set else PICK_OFF
+            builder.button(
+                text=f"{tick} {c.flag} {c.name_fa}{busy_suffix}",
+                callback_data=f"un_side:toggle_m:{c.id}:{page}",
+            )
+
+    # چینش دکمه‌های کشورها در دو ستون
+    builder.adjust(2)
+
+    # ردیف‌های کنترلی چندجانبه
+    if mode == "multi":
+        confirm_btn = InlineKeyboardButton(
+            text=f"✅ تأیید و ادامه ({len(selected_set)}/6 کشور)",
+            callback_data="un_side:confirm_m",
+            style=STYLE_OK,
+        )
+        builder.row(confirm_btn)
+
+    # ردیف صفحه‌بندی
+    nav_row = []
+    if page > 1:
+        prev_cb = f"un_side:page_{mode}:{page - 1}"
+        nav_row.append(InlineKeyboardButton(text="◀️ قبلی", callback_data=prev_cb))
+    if total_pages > 1:
+        nav_row.append(
+            InlineKeyboardButton(text=f"📄 {page}/{total_pages}", callback_data="un_side:noop")
+        )
+    if page < total_pages:
+        next_cb = f"un_side:page_{mode}:{page + 1}"
+        nav_row.append(InlineKeyboardButton(text="بعدی ▶️", callback_data=next_cb))
+    if nav_row:
+        builder.row(*nav_row)
+
+    # دکمه بازگشت
+    builder.row(InlineKeyboardButton(text="🔙 بازگشت", callback_data=back_target))
+    return builder.as_markup()
+
+
+def un_sideline_invite_kb(meeting_id: int, is_group: bool = False) -> InlineKeyboardMarkup:
+    """کیبورد دعوت‌نامه نشست در پیوی کشور مدعو."""
+    builder = InlineKeyboardBuilder()
+    ok_cb = f"un_side:ok_grp:{meeting_id}" if is_group else f"un_side:ok_bi:{meeting_id}"
+    no_cb = f"un_side:no_grp:{meeting_id}" if is_group else f"un_side:no_bi:{meeting_id}"
+    builder.button(text="✅ پذیرش و ورود به نشست", callback_data=ok_cb, style=STYLE_OK)
+    builder.button(text="❌ رد دعوت", callback_data=no_cb, style=STYLE_NO)
+    builder.adjust(2)
+    return builder.as_markup()
+
+
+def un_sideline_active_kb(
+    meeting_id: int, is_group: bool = False, is_host: bool = True
+) -> InlineKeyboardMarkup:
+    """کیبورد کنترل و پایان نشست حاشیه‌ای فعال."""
+    builder = InlineKeyboardBuilder()
+    if is_host:
+        end_cb = f"un_side:end_grp:{meeting_id}" if is_group else f"un_side:end_bi:{meeting_id}"
+        builder.button(text="🛑 پایان نشست", callback_data=end_cb, style=STYLE_NO)
+    elif is_group:
+        builder.button(
+            text="🚪 خروج از نشست",
+            callback_data=f"un_side:leave_grp:{meeting_id}",
+            style=STYLE_NO,
+        )
+    else:
+        builder.button(
+            text="🛑 پایان نشست",
+            callback_data=f"un_side:end_bi:{meeting_id}",
+            style=STYLE_NO,
+        )
+
+    refresh_cb = f"un_side:status_grp:{meeting_id}" if is_group else f"un_side:status_bi:{meeting_id}"
+    builder.button(text="🔄 وضعیت نشست", callback_data=refresh_cb, style=STYLE_MAIN)
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def un_sideline_recent_kb(
+    bi_meetings: list, group_meetings: list, my_country_id: int
+) -> InlineKeyboardMarkup:
+    """کیبورد مشاهده نشست‌های حاشیه‌ای اخیر با قابلیت پایان اضطراری."""
+    builder = InlineKeyboardBuilder()
+    for m in bi_meetings:
+        m_status = getattr(m.status, "value", str(m.status))
+        status_sym = "🟢" if m_status == "active" else ("⏳" if m_status == "pending" else "🏁")
+        btn_text = f"{status_sym} دوجانبه #{m.id} ({m.topic or 'عمومی'})"
+        if m_status == "active":
+            builder.button(text=f"🛑 پایان اضطراری دوجانبه #{m.id}", callback_data=f"un_side:force_end:bi:{m.id}", style=STYLE_NO)
+            builder.button(text=btn_text, callback_data=f"un_side:status_bi:{m.id}", style=STYLE_MAIN)
+        else:
+            builder.button(text=btn_text, callback_data=f"un_side:status_bi:{m.id}", style=STYLE_MAIN)
+
+    for gm in group_meetings:
+        gm_status = getattr(gm.status, "value", str(gm.status))
+        status_sym = "🟢" if gm_status == "active" else ("⏳" if gm_status == "pending" else "🏁")
+        btn_text = f"{status_sym} چندجانبه #{gm.id} ({gm.topic or gm.title or 'عمومی'})"
+        if gm_status == "active":
+            builder.button(text=f"🛑 پایان اضطراری چندجانبه #{gm.id}", callback_data=f"un_side:force_end:grp:{gm.id}", style=STYLE_NO)
+            builder.button(text=btn_text, callback_data=f"un_side:status_grp:{gm.id}", style=STYLE_MAIN)
+        else:
+            builder.button(text=btn_text, callback_data=f"un_side:status_grp:{gm.id}", style=STYLE_MAIN)
+
+    builder.adjust(1)
+    builder.row(InlineKeyboardButton(text="🔙 بازگشت به منوی نشست‌ها", callback_data="un_side:home"))
     return builder.as_markup()

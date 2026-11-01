@@ -210,9 +210,10 @@ def admin_group_project_kb(project: EconomicProject, current_page: int) -> Inlin
     return builder.as_markup()
 
 
-def admin_rejection_reasons_kb(project_id: int) -> InlineKeyboardMarkup:
+def admin_rejection_reasons_kb(project_id: int, is_panel: bool = False) -> InlineKeyboardMarkup:
     """دلایل آماده رد کردن رول + امکان دلیل دستی."""
     builder = InlineKeyboardBuilder()
+    panel_suffix = ":panel" if is_panel else ""
     reasons = [
         "عدم تناسب بودجه با حجم پروژه",
         "تناقض با خط‌مشی و قوانین بازی",
@@ -220,9 +221,9 @@ def admin_rejection_reasons_kb(project_id: int) -> InlineKeyboardMarkup:
         "نیاز به اصلاح و بازنویسی",
     ]
     for r in reasons:
-        builder.button(text=f"❌ {r}", callback_data=f"ep_rj_quick:{project_id}:{r[:20]}")
-    builder.button(text="✍️ نوشتن دلیل اختصاصی", callback_data=f"ep_rj_custom:{project_id}", style=STYLE_MAIN)
-    builder.button(text="🔙 انصراف", callback_data=f"ep_grp_cancel:{project_id}", style=STYLE_NO)
+        builder.button(text=f"❌ {r}", callback_data=f"ep_rj_quick:{project_id}:{r[:20]}{panel_suffix}")
+    builder.button(text="✍️ نوشتن دلیل اختصاصی", callback_data=f"ep_rj_custom:{project_id}{panel_suffix}", style=STYLE_MAIN)
+    builder.button(text="🔙 انصراف", callback_data=f"ep_grp_cancel:{project_id}{panel_suffix}", style=STYLE_NO)
     builder.adjust(1)
     return builder.as_markup()
 
@@ -233,73 +234,78 @@ def admin_approve_settings_kb(
     launch_res_count: int,
     yield_cash: float,
     yield_res_count: int,
+    is_panel: bool = False,
 ) -> InlineKeyboardMarkup:
     """منوی تنظیم هزینه‌ها و بازدهی برای تأیید توسط ادمین."""
     builder = InlineKeyboardBuilder()
+    panel_suffix = ":panel" if is_panel else ""
 
     cash_btn = f"💵 هزینه دلاری: {fa_money(launch_cash)}"
     res_btn = f"📦 هزینه ذخایر: ({fa_number(launch_res_count)} قلم)"
-    builder.button(text=cash_btn, callback_data=f"ep_cfg_cash:{project_id}")
-    builder.button(text=res_btn, callback_data=f"ep_cfg_res:{project_id}")
+    builder.button(text=cash_btn, callback_data=f"ep_cfg_cash:{project_id}{panel_suffix}")
+    builder.button(text=res_btn, callback_data=f"ep_cfg_res:{project_id}{panel_suffix}")
 
     ycash_btn = f"📈 سود ۷۲ساعته: {fa_money(yield_cash)}"
     yres_btn = f"💎 سود ذخایر: ({fa_number(yield_res_count)} قلم)"
-    builder.button(text=ycash_btn, callback_data=f"ep_cfg_ycash:{project_id}")
-    builder.button(text=yres_btn, callback_data=f"ep_cfg_yres:{project_id}")
+    builder.button(text=ycash_btn, callback_data=f"ep_cfg_ycash:{project_id}{panel_suffix}")
+    builder.button(text=yres_btn, callback_data=f"ep_cfg_yres:{project_id}{panel_suffix}")
 
     builder.adjust(1, 1, 1, 1)
 
     builder.row(
         InlineKeyboardButton(
             text="🚀 صدور تأییدیه و افتتاح",
-            callback_data=f"ep_adm_confirm:{project_id}",
+            callback_data=f"ep_adm_confirm:{project_id}{panel_suffix}",
             style=STYLE_OK,
         ),
         InlineKeyboardButton(
             text="❌ انصراف",
-            callback_data=f"ep_grp_cancel:{project_id}",
+            callback_data=f"ep_grp_cancel:{project_id}{panel_suffix}",
             style=STYLE_NO,
         ),
     )
     return builder.as_markup()
 
 
-def admin_quick_cash_kb(project_id: int, proposed: float) -> InlineKeyboardMarkup:
+def admin_quick_cash_kb(project_id: int, proposed: float, is_panel: bool = False) -> InlineKeyboardMarkup:
     """گزینه‌های سریع برای هزینه دلاری افتتاح."""
     builder = InlineKeyboardBuilder()
-    builder.button(text=f"قبول بودجه پیشنهادی ({fa_money(proposed)})", callback_data=f"ep_set_cash:{project_id}:{proposed}")
-    builder.button(text="افتتاح رایگان ($0)", callback_data=f"ep_set_cash:{project_id}:0")
-    builder.button(text="✍️ ورود مبلغ دلخواه", callback_data=f"ep_set_cash_custom:{project_id}", style=STYLE_MAIN)
-    builder.button(text="🔙 بازگشت", callback_data=f"ep_grp_approve:{project_id}", style=STYLE_MAIN)
+    panel_suffix = ":panel" if is_panel else ""
+    builder.button(text=f"قبول بودجه پیشنهادی ({fa_money(proposed)})", callback_data=f"ep_set_cash:{project_id}:{proposed}{panel_suffix}")
+    builder.button(text="افتتاح رایگان ($0)", callback_data=f"ep_set_cash:{project_id}:0{panel_suffix}")
+    builder.button(text="✍️ ورود مبلغ دلخواه", callback_data=f"ep_set_cash_custom:{project_id}{panel_suffix}", style=STYLE_MAIN)
+    builder.button(text="🔙 بازگشت", callback_data=f"ep_grp_approve:{project_id}{panel_suffix}", style=STYLE_MAIN)
     builder.adjust(1)
     return builder.as_markup()
 
 
-def admin_quick_yield_kb(project_id: int, proposed: float) -> InlineKeyboardMarkup:
+def admin_quick_yield_kb(project_id: int, proposed: float, is_panel: bool = False) -> InlineKeyboardMarkup:
     """گزینه‌های سریع برای سود دلاری ۷۲ ساعته."""
     builder = InlineKeyboardBuilder()
+    panel_suffix = ":panel" if is_panel else ""
     p10 = round(proposed * 0.10, 2)
     p15 = round(proposed * 0.15, 2)
     p20 = round(proposed * 0.20, 2)
-    builder.button(text=f"۱۰٪ بودجه ({fa_money(p10)})", callback_data=f"ep_set_ycash:{project_id}:{p10}")
-    builder.button(text=f"۱۵٪ بودجه ({fa_money(p15)})", callback_data=f"ep_set_ycash:{project_id}:{p15}")
-    builder.button(text=f"۲۰٪ بودجه ({fa_money(p20)})", callback_data=f"ep_set_ycash:{project_id}:{p20}")
-    builder.button(text="✍️ ورود مبلغ دلخواه", callback_data=f"ep_set_ycash_custom:{project_id}", style=STYLE_MAIN)
-    builder.button(text="🔙 بازگشت", callback_data=f"ep_grp_approve:{project_id}", style=STYLE_MAIN)
+    builder.button(text=f"۱۰٪ بودجه ({fa_money(p10)})", callback_data=f"ep_set_ycash:{project_id}:{p10}{panel_suffix}")
+    builder.button(text=f"۱۵٪ بودجه ({fa_money(p15)})", callback_data=f"ep_set_ycash:{project_id}:{p15}{panel_suffix}")
+    builder.button(text=f"۲۰٪ بودجه ({fa_money(p20)})", callback_data=f"ep_set_ycash:{project_id}:{p20}{panel_suffix}")
+    builder.button(text="✍️ ورود مبلغ دلخواه", callback_data=f"ep_set_ycash_custom:{project_id}{panel_suffix}", style=STYLE_MAIN)
+    builder.button(text="🔙 بازگشت", callback_data=f"ep_grp_approve:{project_id}{panel_suffix}", style=STYLE_MAIN)
     builder.adjust(1)
     return builder.as_markup()
 
 
-def admin_resource_picker_kb(project_id: int, mode: str) -> InlineKeyboardMarkup:
+def admin_resource_picker_kb(project_id: int, mode: str, is_panel: bool = False) -> InlineKeyboardMarkup:
     """انتخاب منبع برای هزینه افتتاح یا سود ۷۲ ساعته (mode: 'cost' or 'yield')."""
     builder = InlineKeyboardBuilder()
+    panel_suffix = ":panel" if is_panel else ""
     for rtype in ResourceType:
         fa = RESOURCE_FA.get(rtype, rtype.value)
         emo = RESOURCE_EMOJI.get(rtype, "📦")
-        builder.button(text=f"{emo} {fa}", callback_data=f"ep_pick_res:{project_id}:{mode}:{rtype.value}")
+        builder.button(text=f"{emo} {fa}", callback_data=f"ep_pick_res:{project_id}:{mode}:{rtype.value}{panel_suffix}")
     builder.adjust(2)
     builder.row(
-        InlineKeyboardButton(text="🗑 پاک‌سازی همه منابع", callback_data=f"ep_clear_res:{project_id}:{mode}", style=STYLE_NO),
-        InlineKeyboardButton(text="🔙 بازگشت", callback_data=f"ep_grp_approve:{project_id}", style=STYLE_MAIN),
+        InlineKeyboardButton(text="🗑 پاک‌سازی همه منابع", callback_data=f"ep_clear_res:{project_id}:{mode}{panel_suffix}", style=STYLE_NO),
+        InlineKeyboardButton(text="🔙 بازگشت", callback_data=f"ep_grp_approve:{project_id}{panel_suffix}", style=STYLE_MAIN),
     )
     return builder.as_markup()

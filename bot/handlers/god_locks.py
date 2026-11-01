@@ -32,6 +32,7 @@ from ..loader import bot
 from ..services.news_service import send_log
 from ..states import GodLockForm
 from ..utils.numbers import fa_number
+from ..utils.screens import safe_edit
 from ..utils.ui import PICK_OFF, PICK_ON, STYLE_MAIN, STYLE_NO, STYLE_OK, header
 
 logger = logging.getLogger(__name__)
@@ -104,7 +105,7 @@ async def _render_home(call: CallbackQuery, session: AsyncSession) -> None:
         "همه‌ی کشورها موقتاً ببندید.\n\n"
         "<i>مالک و مدیران بازی از قفل‌ها معاف‌اند و می‌توانند همه‌چیز را آزمایش کنند.</i>"
     )
-    await call.message.edit_text(text, reply_markup=_categories_kb(counts))
+    await safe_edit(call, text, reply_markup=_categories_kb(counts))
 
 
 @router.callback_query(F.data == "god:locks")
@@ -163,7 +164,7 @@ async def _render_category(call: CallbackQuery, session: AsyncSession, cat_idx: 
     builder.row(
         InlineKeyboardButton(text="🔙 بازگشت", callback_data="god:locks", style=STYLE_MAIN)
     )
-    await call.message.edit_text("\n".join(lines), reply_markup=builder.as_markup())
+    await safe_edit(call, "\n".join(lines), reply_markup=builder.as_markup())
 
 
 # ============================================================
@@ -219,7 +220,7 @@ async def _render_feature(call: CallbackQuery, session: AsyncSession, key: str) 
     else:
         lines.append("🟢 <b>وضعیت: باز</b> — همه‌ی کشورها می‌توانند استفاده کنند.")
 
-    await call.message.edit_text(
+    await safe_edit(call, 
         "\n".join(lines),
         reply_markup=_feature_kb(key, is_global=is_global, has_any=bool(rows)),
     )
@@ -382,7 +383,7 @@ async def _render_pick(call: CallbackQuery, session: AsyncSession, key: str, sel
         "کشورهایی که می‌خواهید این آپشن برایشان بسته شود را انتخاب کنید.\n"
         "<i>🔒 یعنی از قبل قفل است.</i>"
     )
-    await call.message.edit_text(
+    await safe_edit(call, 
         text, reply_markup=_pick_kb(key, countries, selected, locked_ids)
     )
 
@@ -521,7 +522,7 @@ async def cb_locks_list(call: CallbackQuery, session: AsyncSession) -> None:
     builder.row(
         InlineKeyboardButton(text="🔙 بازگشت", callback_data="god:locks", style=STYLE_MAIN)
     )
-    await call.message.edit_text("\n".join(lines), reply_markup=builder.as_markup())
+    await safe_edit(call, "\n".join(lines), reply_markup=builder.as_markup())
 
 
 @router.callback_query(F.data == "godlk:unlock_all")
@@ -536,7 +537,7 @@ async def cb_unlock_all_ask(call: CallbackQuery) -> None:
         ),
         InlineKeyboardButton(text="❌ انصراف", callback_data="godlk:list", style=STYLE_NO),
     ]])
-    await call.message.edit_text(
+    await safe_edit(call, 
         "⚠️ همه‌ی قفل‌های آپشن‌ها برداشته می‌شود و بازی کامل باز می‌گردد. مطمئنید؟",
         reply_markup=kb,
     )

@@ -45,7 +45,7 @@ from ..services.military_role_service import (
     render_military_role_message,
     submit_military_role,
 )
-from ..services.news_service import send_log, send_to_admin_group
+from ..services.news_service import get_admin_group_id, send_log, send_to_admin_group
 from ..services.security_role_service import validate_role_page
 from ..states.forms import MilitaryCasualtyForm, MilitaryRoleDraftForm
 from ..utils.numbers import fa_number
@@ -721,7 +721,7 @@ async def cb_admin_group_mil_page(call: CallbackQuery, session: AsyncSession) ->
 
     msg_text = render_military_role_message(role, attacker, target, page_num)
     try:
-        await call.message.edit_text(
+        await safe_edit(call, 
             msg_text,
             reply_markup=admin_group_military_role_kb(role, page_num),
         )
@@ -741,6 +741,7 @@ async def cb_admin_casualty_start(call: CallbackQuery, session: AsyncSession) ->
     role_id = int(parts[1])
     is_panel = len(parts) > 2 and parts[2] == "panel"
     back_cb = f"roles_admin:mil_v:{role_id}:1" if is_panel else f"mil_grp_p:{role_id}:1"
+    panel_suffix = ":panel" if is_panel else ""
 
     role = await mil_ops_repo.get_military_role(session, role_id)
     if not role:
@@ -756,7 +757,7 @@ async def cb_admin_casualty_start(call: CallbackQuery, session: AsyncSession) ->
     await safe_edit(
         call,
         text,
-        reply_markup=admin_military_casualty_side_kb(role_id, attacker.name_fa, target.name_fa, back_cb),
+        reply_markup=admin_military_casualty_side_kb(role_id, attacker.name_fa, target.name_fa, back_cb, panel_suffix=panel_suffix),
     )
 
 
@@ -770,6 +771,8 @@ async def cb_admin_casualty_side(call: CallbackQuery, session: AsyncSession) -> 
     await call.answer()
     parts = call.data.split(":")
     role_id, side = int(parts[1]), parts[2]
+    is_panel = len(parts) > 3 and parts[3] == "panel"
+    panel_suffix = ":panel" if is_panel else ""
 
     role = await mil_ops_repo.get_military_role(session, role_id)
     if not role:
@@ -782,12 +785,12 @@ async def cb_admin_casualty_side(call: CallbackQuery, session: AsyncSession) -> 
     for key, (fa, _stem, _branches) in DEPLOY_BRANCHES.items():
         builder.button(
             text=f"{icons.get(key, '')} {fa}",
-            callback_data=f"mil_cas_br:{role_id}:{side}:{key}",
+            callback_data=f"mil_cas_br:{role_id}:{side}:{key}:0{panel_suffix}",
             style=STYLE_NO,
         )
     builder.button(
         text="🔙 بازگشت",
-        callback_data=f"mil_grp_cas:{role_id}",
+        callback_data=f"mil_grp_cas:{role_id}{panel_suffix}",
         style=STYLE_MAIN,
     )
     builder.adjust(1)
@@ -813,6 +816,8 @@ async def cb_admin_casualty_branch(
     parts = call.data.split(":")
     role_id, side, key = int(parts[1]), parts[2], parts[3]
     page = int(parts[4]) if len(parts) > 4 else 0
+    is_panel = len(parts) > 5 and parts[5] == "panel"
+    panel_suffix = ":panel" if is_panel else ""
 
     role = await mil_ops_repo.get_military_role(session, role_id)
     if not role or key not in DEPLOY_BRANCHES:
@@ -829,7 +834,7 @@ async def cb_admin_casualty_branch(
             f"⚠️ این کشور در شاخه «{fa_name}» تجهیزاتی با موجودی بیشتر از صفر ندارد.",
             reply_markup=InlineKeyboardMarkup(
                 inline_keyboard=[
-                    [InlineKeyboardButton(text="🔙 بازگشت به شاخه‌ها", callback_data=f"mil_cas_side:{role_id}:{side}", style=STYLE_MAIN)],
+                    [InlineKeyboardButton(text="🔙 بازگشت به شاخه‌ها", callback_data=f"mil_cas_side:{role_id}:{side}{panel_suffix}", style=STYLE_MAIN)],
                 ]
             ),
         )
@@ -852,7 +857,7 @@ async def cb_admin_casualty_branch(
         real_idx = start_idx + offset
         builder.button(
             text=f"{a.name} ({fa_number(a.count)})",
-            callback_data=f"mil_cas_ast:{role_id}:{side}:{key}:{page}:{real_idx}",
+            callback_data=f"mil_cas_ast:{role_id}:{side}:{key}:{page}:{real_idx}{panel_suffix}",
             style=STYLE_NO,
         )
     builder.adjust(1)
@@ -863,7 +868,7 @@ async def cb_admin_casualty_branch(
         nav_btns.append(
             InlineKeyboardButton(
                 text="◀️ قبلی",
-                callback_data=f"mil_cas_br:{role_id}:{side}:{key}:{page - 1}",
+                callback_data=f"mil_cas_br:{role_id}:{side}:{key}:{page - 1}{panel_suffix}",
                 style=STYLE_MAIN,
             )
         )
@@ -878,7 +883,7 @@ async def cb_admin_casualty_branch(
         nav_btns.append(
             InlineKeyboardButton(
                 text="بعدی ▶️",
-                callback_data=f"mil_cas_br:{role_id}:{side}:{key}:{page + 1}",
+                callback_data=f"mil_cas_br:{role_id}:{side}:{key}:{page + 1}{panel_suffix}",
                 style=STYLE_MAIN,
             )
         )
@@ -888,7 +893,7 @@ async def cb_admin_casualty_branch(
     builder.row(
         InlineKeyboardButton(
             text="🔙 بازگشت به انتخاب شاخه",
-            callback_data=f"mil_cas_side:{role_id}:{side}",
+            callback_data=f"mil_cas_side:{role_id}:{side}{panel_suffix}",
             style=STYLE_MAIN,
         )
     )
@@ -913,8 +918,10 @@ async def cb_admin_casualty_asset(
 
     await call.answer()
     parts = call.data.split(":")
+    is_panel = False
     if len(parts) >= 6:
         role_id, side, key, page, idx = int(parts[1]), parts[2], parts[3], int(parts[4]), int(parts[5])
+        is_panel = len(parts) > 6 and parts[6] == "panel"
     else:
         role_id, side, idx = int(parts[1]), parts[2], int(parts[3])
         key = "ground"
@@ -936,16 +943,18 @@ async def cb_admin_casualty_asset(
         asset_name=asset_name,
         chat_id=call.message.chat.id,
         message_id=call.message.message_id,
+        is_panel=is_panel,
     )
 
+    cancel_cb = f"roles_admin:mil_v:{role_id}:1" if is_panel else f"mil_cas_br:{role_id}:{side}:{key}:{page}"
     await safe_edit(
         call,
         f"🔢 لطفاً <b>تعداد تلفات «{asset_name}»</b> را وارد کنید (مستقیماً از موجودی کسر می‌شود):",
         reply_markup=InlineKeyboardMarkup(
             inline_keyboard=[
                 [InlineKeyboardButton(
-                    text="🔙 انصراف و بازگشت به همین شاخه",
-                    callback_data=f"mil_cas_br:{role_id}:{side}:{key}:{page}",
+                    text="🔙 انصراف و بازگشت",
+                    callback_data=cancel_cb,
                     style=STYLE_MAIN,
                 )],
             ]
@@ -973,6 +982,7 @@ async def msg_admin_casualty_count(
     branch_key = data.get("branch_key", "ground")
     page = data.get("page", 0)
     asset_name = data.get("asset_name")
+    is_panel = data.get("is_panel", False)
 
     role = await mil_ops_repo.get_military_role(session, role_id)
     if not role:
@@ -1000,26 +1010,48 @@ async def msg_admin_casualty_count(
 
     # کیبورد ناوبری هوشمند پس از ثبت تلفات
     builder = InlineKeyboardBuilder()
-    builder.button(
-        text=f"🔙 بازگشت به لیست تجهیزات همین بخش ({branch_fa})",
-        callback_data=f"mil_cas_br:{role_id}:{side}:{branch_key}:{page}",
-        style=STYLE_MAIN,
-    )
-    builder.button(
-        text="🔄 تغییر شاخه نظامی",
-        callback_data=f"mil_cas_side:{role_id}:{side}",
-        style=STYLE_MAIN,
-    )
-    builder.button(
-        text=f"🔀 تغییر کشور (به {other_side_fa})",
-        callback_data=f"mil_cas_side:{role_id}:{other_side}",
-        style=STYLE_MAIN,
-    )
-    builder.button(
-        text="🏁 بازگشت به پنل اصلی رول نظامی",
-        callback_data=f"mil_grp_p:{role_id}:1",
-        style=STYLE_OK,
-    )
+    if is_panel:
+        builder.button(
+            text="🔙 بازگشت به متن عملیات نظامی",
+            callback_data=f"roles_admin:mil_v:{role_id}:1",
+            style=STYLE_MAIN,
+        )
+        builder.button(
+            text="💥 ثبت تلفات بیشتر روی این عملیات",
+            callback_data=f"mil_grp_cas:{role_id}:panel",
+            style=STYLE_NO,
+        )
+        builder.button(
+            text="⚔️ بازگشت به لیست رول‌های نظامی باز",
+            callback_data="roles_admin:mil_open",
+            style=STYLE_MAIN,
+        )
+        builder.button(
+            text="🎖 بازگشت به منوی اصلی رول‌ها",
+            callback_data="roles_admin:home",
+            style=STYLE_MAIN,
+        )
+    else:
+        builder.button(
+            text=f"🔙 بازگشت به لیست تجهیزات همین بخش ({branch_fa})",
+            callback_data=f"mil_cas_br:{role_id}:{side}:{branch_key}:{page}",
+            style=STYLE_MAIN,
+        )
+        builder.button(
+            text="🔄 تغییر شاخه نظامی",
+            callback_data=f"mil_cas_side:{role_id}:{side}",
+            style=STYLE_MAIN,
+        )
+        builder.button(
+            text=f"🔀 تغییر کشور (به {other_side_fa})",
+            callback_data=f"mil_cas_side:{role_id}:{other_side}",
+            style=STYLE_MAIN,
+        )
+        builder.button(
+            text="🏁 بازگشت به پنل اصلی رول نظامی",
+            callback_data=f"mil_grp_p:{role_id}:1",
+            style=STYLE_OK,
+        )
     builder.adjust(1)
 
     await message.reply(
@@ -1117,7 +1149,7 @@ async def cb_admin_end_ask(call: CallbackQuery, session: AsyncSession) -> None:
         f"{format_casualties_report(role)}\n\n"
         f"با کلیک روی تأیید، دکمه‌های عملیات بسته شده و گزارش نتایج به بازیکن مهاجم ابلاغ خواهد شد."
     )
-    await safe_edit(call, text, reply_markup=admin_military_end_confirm_kb(role_id, back_cb))
+    await safe_edit(call, text, reply_markup=admin_military_end_confirm_kb(role_id, back_cb, is_panel=is_panel))
 
 
 @router.callback_query(F.data.startswith("mil_end_do:"))
@@ -1128,7 +1160,10 @@ async def cb_admin_end_do(call: CallbackQuery, session: AsyncSession) -> None:
         return
 
     await call.answer("عملیات به پایان رسید ✅")
-    role_id = int(call.data.split(":")[1])
+    parts = call.data.split(":")
+    role_id = int(parts[1])
+    is_panel = len(parts) > 2 and parts[2] == "panel"
+
     role = await mil_ops_repo.get_military_role(session, role_id)
     if not role or role.status != MilitaryRoleStatus.PENDING_REVIEW.value:
         await call.answer("این عملیات قبلاً مختومه شده است.", show_alert=True)
@@ -1145,14 +1180,52 @@ async def cb_admin_end_do(call: CallbackQuery, session: AsyncSession) -> None:
 
     # ویرایش پیام در گروه عملیات ستاد
     cas_report = format_casualties_report(role)
-    try:
-        await call.message.edit_text(
-            call.message.html_text + f"\n\n🏁 <b>این عملیات توسط {admin_name} اجرا و رسماً مختومه شد.</b>\n"
-            f"💥 <b>گزارش تلفات نهایی:</b>\n{cas_report}",
-            reply_markup=None,
+    grp_id = get_admin_group_id(AdminGroupType.MILITARY_ROLES)
+    if is_panel:
+        if grp_id and role.admin_message_id:
+            try:
+                await bot.edit_message_text(
+                    chat_id=grp_id,
+                    message_id=role.admin_message_id,
+                    text=(
+                        f"🏁 <b>این عملیات از طریق پنل مدیریت (/roles) توسط {admin_name} اجرا و رسماً مختومه شد.</b>\n\n"
+                        f"💥 <b>گزارش تلفات نهایی:</b>\n{cas_report}"
+                    ),
+                    reply_markup=None,
+                )
+            except Exception:
+                try:
+                    await bot.edit_message_reply_markup(
+                        chat_id=grp_id,
+                        message_id=role.admin_message_id,
+                        reply_markup=None,
+                    )
+                except Exception:
+                    pass
+
+        panel_kb = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="🔙 بازگشت به لیست عملیات‌های باز", callback_data="roles_admin:mil_open", style=STYLE_MAIN)],
+                [InlineKeyboardButton(text="🎖 بازگشت به منوی اصلی رول‌ها", callback_data="roles_admin:home", style=STYLE_MAIN)],
+            ]
         )
-    except Exception:
-        pass
+        await safe_edit(
+            call,
+            header("پایان عملیات نظامی", "🏁")
+            + f"\n\nعملیات <b>«{role.title}»</b> با موفقیت مختومه شد.\n"
+            f"گزارش نهایی و تلفات به بازیکنان ابلاغ گردید و وضعیت عملیات به COMPLETED تغییر یافت.\n\n"
+            f"💥 <b>گزارش تلفات نهایی:</b>\n{cas_report}",
+            reply_markup=panel_kb,
+        )
+    else:
+        try:
+            await safe_edit(call, 
+                call.message.html_text + f"\n\n🏁 <b>این عملیات توسط {admin_name} اجرا و رسماً مختومه شد.</b>\n"
+                f"💥 <b>گزارش تلفات نهایی:</b>\n{cas_report}",
+                reply_markup=None,
+            )
+        except Exception:
+            pass
 
     # ارسال گزارش رسمی به پیوی لیدر کشور مهاجم
     if attacker.owner_user_id:

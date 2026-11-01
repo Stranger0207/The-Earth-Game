@@ -535,7 +535,7 @@ async def cb_auction_res_picked(
 
     await state.update_data(resource=resource_key, max_stock=current_stock)
     await state.set_state(AuctionCreateForm.entering_amount)
-    await call.message.edit_text(
+    await safe_edit(call, 
         f"📦 <b>تعیین مقدار منبع برای مزایده</b>\n\n"
         f"منبع انتخابی: <b>{r_name}</b>\n"
         f"موجودی انبار شما: <b>{fa_number(current_stock)} {r_unit}</b>\n\n"
@@ -661,7 +661,7 @@ async def cb_auction_create_confirm(
 
     country = await get_player_country(session, db_user)
     if country is None:
-        await call.message.edit_text(NO_COUNTRY_TEXT)
+        await safe_edit(call, NO_COUNTRY_TEXT)
         return
 
     resource_key = data["resource"]
@@ -672,7 +672,7 @@ async def cb_auction_create_confirm(
     # اعتبارسنجی مجدد انبار
     reserve = await reserves_repo.get_reserve(session, country.id, resource_key)
     if not reserve or reserve.amount < amount:
-        await call.message.edit_text("⛔️ موجودی انبار شما برای آغاز مزایده کافی نیست.", reply_markup=_back_auc_kb())
+        await safe_edit(call, "⛔️ موجودی انبار شما برای آغاز مزایده کافی نیست.", reply_markup=_back_auc_kb())
         return
 
     # ۱. کسر منبع از انبار فروشنده جهت بلوکه شدن
@@ -728,7 +728,7 @@ async def cb_auction_create_confirm(
         except Exception:
             pass
 
-    await call.message.edit_text(
+    await safe_edit(call, 
         f"✅ <b>مزایده با موفقیت ثبت و آغاز گردید!</b>\n\n"
         f"شناسه مزایده: #{auction.id}\n"
         f"کالا: {fa_number(amount)} {r_unit} {r_name}\n"
@@ -760,7 +760,7 @@ async def cb_auction_cancel(
     auction = await auctions_repo.get_auction(session, auction_id)
 
     if not auction or auction.status != AuctionStatus.ACTIVE:
-        await call.message.edit_text("این مزایده دیگر فعال نیست.", reply_markup=_back_auc_kb())
+        await safe_edit(call, "این مزایده دیگر فعال نیست.", reply_markup=_back_auc_kb())
         return
 
     if country is None or auction.seller_country_id != country.id:
@@ -780,7 +780,7 @@ async def cb_auction_cancel(
     r_name = RESOURCE_FA.get(ResourceType(auction.resource), auction.resource)
     r_unit = RESOURCE_UNIT_FA.get(ResourceType(auction.resource), "")
 
-    await call.message.edit_text(
+    await safe_edit(call, 
         f"✅ مزایده #{auction.id} با موفقیت لغو شد و {fa_number(auction.amount)} {r_unit} {r_name} به انبار شما بازگردانده شد.",
         reply_markup=_back_auc_kb(),
     )
@@ -807,7 +807,7 @@ async def cb_auction_end_early(
     auction = await auctions_repo.get_auction(session, auction_id)
 
     if not auction or auction.status != AuctionStatus.ACTIVE:
-        await call.message.edit_text("این مزایده دیگر فعال نیست.", reply_markup=_back_auc_kb())
+        await safe_edit(call, "این مزایده دیگر فعال نیست.", reply_markup=_back_auc_kb())
         return
 
     if country is None or auction.seller_country_id != country.id:
@@ -815,7 +815,7 @@ async def cb_auction_end_early(
         return
 
     await finalize_auction(session, auction)
-    await call.message.edit_text(
+    await safe_edit(call, 
         f"🏁 مزایده #{auction.id} به پایان رسید و مراحل انتقال کالا و وجه آغاز شد.",
         reply_markup=_back_auc_kb(),
     )
@@ -837,7 +837,7 @@ async def cb_auction_bid_start(
 
     auction = await auctions_repo.get_auction(session, auction_id)
     if not auction or auction.status != AuctionStatus.ACTIVE:
-        await call.message.edit_text("این مزایده دیگر فعال نیست.", reply_markup=_back_auc_kb())
+        await safe_edit(call, "این مزایده دیگر فعال نیست.", reply_markup=_back_auc_kb())
         return
 
     if auction.seller_country_id == country.id:
@@ -857,7 +857,7 @@ async def cb_auction_bid_start(
 
     await state.set_state(AuctionBidForm.entering_bid)
     await state.update_data(auction_id=auction.id, min_req=min_required)
-    await call.message.edit_text(
+    await safe_edit(call, 
         f"💰 <b>شرکت در مزایده #{auction.id}</b>\n\n"
         f"⚠️ <b>هزینه ورودی شرکت در مزایده:</b> {fa_money(AUCTION_ENTRY_FEE)} (غیرقابل استرداد)\n"
         f"💵 <b>حداقل مبلغ مجاز برای پیشنهاد:</b> {fa_money(min_required)} "
@@ -928,7 +928,7 @@ async def cb_auction_bid_confirm(
 
     country = await get_player_country(session, db_user)
     if country is None:
-        await call.message.edit_text(NO_COUNTRY_TEXT)
+        await safe_edit(call, NO_COUNTRY_TEXT)
         return
 
     auction_id = data.get("auction_id")
@@ -936,14 +936,14 @@ async def cb_auction_bid_confirm(
 
     auction = await auctions_repo.get_auction(session, auction_id)
     if not auction or auction.status != AuctionStatus.ACTIVE:
-        await call.message.edit_text("متأسفانه این مزایده دیگر فعال نیست.", reply_markup=_back_auc_kb())
+        await safe_edit(call, "متأسفانه این مزایده دیگر فعال نیست.", reply_markup=_back_auc_kb())
         return
 
     # اعتبارسنجی بالاتر بودن نسبت به آخرین وضعیت
     highest = auction.highest_bid if auction.highest_bid > 0 else auction.base_price
     min_req = highest + (AUCTION_MIN_BID_STEP if auction.highest_bid > 0 else 0.0)
     if bid_amount < min_req:
-        await call.message.edit_text(
+        await safe_edit(call, 
             f"⛔️ در این فاصله پیشنهاد بالاتری ثبت شده است. حداقل پیشنهاد مجاز فعلی {fa_money(min_req)} است.",
             reply_markup=_back_auc_kb(),
         )
@@ -951,7 +951,7 @@ async def cb_auction_bid_confirm(
 
     total_needed = bid_amount + AUCTION_ENTRY_FEE
     if (country.budget or 0.0) < total_needed:
-        await call.message.edit_text("⛔️ بودجه‌ی شما برای ثبت این پیشنهاد کافی نیست.", reply_markup=_back_auc_kb())
+        await safe_edit(call, "⛔️ بودجه‌ی شما برای ثبت این پیشنهاد کافی نیست.", reply_markup=_back_auc_kb())
         return
 
     prev_bidder_id = auction.highest_bidder_country_id
@@ -974,7 +974,7 @@ async def cb_auction_bid_confirm(
     except Exception:
         pass
 
-    await call.message.edit_text(
+    await safe_edit(call, 
         f"✅ <b>پیشنهاد شما با موفقیت ثبت گردید!</b>\n\n"
         f"مبلغ پیشنهادی: {fa_money(bid_amount)}\n"
         f"کارمزد ورودی ({fa_money(AUCTION_ENTRY_FEE)}) از خزانه‌تان کسر شد.\n"

@@ -78,7 +78,7 @@ async def cb_approve(
         await users_repo.set_suspended(session, claim.user_id, True)
 
     await call.answer("تأیید شد ✅")
-    await call.message.edit_text(
+    await safe_edit(call, 
         call.message.html_text + "\n\n✅ <b>تأیید شد</b>" + (" (معلق — بازی منجمد است ⏸)" if frozen else "")
     )
 
@@ -138,7 +138,7 @@ async def cb_reject(call: CallbackQuery, session: AsyncSession) -> None:
 
     await claims_repo.set_status(session, claim_id, ClaimStatus.REJECTED, call.from_user.id)
     await call.answer("رد شد ❌")
-    await call.message.edit_text(call.message.html_text + "\n\n❌ <b>رد شد</b>")
+    await safe_edit(call, call.message.html_text + "\n\n❌ <b>رد شد</b>")
 
     try:
         await bot.send_message(
@@ -196,7 +196,7 @@ async def cb_vip_claim_approve(
             caption=call.message.caption + f"\n\n✅ <b>تأیید شد توسط {reviewer_name}</b>{status_suffix}"
         )
     elif call.message.text:
-        await call.message.edit_text(
+        await safe_edit(call, 
             call.message.html_text + f"\n\n✅ <b>تأیید شد توسط {reviewer_name}</b>{status_suffix}"
         )
 
@@ -271,7 +271,7 @@ async def cb_vip_claim_reject(call: CallbackQuery, session: AsyncSession) -> Non
             caption=call.message.caption + f"\n\n❌ <b>رد شد توسط {reviewer_name}</b>"
         )
     elif call.message.text:
-        await call.message.edit_text(call.message.html_text + f"\n\n❌ <b>رد شد توسط {reviewer_name}</b>")
+        await safe_edit(call, call.message.html_text + f"\n\n❌ <b>رد شد توسط {reviewer_name}</b>")
 
     try:
         await bot.send_message(
@@ -416,7 +416,7 @@ async def cb_announce_all(call: CallbackQuery, state: FSMContext) -> None:
     await call.answer()
     await state.set_state(AnnounceForm.writing_body)
     await state.update_data(targets=None)
-    await call.message.edit_text("📝 متن اعلان عمومی (به همه‌ی کشورها) را بنویسید:")
+    await safe_edit(call, "📝 متن اعلان عمومی (به همه‌ی کشورها) را بنویسید:")
 
 
 @router.callback_query(F.data == "annc:multi")
@@ -428,7 +428,7 @@ async def cb_announce_multi(call: CallbackQuery, state: FSMContext, session: Asy
     await state.set_state(AnnounceForm.multi_select)
     await state.update_data(selected=[])
     countries = await countries_repo.list_countries(session)
-    await call.message.edit_text(
+    await safe_edit(call, 
         "🎯 کشورهای مقصد اعلان را انتخاب کنید:",
         reply_markup=_announce_select_kb(countries, set()),
     )
@@ -456,7 +456,7 @@ async def cb_announce_next(call: CallbackQuery, state: FSMContext) -> None:
         return
     await state.update_data(targets=selected)
     await state.set_state(AnnounceForm.writing_body)
-    await call.message.edit_text(
+    await safe_edit(call, 
         f"📝 متن اعلان به {fa_number(len(selected))} کشور انتخاب‌شده را بنویسید:"
     )
 

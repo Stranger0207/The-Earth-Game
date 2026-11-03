@@ -418,8 +418,8 @@ async def cb_facility_toggle(call: CallbackQuery, session: AsyncSession, db_user
     await call.answer(alert_msg, show_alert=True)
 
     # رندر مجدد همان صفحه از لیست تأسیسات
-    call.data = f"{prefix}:{page}"
-    await cb_facility_list(call, session, db_user)
+    new_call = call.model_copy(update={"data": f"{prefix}:{page}"})
+    await cb_facility_list(new_call, session, db_user)
 
 
 # ============================================================

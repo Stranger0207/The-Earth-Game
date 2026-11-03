@@ -1180,7 +1180,7 @@ async def cb_admin_end_do(call: CallbackQuery, session: AsyncSession) -> None:
 
     # ویرایش پیام در گروه عملیات ستاد
     cas_report = format_casualties_report(role)
-    grp_id = get_admin_group_id(AdminGroupType.MILITARY_ROLES)
+    grp_id = get_admin_group_id(AdminGroupType.ROLE_ATTACK)
     if is_panel:
         if grp_id and role.admin_message_id:
             try:

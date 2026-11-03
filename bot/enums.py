@@ -266,7 +266,9 @@ class AdminGroupType(str, enum.Enum):
     SANCTION_BILL = "sanction_bill"    # گروه ۱: تحریم و لایحه
     MAIN_LOG = "main_log"              # گروه ۲: لاگ اصلی بازی
     ROLE_ECON = "role_econ"            # گروه ۳: بررسی رول اقتصادی
+    ECONOMIC_PROJECTS = "role_econ"    # نام مستعار جهت سازگاری کامل
     ROLE_ATTACK = "role_attack"        # گروه ۴: بررسی رول حمله
+    MILITARY_ROLES = "role_attack"     # نام مستعار جهت سازگاری کامل
     ROLE_SABOTAGE = "role_sabotage"    # گروه ۵: بررسی رول خرابکاری
     ROLE_SECURITY = "role_security"    # گروه ۶: بررسی رول امنیتی
     PAYMENT = "payment"                # گروه ۷: پرداختی‌ها و فیش‌های واریزی

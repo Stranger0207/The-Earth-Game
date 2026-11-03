@@ -2422,8 +2422,8 @@ async def cb_god_project_delete(call: CallbackQuery, session: AsyncSession) -> N
         await session.commit()
         await call.answer("پروژه با موفقیت حذف گردید 🗑", show_alert=True)
         # بازگشت به لیست پروژه‌های همان کشور
-        call.data = f"godproj:{cid}"
-        await cb_god_country_projects(call, session)
+        new_call = call.model_copy(update={"data": f"godproj:{cid}"})
+        await cb_god_country_projects(new_call, session)
     else:
         await call.answer("پروژه یافت نشد.", show_alert=True)
 

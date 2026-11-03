@@ -433,13 +433,13 @@ async def cb_roles_admin_econ_view(
     # داوری با دکمه‌های موجود گروه اقتصادی
     builder.row(
         InlineKeyboardButton(
-            text="✅ تخصیص بودجه و تایید",
-            callback_data=f"ep_admin_approve:{project.id}",
+            text="✅ تایید رول و تعیین بازدهی",
+            callback_data=f"ep_grp_approve:{project.id}:panel",
             style=STYLE_OK,
         ),
         InlineKeyboardButton(
             text="❌ رد پروژه",
-            callback_data=f"ep_admin_reject:{project.id}",
+            callback_data=f"ep_grp_reject:{project.id}:panel",
             style=STYLE_NO,
         ),
     )

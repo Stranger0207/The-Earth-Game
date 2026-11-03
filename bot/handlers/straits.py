@@ -378,8 +378,8 @@ async def cb_strait_toggle_block(
             f"کشور هدف: {target_c.flag} {target_c.name_fa}\n"
             f"توسط: {country.flag} {country.name_fa}",
         )
-        call.data = f"strait_crule:{strait_id}:{target_cid}"
-        await cb_strait_country_rule(call, session, db_user)
+        new_call = call.model_copy(update={"data": f"strait_crule:{strait_id}:{target_cid}"})
+        await cb_strait_country_rule(new_call, session, db_user)
         return
 
     # در صورت مسدود کردن: ارسال به گروه رول نظامی جهت تأیید ادمین
@@ -514,8 +514,8 @@ async def cb_strait_reset_rule(
     await straits_repo.remove_block_rule(session, strait_id, target_cid)
     await call.answer("قانون اختصاصی این کشور حذف شد و به حالت پیش‌فرض بازگشت ✅", show_alert=True)
 
-    call.data = f"strait_crule:{strait_id}:{target_cid}"
-    await cb_strait_country_rule(call, session, db_user)
+    new_call = call.model_copy(update={"data": f"strait_crule:{strait_id}:{target_cid}"})
+    await cb_strait_country_rule(new_call, session, db_user)
 
 
 # ============================================================

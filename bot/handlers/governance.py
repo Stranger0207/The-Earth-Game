@@ -1108,8 +1108,8 @@ async def cb_visa_add_one(call: CallbackQuery, session: AsyncSession, db_user: U
             f"🛂 <b>وضع ویزا</b>\nکشور: {country.flag} {country.name_fa}\nهدف: {target.flag} {target.name_fa}",
         )
 
-    call.data = f"gov_vpick:{page}"
-    await cb_visa_pick(call, session, db_user)
+    new_call = call.model_copy(update={"data": f"gov_vpick:{page}"})
+    await cb_visa_pick(new_call, session, db_user)
 
 
 @router.callback_query(F.data == "gov:visa_rm_menu")
@@ -1225,8 +1225,8 @@ async def cb_visa_rm_do(call: CallbackQuery, session: AsyncSession, db_user: Use
     else:
         await call.answer("ویزا یافت نشد.", show_alert=True)
 
-    call.data = f"gov_vrm_pick:{page}"
-    await cb_visa_rm_pick(call, session, db_user)
+    new_call = call.model_copy(update={"data": f"gov_vrm_pick:{page}"})
+    await cb_visa_rm_pick(new_call, session, db_user)
 
 
 @router.callback_query(F.data == "gov_vrm_all_ask")

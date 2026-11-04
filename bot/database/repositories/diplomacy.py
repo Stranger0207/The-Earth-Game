@@ -764,7 +764,11 @@ async def cleanup_meeting_log_relays(
 ) -> int:
     """حذف رکوردهای نگاشت پیام لاگ قدیمی‌تر از بازه مشخص (پیش‌فرض ۴۸ ساعت)."""
     cutoff = datetime.now(timezone.utc) - timedelta(hours=max_age_hours)
-    stmt = delete(MeetingLogRelay).where(MeetingLogRelay.created_at < cutoff)
+    stmt = (
+        delete(MeetingLogRelay)
+        .where(MeetingLogRelay.created_at < cutoff)
+        .execution_options(synchronize_session=False)
+    )
     res = await session.execute(stmt)
     return res.rowcount or 0
 

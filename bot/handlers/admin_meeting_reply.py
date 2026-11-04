@@ -9,17 +9,21 @@ from __future__ import annotations
 import asyncio
 import html
 import logging
+import re
 from datetime import datetime, timezone
 
 from aiogram import Bot, F, Router
 from aiogram.types import Message, ReactionTypeEmoji
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..config import get_settings
 from ..constants import ADMIN_REPLY_EXTENDS_MEETING_IDLE
+from ..database.models import Country, GroupMeeting
 from ..database.repositories import countries as countries_repo
 from ..database.repositories import diplomacy as dip_repo
 from ..enums import DiplomacyStatus
-from sqlalchemy.ext.asyncio import AsyncSession
+from ..utils.chat_access import is_internal_chat
 
 logger = logging.getLogger(__name__)
 
@@ -43,8 +47,11 @@ async def on_admin_meeting_log_reply(
     """
     settings = get_settings()
 
-    # فقط در گروه لاگ اصلی فعال است
-    if not settings.log_group_id or message.chat.id != settings.log_group_id:
+    # فقط در گروه لاگ اصلی یا چت‌های داخلی معتبر فعال است
+    if not (
+        (settings.log_group_id and message.chat.id == settings.log_group_id)
+        or is_internal_chat(message.chat.id)
+    ):
         return
 
     # فرستنده باید ادمین یا مالک باشد
@@ -92,8 +99,95 @@ async def on_admin_meeting_log_reply(
         log_chat_id=message.chat.id,
         log_message_id=replied.message_id,
     )
+
+    # فال‌بک هوشمند برای پیام‌های قبل از ایجاد جدول یا نگاشت‌های گمشده
     if relay is None:
-        # پیام ریپلای‌شده مربوط به رله نشست نیست (سکوت جهت جلوگیری از شلوغی لاگ)
+        raw_replied = (
+            replied.text
+            if isinstance(replied.text, str)
+            else (replied.caption if isinstance(replied.caption, str) else "")
+        )
+        replied_text = raw_replied.strip() if isinstance(raw_replied, str) else ""
+
+        # ۱) اگر پیام مربوط به تماس تلفنی است: 📞 [...]
+        if "📞" in replied_text:
+            await message.reply("⏹ این تماس تلفنی به پایان رسیده است یا امکان ارسال پیام به تماس وجود ندارد.")
+            return
+
+        # ۲) اگر پیام مربوط به صحن علنی مجمع عمومی سازمان ملل است:
+        if "مجمع عمومی" in replied_text:
+            await message.reply("🏛 این پیام مربوط به صحن مجمع عمومی سازمان ملل است و نشست دیپلماتیک خصوصی نیست.")
+            return
+
+        # ۳) بررسی دیدار دوجانبه: 🤝 [ایران → ترکیه]: یا 🏛 [نشست حاشیه UN] [ایران → ترکیه]: یا سفر دیپلماتیک
+        bi_match = re.search(r"\[([^\s\]→]+(?:\s+[^\s\]→]+)*)\s*→\s*([^\s\]]+(?:\s+[^\s\]]+)*)\]", replied_text)
+        if not bi_match:
+            bi_match = re.search(
+                r"(?:سفر دیپلماتیک|دیدار دوجانبه|نشست دوجانبه)[:\s]+([^\s→:]+(?:\s+[^\s→:]+)*)\s*(?:→|↔)\s*([^\s→\(\n]+(?:\s+[^\s→\(\n]+)*)",
+                replied_text,
+            )
+        if bi_match:
+            name_a = bi_match.group(1).strip()
+            name_b = bi_match.group(2).strip()
+            stmt_a = select(Country).where(Country.name_fa == name_a)
+            stmt_b = select(Country).where(Country.name_fa == name_b)
+            c_a = (await session.execute(stmt_a)).scalar_one_or_none()
+            c_b = (await session.execute(stmt_b)).scalar_one_or_none()
+
+            if c_a and c_b:
+                m_found = await dip_repo.get_active_meeting_for_country(session, c_a.id)
+                if (
+                    m_found
+                    and m_found.status == DiplomacyStatus.ACTIVE
+                    and {m_found.host_country, m_found.traveler_country} == {c_a.id, c_b.id}
+                ):
+                    relay = await dip_repo.record_meeting_log_relay(
+                        session=session,
+                        log_chat_id=message.chat.id,
+                        log_message_id=replied.message_id,
+                        meeting_kind="bilateral",
+                        meeting_id=m_found.id,
+                        sender_country_id=c_a.id,
+                        sender_user_id=None,
+                        preview_text=replied_text[:200],
+                    )
+                    await session.commit()
+                else:
+                    await message.reply("⏹ این نشست پایان یافته است.")
+                    return
+            else:
+                await message.reply("⏹ این نشست پایان یافته است.")
+                return
+
+        # ۴) بررسی نشست چندجانبه: 👥 [نشست برلین] فرانسه: یا 🏛 [...] یا «عنوان»
+        grp_match = re.search(r"\[([^\]]+)\]\s*([^:]+):", replied_text)
+        if not grp_match:
+            grp_match = re.search(r"(?:نشست چندجانبه|نشست حاشیه UN)[\s#\d]*[«\"]([^»\"]+)[»\"]", replied_text)
+
+        if not relay and grp_match and ("👥" in replied_text or "نشست" in replied_text or "🏛" in replied_text):
+            title = grp_match.group(1).strip()
+            stmt_g = select(GroupMeeting).where(
+                GroupMeeting.title == title, GroupMeeting.status == DiplomacyStatus.ACTIVE
+            )
+            g_found = (await session.execute(stmt_g)).scalar_one_or_none()
+            if g_found:
+                relay = await dip_repo.record_meeting_log_relay(
+                    session=session,
+                    log_chat_id=message.chat.id,
+                    log_message_id=replied.message_id,
+                    meeting_kind="group",
+                    meeting_id=g_found.id,
+                    sender_country_id=g_found.host_country,
+                    sender_user_id=None,
+                    preview_text=replied_text[:200],
+                )
+                await session.commit()
+            else:
+                await message.reply("⏹ این نشست پایان یافته است.")
+                return
+
+    if relay is None:
+        # پیام ریپلای‌شده ربطی به گفتگوهای نشست ندارد (سکوت جهت جلوگیری از شلوغی لاگ)
         return
 
     now = datetime.now(timezone.utc)

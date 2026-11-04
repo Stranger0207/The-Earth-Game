@@ -249,17 +249,48 @@ async def run_tests() -> None:
         check("علامت امپرسند خنثی شد", "&amp;" in escaped_body)
         check("تگ b خام در متن کاربر وجود ندارد", "<b>تست</b>" not in escaped_body)
 
-        # ۵) تست ریپلای روی پیام بدون نگاشت (نادیده گرفتن بی‌صدا)
+        # ۵) تست ریپلای روی پیام بدون نگاشت (نادیده گرفتن بی‌صدا برای پیام‌های غیرنشست)
         print("\n[بخش ۵] پیام بدون نگاشت در گروه لاگ")
         mock_bot.send_message.reset_mock()
         admin_reply_msg.reply = AsyncMock()
         replied_msg.message_id = 99999  # شناسه ناموجود
+        replied_msg.text = "💰 گزارش تراکنش بانکی: واریز ۱۰۰۰ سکه"
         await on_admin_meeting_log_reply(admin_reply_msg, session, mock_bot)
-        check("روی پیام بدون نگاشت ارسالی به کشورها انجام نشد", mock_bot.send_message.call_count == 0)
+        check("روی پیام غیرنشست بدون نگاشت ارسالی به کشورها انجام نشد", mock_bot.send_message.call_count == 0)
         check("به ادمین پاسخی داده نشد (بیصدا رد شد)", not admin_reply_msg.reply.called)
+
+        # ۵.۱) تست فال‌بک هوشمند روی پیام نشست بدون نگاشت قبلی (نشست فعال)
+        print("\n[بخش ۵.۱] فال‌بک هوشمند روی پیام نشست بدون نگاشت (نشست فعال)")
+        replied_msg.message_id = 99991
+        replied_msg.text = "🤝 [ایران → ترکیه]: توافق اولیه حاصل شد."
+        mock_bot.send_message.reset_mock()
+        admin_reply_msg.reply.reset_mock()
+        admin_reply_msg.text = "ادمین: تایید می‌شود."
+        await on_admin_meeting_log_reply(admin_reply_msg, session, mock_bot)
+        check("پیام با فال‌بک هوشمند به هر دو کشور ارسال شد", mock_bot.send_message.call_count == 2)
+        relay_recovered = await dip_repo.get_meeting_log_relay(session, -100111222333, 99991)
+        check("نگاشت بازیابی‌شده در دیتابیس ثبت شد", relay_recovered is not None)
+
+        # ۵.۲) تست فال‌بک روی تماس تلفنی و مجمع عمومی
+        print("\n[بخش ۵.۲] فال‌بک پیام تماس تلفنی و مجمع عمومی")
+        replied_msg.message_id = 99992
+        replied_msg.text = "📞 [ایران → ترکیه]: صحبت کوتاه"
+        admin_reply_msg.reply.reset_mock()
+        await on_admin_meeting_log_reply(admin_reply_msg, session, mock_bot)
+        check("پاسخ به ریپلای تماس تلفنی داده شد", admin_reply_msg.reply.called)
+        check("اعلام پایان تماس تلفنی انجام شد", "تماس تلفنی" in admin_reply_msg.reply.call_args[0][0])
+
+        replied_msg.message_id = 99993
+        replied_msg.text = "🏛 [مجمع عمومی] ایران: سخنرانی در صحن"
+        admin_reply_msg.reply.reset_mock()
+        await on_admin_meeting_log_reply(admin_reply_msg, session, mock_bot)
+        check("پاسخ به ریپلای مجمع عمومی داده شد", admin_reply_msg.reply.called)
+        check("اعلام عدم پشتیبانی صحن مجمع عمومی انجام شد", "مجمع عمومی" in admin_reply_msg.reply.call_args[0][0])
 
         # ۶) تست نشست پایان‌یافته
         print("\n[بخش ۶] ریپلای روی نشست پایان‌یافته")
+        mock_bot.send_message.reset_mock()
+        admin_reply_msg.reply.reset_mock()
         bi_meeting.status = DiplomacyStatus.COMPLETED
         await session.commit()
         replied_msg.message_id = 5001

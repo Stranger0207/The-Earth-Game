@@ -221,6 +221,24 @@ async def enrichment_capacity(session: AsyncSession, country_id: int) -> int:
     return int(total)
 
 
+async def list_active_centrifuge_cycles(
+    session: AsyncSession, country_id: int | None = None
+) -> Sequence[NuclearFacility]:
+    """سالن‌های غنی‌سازی که در حال حاضر چرخه‌ی تولید سانتریفیوژ فعال دارند."""
+    stmt = select(NuclearFacility).where(
+        NuclearFacility.facility_type == NuclearFacilityType.ENRICHMENT_HALL.value,
+        NuclearFacility.centrifuge_batch_done_at.isnot(None),
+        NuclearFacility.status.in_(
+            [NuclearFacilityStatus.ACTIVE.value, NuclearFacilityStatus.DAMAGED.value]
+        ),
+    ).order_by(NuclearFacility.id)
+    if country_id is not None:
+        stmt = stmt.where(NuclearFacility.country_id == country_id)
+    res = await session.execute(stmt)
+    return res.scalars().all()
+
+
+
 # ============================================================
 #  کلاهک‌ها
 # ============================================================

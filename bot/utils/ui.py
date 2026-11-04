@@ -28,3 +28,12 @@ def header(title: str, emoji: str = "") -> str:
     """یک سربرگ یکدست: عنوان درشت + خط جداکننده‌ی زیر آن."""
     prefix = f"{emoji} " if emoji else ""
     return f"{prefix}<b>{title}</b>\n{DIVIDER}"
+
+
+def render_progress_bar(ratio: float, length: int = 5) -> str:
+    """رسم نوار پیشرفت متنی با کاراکترهای ▰ و ▱ (مثلاً ▰▰▰▱▱)."""
+    clamped = max(0.0, min(1.0, float(ratio)))
+    filled = int(round(clamped * length))
+    filled = max(0, min(length, filled))
+    return "▰" * filled + "▱" * (length - filled)
+

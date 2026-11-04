@@ -126,6 +126,9 @@ _COLUMN_MIGRATIONS = [
     ("meetings", "topic", "VARCHAR(256)"),
     ("group_meetings", "is_un_sideline", "BOOLEAN NOT NULL DEFAULT FALSE"),
     ("group_meetings", "topic", "VARCHAR(256)"),
+    # v2.11 — چرخه‌های موازی تولید سانتریفیوژ در سالن‌های غنی‌سازی
+    ("nuclear_facilities", "centrifuge_batch_started_at", "TIMESTAMP WITH TIME ZONE"),
+    ("nuclear_facilities", "centrifuge_batch_done_at", "TIMESTAMP WITH TIME ZONE"),
 ]
 
 

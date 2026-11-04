@@ -1011,17 +1011,41 @@ async def process_nuclear(bot: Bot) -> None:
             if c is None:
                 continue
 
-            # ۲. اتمام چرخه‌ی سانتریفیوژ
+            # ۲. اتمام چرخه‌های تولید سانتریفیوژ در سالن‌های غنی‌سازی (و چرخه‌ی legacy)
+            new_centrifuges = 0
+            completed_halls_count = 0
+
+            enrich_halls = await nuc_repo.list_active_facilities(
+                session, program.country_id, NuclearFacilityType.ENRICHMENT_HALL
+            )
+            for hall in enrich_halls:
+                h_done = _aware(hall.centrifuge_batch_done_at)
+                if h_done is not None and h_done <= now:
+                    hall.centrifuge_batch_done_at = None
+                    hall.centrifuge_batch_started_at = None
+                    new_centrifuges += CENTRIFUGE_BATCH_SIZE
+                    completed_halls_count += 1
+
+            # پشتیبانی از چرخه‌ی قدیمی (legacy) در سطح NuclearProgram
             batch_done = _aware(program.centrifuge_batch_done_at)
             if batch_done is not None and batch_done <= now:
-                program.centrifuges += CENTRIFUGE_BATCH_SIZE
                 program.centrifuge_batch_done_at = None
+                new_centrifuges += CENTRIFUGE_BATCH_SIZE
+                completed_halls_count += 1
+
+            if new_centrifuges > 0:
+                program.centrifuges += new_centrifuges
                 if c.owner_user_id:
+                    detail_str = f" ({fa_number(completed_halls_count)} سالن)" if completed_halls_count > 1 else ""
                     owner_pings.append((
                         c.owner_user_id,
-                        f"⚙️ <b>چرخه‌ی تولید سانتریفیوژ تکمیل شد:</b> {fa_number(CENTRIFUGE_BATCH_SIZE)} "
-                        f"سانتریفیوژ جدید (مجموع: {fa_number(program.centrifuges)}).",
+                        f"⚙️ <b>چرخه‌ی تولید سانتریفیوژ تکمیل شد:</b> {fa_number(new_centrifuges)} "
+                        f"سانتریفیوژ جدید{detail_str} (مجموع: {fa_number(program.centrifuges)}).",
                     ))
+                log_msgs.append(
+                    f"⚙️ تولید سانتریفیوژ — {c.flag} {c.name_fa}: +{fa_number(new_centrifuges)} عدد"
+                    + (f" ({fa_number(completed_halls_count)} سالن)" if completed_halls_count > 1 else "")
+                )
 
             # ۳. زنجیره‌ی سوخت ۲۴ساعته (آسیاب + تبدیل)
             last_chain = _aware(program.last_chain_tick_at)

@@ -61,7 +61,7 @@ from ..services.news_service import send_log
 from ..states.nuclear import NuclearForm
 from ..utils.numbers import fa_money, fa_number
 from ..utils.screens import safe_edit, show_menu
-from ..utils.ui import STYLE_MAIN, STYLE_NO, STYLE_OK, header
+from ..utils.ui import STYLE_MAIN, STYLE_NO, STYLE_OK, header, render_progress_bar
 from .deps import NO_COUNTRY_TEXT, assert_feature, get_player_country
 
 router = Router(name="nuclear")
@@ -511,6 +511,14 @@ async def cb_nuc_enrich(call: CallbackQuery, state: FSMContext, session: AsyncSe
         return
 
     capacity = await nuc_repo.enrichment_capacity(session, country.id)
+    halls_seq = await nuc_repo.list_active_facilities(
+        session, country.id, NuclearFacilityType.ENRICHMENT_HALL
+    )
+    halls = sorted(list(halls_seq), key=lambda h: h.id)
+
+    # نوار پیشرفت پر بودن ظرفیت سالن‌ها
+    cap_ratio = (program.centrifuges / capacity) if capacity > 0 else 0.0
+    cap_bar = render_progress_bar(cap_ratio, 5)
 
     enrich_line = "⏸ غیرفعال"
     if program.enrich_tier:
@@ -518,23 +526,53 @@ async def cb_nuc_enrich(call: CallbackQuery, state: FSMContext, session: AsyncSe
         out = nuclear_service.enrichment_output_per_24h(program)
         enrich_line = f"▶️ {tier_fa} — ≈{out:.1f} کیلوگرم در ۲۴ ساعت"
 
-    batch_line = ""
-    batch_done = program.centrifuge_batch_done_at
-    if batch_done is not None:
-        if batch_done.tzinfo is None:
-            batch_done = batch_done.replace(tzinfo=timezone.utc)
-        batch_line = (
-            f"\n🔄 چرخه‌ی تولید فعال: {fa_number(CENTRIFUGE_BATCH_SIZE)} سانتریفیوژ "
-            f"({_fmt_eta(batch_done)} مانده)"
+    # چرخه‌های فعال در سالن‌های غنی‌سازی
+    cycle_lines: list[str] = []
+    total_ongoing = 0
+    now = datetime.now(timezone.utc)
+
+    for idx, hall in enumerate(halls, start=1):
+        h_done = hall.centrifuge_batch_done_at
+        if h_done is not None:
+            if h_done.tzinfo is None:
+                h_done = h_done.replace(tzinfo=timezone.utc)
+            time_left_sec = max(0.0, (h_done - now).total_seconds())
+            total_sec = CENTRIFUGE_BATCH_HOURS * 3600.0
+            prog_ratio = max(0.0, min(1.0, 1.0 - (time_left_sec / total_sec)))
+            prog_bar = render_progress_bar(prog_ratio, 5)
+            hall_label = hall.name or f"سالن {fa_number(idx)}"
+            cycle_lines.append(
+                f"🏭 {hall_label}: {fa_number(CENTRIFUGE_BATCH_SIZE)} سانتریفیوژ [{prog_bar}] ({_fmt_eta(h_done)} مانده)"
+            )
+            total_ongoing += CENTRIFUGE_BATCH_SIZE
+
+    # پشتیبانی از چرخه‌ی قدیمی (legacy) در NuclearProgram
+    legacy_done = program.centrifuge_batch_done_at
+    if legacy_done is not None:
+        if legacy_done.tzinfo is None:
+            legacy_done = legacy_done.replace(tzinfo=timezone.utc)
+        time_left_sec = max(0.0, (legacy_done - now).total_seconds())
+        total_sec = CENTRIFUGE_BATCH_HOURS * 3600.0
+        prog_ratio = max(0.0, min(1.0, 1.0 - (time_left_sec / total_sec)))
+        prog_bar = render_progress_bar(prog_ratio, 5)
+        cycle_lines.append(
+            f"🔄 چرخه‌ی قبلی: {fa_number(CENTRIFUGE_BATCH_SIZE)} سانتریفیوژ [{prog_bar}] ({_fmt_eta(legacy_done)} مانده)"
         )
+        total_ongoing += CENTRIFUGE_BATCH_SIZE
+
+    cycles_block = ""
+    if cycle_lines:
+        cycles_block = "\n" + "\n".join(cycle_lines)
+        if len(cycle_lines) > 1:
+            cycles_block += f"\n📊 مجموع در حال تولید: {fa_number(total_ongoing)}"
 
     text = (
         header("غنی‌سازی اورانیوم", "⚙️") + "\n\n"
-        f"⚙️ سانتریفیوژها: {fa_number(program.centrifuges)} "
-        f"(ظرفیت سالن‌ها: {fa_number(capacity)}){batch_line}\n"
+        f"⚙️ سانتریفیوژها: {fa_number(program.centrifuges)} (ظرفیت سالن‌ها: {fa_number(capacity)}) [{cap_bar}]"
+        f"{cycles_block}\n"
         f"💨 خوراک UF6: {fa_number(program.uf6_tons, 1)} تن\n"
         f"🔄 وضعیت: {enrich_line}\n\n"
-        f"⚙️ هر چرخه‌ی تولید: {fa_number(CENTRIFUGE_BATCH_SIZE)} سانتریفیوژ | "
+        f"⚙️ هر چرخه‌ی تولید (به‌ازای هر سالن): {fa_number(CENTRIFUGE_BATCH_SIZE)} سانتریفیوژ | "
         f"{fa_money(CENTRIFUGE_BATCH_COST_USD)} | {fa_number(CENTRIFUGE_BATCH_HOURS)} ساعت"
     )
     await safe_edit(call, text, reply_markup=nuclear_enrich_menu_kb(program.enrich_tier is not None))
@@ -547,15 +585,47 @@ async def cb_nuc_make_centrifuge(call: CallbackQuery, session: AsyncSession, db_
     country = await _vip_country_or_none(call, session, db_user)
     if country is None:
         return
+
+    try:
+        plan = await nuclear_service.plan_centrifuge_production(session, country)
+    except nuclear_service.NuclearError as exc:
+        await safe_edit(
+            call,
+            header("تولید سانتریفیوژ", "⚙️") + f"\n\n❌ {exc}",
+            reply_markup=back_kb("nuc:enrich"),
+        )
+        return
+
+    if plan.executable_count == 0:
+        reason = plan.limit_reason or "امکان شروع چرخه در حال حاضر وجود ندارد."
+        await safe_edit(
+            call,
+            header("تولید سانتریفیوژ", "⚙️") + f"\n\n⚠️ {reason}",
+            reply_markup=back_kb("nuc:enrich"),
+        )
+        return
+
+    count = plan.executable_count
+    total_cost = count * CENTRIFUGE_BATCH_COST_USD
+    total_steel = count * CENTRIFUGE_BATCH_STEEL
+    total_aluminum = count * CENTRIFUGE_BATCH_ALUMINUM
+    total_prod = count * CENTRIFUGE_BATCH_SIZE
+
+    note = ""
+    if count < len(plan.free_halls):
+        note = f"\n⚠️ <i>توجه: به‌دلیل {plan.limit_reason}، چرخه فقط در {fa_number(count)} سالن از {fa_number(len(plan.free_halls))} سالن آزاد فعال می‌شود.</i>\n"
+
     await safe_edit(
         call,
         header("تولید سانتریفیوژ", "⚙️") + "\n\n"
-        f"تعداد: {fa_number(CENTRIFUGE_BATCH_SIZE)} عدد\n"
-        f"💵 هزینه: {fa_money(CENTRIFUGE_BATCH_COST_USD)}\n"
-        f"🏗 فولاد: {fa_number(CENTRIFUGE_BATCH_STEEL)} تن | "
-        f"🔩 آلومینیوم: {fa_number(CENTRIFUGE_BATCH_ALUMINUM)} تن\n"
-        f"⏱ زمان: {fa_number(CENTRIFUGE_BATCH_HOURS)} ساعت\n\n"
-        "آیا مطمئنید؟",
+        f"🏭 سالن‌های آماده تولید: <b>{fa_number(count)} سالن</b>\n"
+        f"⚙️ مجموع تولید: <b>{fa_number(total_prod)} سانتریفیوژ</b> ({fa_number(count)} × {fa_number(CENTRIFUGE_BATCH_SIZE)})\n"
+        f"💵 هزینه کل: <b>{fa_money(total_cost)}</b>\n"
+        f"🏗 فولاد کل: <b>{fa_number(total_steel)} تن</b>\n"
+        f"🔩 آلومینیوم کل: <b>{fa_number(total_aluminum)} تن</b>\n"
+        f"⏱ زمان تولید: <b>{fa_number(CENTRIFUGE_BATCH_HOURS)} ساعت</b>\n"
+        f"{note}\n"
+        "آیا برای آغاز تولید مطمئنید؟",
         reply_markup=confirm_cancel_kb("nuc_en_make_ok", "nuc:enrich"),
     )
 
@@ -567,17 +637,25 @@ async def cb_nuc_make_centrifuge_ok(call: CallbackQuery, session: AsyncSession, 
     if country is None:
         return
     try:
-        done_at = await nuclear_service.produce_centrifuges(session, country)
+        res = await nuclear_service.produce_centrifuges(session, country)
     except nuclear_service.NuclearError as exc:
         await call.answer(str(exc), show_alert=True)
         return
     await session.commit()
     await call.answer("چرخه‌ی تولید آغاز شد ✅")
+
+    total_centrifuges = res.started_cycles * CENTRIFUGE_BATCH_SIZE
+    note = ""
+    if res.plan.limit_reason and res.started_cycles < len(res.plan.free_halls):
+        note = f"\nℹ️ <i>{res.plan.limit_reason}</i>\n"
+
     await safe_edit(
         call,
         header("تولید سانتریفیوژ", "⚙️") + "\n\n"
-        f"چرخه‌ی تولید {fa_number(CENTRIFUGE_BATCH_SIZE)} سانتریفیوژ آغاز شد.\n"
-        f"⏳ اتمام: {_fmt_eta(done_at)} دیگر",
+        f"✅ چرخه‌ی تولید در <b>{fa_number(res.started_cycles)} سالن غنی‌سازی</b> فعال گردید.\n"
+        f"⚙️ محصول نهایی: <b>+{fa_number(total_centrifuges)} سانتریفیوژ</b>\n"
+        f"⏳ اتمام: {_fmt_eta(res.done_at)} دیگر"
+        f"{note}",
         reply_markup=back_kb("nuc:enrich"),
     )
 

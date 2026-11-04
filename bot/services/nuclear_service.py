@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import random
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -321,45 +322,167 @@ def facility_done_at(facility: NuclearFacility) -> datetime:
 
 
 # ============================================================
-#  سانتریفیوژ
+#  سانتریفیوژ (چرخه‌های موازی در سالن‌های غنی‌سازی)
 # ============================================================
 
 
-async def produce_centrifuges(session: AsyncSession, country: Country) -> datetime:
-    """
-    شروع یک چرخه‌ی تولید سانتریفیوژ (۵۰۰ عدد در ۶ ساعت).
-    نیازمند کارخانه‌ی سانتریفیوژ فعال + بودجه + فولاد و آلومینیوم.
-    خروجی: زمان اتمام چرخه.
-    """
+@dataclass
+class CentrifugeBatchPlan:
+    """طرح یا تحلیل امکان‌سنجی شروع چرخه‌های تولید سانتریفیوژ."""
+
+    total_halls: int
+    free_halls: list[NuclearFacility]
+    running_halls: list[NuclearFacility]
+    capacity: int
+    used_and_queued: int
+    free_capacity: int
+    max_by_capacity: int
+    max_by_budget: int
+    max_by_steel: int
+    max_by_aluminum: int
+    executable_count: int
+    limit_reason: str
+
+
+@dataclass
+class CentrifugeBatchResult:
+    """نتیجه‌ی اجرای چرخه‌های تولید سانتریفیوژ."""
+
+    done_at: datetime
+    started_cycles: int
+    total_halls: int
+    plan: CentrifugeBatchPlan
+
+    def __iter__(self):
+        return iter((self.done_at, self.started_cycles, self.plan))
+
+
+async def plan_centrifuge_production(
+    session: AsyncSession, country: Country
+) -> CentrifugeBatchPlan:
+    """بررسی امکان‌سنجی و برنامه‌ریزی تولید سانتریفیوژ در سالن‌های غنی‌سازی."""
     program = await ensure_program(session, country)
 
-    plants = await nuc_repo.list_active_facilities(
-        session, country.id, NuclearFacilityType.CENTRIFUGE_PLANT
+    halls_seq = await nuc_repo.list_active_facilities(
+        session, country.id, NuclearFacilityType.ENRICHMENT_HALL
     )
-    if not plants:
-        raise NuclearError("کارخانه‌ی سانتریفیوژ فعالی ندارید.")
+    halls = sorted(list(halls_seq), key=lambda h: h.id)
+    if not halls:
+        raise NuclearError("سالن غنی‌سازی فعالی ندارید.")
 
-    if program.centrifuge_batch_done_at is not None:
-        raise NuclearError("یک چرخه‌ی تولید سانتریفیوژ در جریان است.")
+    capacity = await nuc_repo.enrichment_capacity(session, country.id)
 
-    if country.budget < CENTRIFUGE_BATCH_COST_USD:
-        raise NuclearError(
-            f"بودجه کافی نیست. هزینه‌ی هر چرخه {CENTRIFUGE_BATCH_COST_USD / 1e9:.0f} میلیارد دلار است."
-        )
-    if not await reserves_repo.has_enough(session, country.id, ResourceType.STEEL, CENTRIFUGE_BATCH_STEEL):
-        raise NuclearError(f"کمبود فولاد! نیاز: {CENTRIFUGE_BATCH_STEEL:,.0f} تن")
-    if not await reserves_repo.has_enough(session, country.id, ResourceType.ALUMINUM, CENTRIFUGE_BATCH_ALUMINUM):
-        raise NuclearError(f"کمبود آلومینیوم! نیاز: {CENTRIFUGE_BATCH_ALUMINUM:,.0f} تن")
+    running_halls = [h for h in halls if h.centrifuge_batch_done_at is not None]
+    free_halls = [
+        h for h in halls if h.centrifuge_batch_done_at is None and h.integrity_pct > 0
+    ]
 
-    country.budget -= CENTRIFUGE_BATCH_COST_USD
-    await reserves_repo.add_amount(session, country.id, ResourceType.STEEL, -CENTRIFUGE_BATCH_STEEL)
-    await reserves_repo.add_amount(session, country.id, ResourceType.ALUMINUM, -CENTRIFUGE_BATCH_ALUMINUM)
+    legacy_running = 1 if program.centrifuge_batch_done_at is not None else 0
+    ongoing_batches = len(running_halls) + legacy_running
+    used_and_queued = program.centrifuges + (ongoing_batches * CENTRIFUGE_BATCH_SIZE)
+    free_capacity = max(0, capacity - used_and_queued)
+    max_by_capacity = free_capacity // CENTRIFUGE_BATCH_SIZE
 
-    done_at = _utcnow() + timedelta(hours=CENTRIFUGE_BATCH_HOURS)
-    program.centrifuge_batch_done_at = done_at
-    add_exposure(program, 2.0)
+    max_by_budget = int(country.budget // CENTRIFUGE_BATCH_COST_USD)
+    steel_res = await reserves_repo.get_reserve(session, country.id, ResourceType.STEEL)
+    steel_amount = steel_res.amount if steel_res else 0.0
+    aluminum_res = await reserves_repo.get_reserve(session, country.id, ResourceType.ALUMINUM)
+    aluminum_amount = aluminum_res.amount if aluminum_res else 0.0
+    max_by_steel = int(steel_amount // CENTRIFUGE_BATCH_STEEL)
+    max_by_aluminum = int(aluminum_amount // CENTRIFUGE_BATCH_ALUMINUM)
+
+    executable_count = max(
+        0,
+        min(
+            len(free_halls),
+            max_by_capacity,
+            max_by_budget,
+            max_by_steel,
+            max_by_aluminum,
+        ),
+    )
+
+    limit_reason = ""
+    if executable_count < len(free_halls):
+        if len(free_halls) == 0:
+            limit_reason = "تمام سالن‌های غنی‌سازی در حال حاضر دارای چرخه‌ی فعال هستند."
+        elif max_by_capacity < len(free_halls) and max_by_capacity <= executable_count:
+            limit_reason = "سقف ظرفیت سالن‌های غنی‌سازی تکمیل است."
+        elif max_by_budget < len(free_halls) and max_by_budget <= executable_count:
+            limit_reason = "کسری بودجه برای شروع چرخه در تمام سالن‌ها."
+        elif max_by_steel < len(free_halls) and max_by_steel <= executable_count:
+            limit_reason = "کمبود ذخایر فولاد برای شروع چرخه در تمام سالن‌ها."
+        elif max_by_aluminum < len(free_halls) and max_by_aluminum <= executable_count:
+            limit_reason = "کمبود ذخایر آلومینیوم برای شروع چرخه در تمام سالن‌ها."
+
+    return CentrifugeBatchPlan(
+        total_halls=len(halls),
+        free_halls=free_halls,
+        running_halls=running_halls,
+        capacity=capacity,
+        used_and_queued=used_and_queued,
+        free_capacity=free_capacity,
+        max_by_capacity=max_by_capacity,
+        max_by_budget=max_by_budget,
+        max_by_steel=max_by_steel,
+        max_by_aluminum=max_by_aluminum,
+        executable_count=executable_count,
+        limit_reason=limit_reason,
+    )
+
+
+async def produce_centrifuges(
+    session: AsyncSession, country: Country
+) -> CentrifugeBatchResult:
+    """
+    شروع چرخه‌های تولید سانتریفیوژ در سالن‌های غنی‌سازی آزاد (۵۰۰ عدد در ۶ ساعت به ازای هر سالن).
+    کسر مستقل بودجه و منابع فولاد و آلومینیوم به ازای هر چرخه.
+    """
+    program = await ensure_program(session, country)
+    plan = await plan_centrifuge_production(session, country)
+
+    if plan.executable_count == 0:
+        if not plan.free_halls:
+            raise NuclearError("تمام سالن‌های غنی‌سازی در حال حاضر دارای چرخه‌ی فعال هستند.")
+        if plan.max_by_capacity <= 0:
+            raise NuclearError(
+                f"ظرفیت سالن‌های غنی‌سازی تکمیل است (حداکثر {plan.capacity:,} سانتریفیوژ)."
+            )
+        if plan.max_by_budget <= 0:
+            raise NuclearError(
+                f"بودجه کافی نیست. هزینه‌ی هر چرخه {CENTRIFUGE_BATCH_COST_USD / 1e6:.1f} میلیون دلار است."
+            )
+        if plan.max_by_steel <= 0:
+            raise NuclearError(f"کمبود فولاد! نیاز هر چرخه: {CENTRIFUGE_BATCH_STEEL:,.0f} تن")
+        if plan.max_by_aluminum <= 0:
+            raise NuclearError(f"کمبود آلومینیوم! نیاز هر چرخه: {CENTRIFUGE_BATCH_ALUMINUM:,.0f} تن")
+        raise NuclearError("امکان شروع چرخه‌ی تولید در هیچ‌یک از سالن‌ها وجود ندارد.")
+
+    started_count = plan.executable_count
+    total_cost = started_count * CENTRIFUGE_BATCH_COST_USD
+    total_steel = started_count * CENTRIFUGE_BATCH_STEEL
+    total_aluminum = started_count * CENTRIFUGE_BATCH_ALUMINUM
+
+    country.budget -= total_cost
+    await reserves_repo.add_amount(session, country.id, ResourceType.STEEL, -total_steel)
+    await reserves_repo.add_amount(session, country.id, ResourceType.ALUMINUM, -total_aluminum)
+
+    now = _utcnow()
+    done_at = now + timedelta(hours=CENTRIFUGE_BATCH_HOURS)
+
+    for hall in plan.free_halls[:started_count]:
+        hall.centrifuge_batch_started_at = now
+        hall.centrifuge_batch_done_at = done_at
+
+    add_exposure(program, 2.0 * started_count)
     await session.flush()
-    return done_at
+
+    return CentrifugeBatchResult(
+        done_at=done_at,
+        started_cycles=started_count,
+        total_halls=len(plan.free_halls),
+        plan=plan,
+    )
 
 
 # ============================================================

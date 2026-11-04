@@ -130,6 +130,13 @@ class NuclearFacility(Base):
     integrity_pct: Mapped[float] = mapped_column(Float, default=100.0, nullable=False)
 
     cost_usd: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    # چرخه‌ی تولید سانتریفیوژ در این سالن (زمان شروع و اتمام)
+    centrifuge_batch_started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    centrifuge_batch_done_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     built_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )

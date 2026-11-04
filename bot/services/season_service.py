@@ -38,6 +38,7 @@ from ..database.models import (
     EconomicProject,
     Facility,
     FeatureLock,
+    GlobalReport,
     GroupMeeting,
     GroupMeetingParticipant,
     Meeting,
@@ -143,6 +144,7 @@ async def reset_season(session: AsyncSession) -> dict[str, int]:
     await session.execute(delete(TechLicense))
     await session.execute(delete(MilitaryFactory))   # v1.7
     await session.execute(delete(Facility))
+    await session.execute(delete(GlobalReport))
     await session.execute(delete(Cooldown))
     await session.execute(delete(ClaimRequest))
 

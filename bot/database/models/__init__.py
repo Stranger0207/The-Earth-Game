@@ -28,6 +28,7 @@ from .econ_sat_receipt import EconSatReceipt
 from .economic_project import EconomicProject
 from .facility import Facility
 from .feature_lock import FeatureLock
+from .global_report import GlobalReport
 from .governance import Law, Protest, VisaRequirement
 from .investment import Investment
 from .joint_request import JointBuildRequest
@@ -87,6 +88,7 @@ __all__ = [
     "EconomicProject",
     "Facility",
     "FeatureLock",
+    "GlobalReport",
     "Investment",
     "JointBuildRequest",
     "Law",

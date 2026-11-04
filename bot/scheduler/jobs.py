@@ -1696,8 +1696,32 @@ async def _tick(bot: Bot) -> None:
             logger.exception("Scheduler job '%s' failed: %s", name, exc)
 
 
+async def process_global_report_8h(bot: Bot) -> None:
+    """تولید و ثبت خودکار گزارش تراز جهانی هر ۸ ساعت یکبار و ارسال به گروه لاگ مدیریت."""
+    from ..config import get_settings
+    from ..services.global_report_service import generate_global_report
+
+    cfg = get_settings()
+    try:
+        async with async_session_factory() as session:
+            report, _ = await generate_global_report(session, period_hours=8)
+            await session.commit()
+
+            # ارسال گزارش کوتاه به گروه لاگ اصلی
+            await send_log(bot, report.short_text)
+
+            # در صورت تنظیم کانال مجزای لاگ مدیریت
+            if cfg.admin_log_channel_id:
+                try:
+                    await bot.send_message(cfg.admin_log_channel_id, report.short_text)
+                except Exception as exc:
+                    logger.warning("Failed to send global report to admin channel: %s", exc)
+    except Exception as exc:
+        logger.exception("process_global_report_8h failed: %s", exc)
+
+
 def setup_scheduler(bot: Bot) -> AsyncIOScheduler:
-    """زمان‌بند را پیکربندی و اجرا می‌کند (تیک هر ۶۰ ثانیه + ارسال ۱۲ ساعته اخبار بازار)."""
+    """زمان‌بند را پیکربندی و اجرا می‌کند (تیک هر ۶۰ ثانیه + ارسال ۱۲ ساعته اخبار بازار + گزارش ۸ ساعته تراز جهانی)."""
     scheduler.add_job(
         _tick,
         trigger="interval",
@@ -1713,6 +1737,15 @@ def setup_scheduler(bot: Bot) -> AsyncIOScheduler:
         hours=12,
         args=[bot],
         id="market_rates_broadcast",
+        replace_existing=True,
+        max_instances=1,
+    )
+    scheduler.add_job(
+        process_global_report_8h,
+        trigger="interval",
+        hours=8,
+        args=[bot],
+        id="global_report_8h",
         replace_existing=True,
         max_instances=1,
     )

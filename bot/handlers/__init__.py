@@ -7,6 +7,7 @@ from aiogram.types import CallbackQuery, ErrorEvent
 
 from . import (
     admin,
+    admin_report,
     admin_roles,
     advisor,
     alliance,
@@ -79,6 +80,7 @@ def register_all_routers(dp: Dispatcher) -> None:
     dp.include_router(start.router)
     dp.include_router(claim.router)
     dp.include_router(admin.router)
+    dp.include_router(admin_report.router)
     dp.include_router(broadcast.router)
     dp.include_router(admin_roles.router)
     dp.include_router(kick.router)

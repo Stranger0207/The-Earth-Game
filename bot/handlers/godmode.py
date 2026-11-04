@@ -150,6 +150,7 @@ def _home_kb() -> InlineKeyboardMarkup:
     builder.button(text="🇺🇳 مجمع عمومی سازمان ملل", callback_data="god:unasmb", style=STYLE_MAIN)
     builder.button(text="🚫 تحریم‌ها", callback_data="god:sanctions", style=STYLE_MAIN)
     builder.button(text="📈 سرمایه‌گذاری‌ها", callback_data="god:invest", style=STYLE_MAIN)
+    builder.button(text="🌐 گزارش تراز جهانی", callback_data="god:global_report", style=STYLE_MAIN)
     builder.button(text="📊 نرخ بازار جهانی", callback_data="god:market", style=STYLE_MAIN)
     builder.button(text="🏗 پروژه‌های اقتصادی", callback_data="god:projects", style=STYLE_MAIN)
     builder.button(text="☢️ برنامه‌های هسته‌ای", callback_data="god:nuclear", style=STYLE_MAIN)

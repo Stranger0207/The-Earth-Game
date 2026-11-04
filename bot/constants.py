@@ -741,4 +741,14 @@ VISA_WAIVER_SATISFACTION_PENALTY: float = 1.5    # کسر ۱.۵٪ از رضای�
 VISA_WAIVER_ADMIN_COST: float = 4_000_000.0      # ۴ میلیون دلار هزینه اداری/مرزبانی
 
 
+# ============================================================
+#  گزارش تراز جهانی و داشبورد آماری (Global Economic Ledger)
+# ============================================================
+GLOBAL_REPORT_DEFAULT_PERIOD_HOURS = 8
+GLOBAL_REPORT_DEFICIT_WARN_RATIO = -0.20      # کسری بالای ۲۰٪ نسبت به مصرف
+GLOBAL_REPORT_DEFICIT_CRITICAL_RATIO = -0.50  # کسری بحرانی بالای ۵۰٪
+GLOBAL_REPORT_SURPLUS_CRITICAL_RATIO = 1.00   # مازاد بحرانی بالای ۱۰۰٪
+
+
+
 

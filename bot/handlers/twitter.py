@@ -2,15 +2,18 @@
 هندلرهای سیستم توییتر جهانی (X) در منوی دیپلماسی و کانال رسمی (v3.0).
 
 قابلیت‌ها:
-- آنبوردینگ و ثبت‌نام اولیه کشورها (انتخاب یوزرنیم یکتا و آپلود آواتار).
+- آنبوردینگ و ثبت‌نام اولیه کشورها (انتخاب یوزرنیم یکتا و آپلود آواتار با کراپ خودکار ۱:۱).
 - نگارش و انتشار توییت در کانال رسمی با تصویر گرافیکی Dark Mode.
 - دکمه شیشه‌ای لایک با شمارنده تعاملی زیر پست‌های کانال رسمی (Toggle).
 - مشاهده توییت‌های اخیر کشور.
-- قفل آپشن از طریق /god با گارد assert_feature.
+- ویرایش پروفایل (تغییر نام نمایشی، یوزرنیم و عکس پروفایل مربعی با کول‌داون و ثبت لاگ ادمین).
+- قفل آپشن از طریق /god با گاردهای assert_feature ("twitter", "twitter_profile").
 """
 
 from __future__ import annotations
 
+import asyncio
+import html
 import io
 import logging
 import re
@@ -28,15 +31,24 @@ from aiogram.types import (
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..constants import TWEET_CHANNEL_ID, TWEET_COOLDOWN_HOURS
+from ..constants import (
+    RESERVED_TWITTER_HANDLES,
+    TWEET_CHANNEL_ID,
+    TWEET_COOLDOWN_HOURS,
+    TWITTER_AVATAR_MAX_BYTES,
+    TWITTER_AVATAR_SIZE,
+    TWITTER_NAME_MAX_CHARS,
+    TWITTER_NAME_MIN_CHARS,
+    TWITTER_PROFILE_CHANGE_COOLDOWN_HOURS,
+)
 from ..database.models import User
 from ..database.repositories import cooldowns as cd_repo
 from ..database.repositories import countries as countries_repo
 from ..database.repositories import twitter as twitter_repo
 from ..loader import bot
 from ..services.news_service import send_log, send_log_photo
-from ..services.tweet_image_service import render_tweet_image
-from ..states.forms import TweetForm, TwitterOnboardingForm
+from ..services.tweet_image_service import process_avatar_upload, render_tweet_image
+from ..states.forms import TweetForm, TwitterEditProfileForm, TwitterOnboardingForm
 from ..utils.numbers import fa_number
 from ..utils.screens import safe_edit, show_menu
 from ..utils.ui import STYLE_MAIN, STYLE_NO, STYLE_OK
@@ -46,8 +58,36 @@ logger = logging.getLogger(__name__)
 
 router = Router(name="twitter")
 
-# الگوی اعتبارسنجی نام کاربری توییتر: ۳ تا ۳۰ کاراکتر انگلیسی، اعداد و آندرلاین
-USERNAME_REGEX = re.compile(r"^[a-zA-Z0-9_]{3,30}$")
+# الگوی اعتبارسنجی نام کاربری توییتر: ۳ تا ۱۵ کاراکتر، شروع با حرف انگلیسی، شامل حروف انگلیسی، اعداد و خط زیر (_)
+USERNAME_SAFE_REGEX = re.compile(r"^[a-zA-Z][a-zA-Z0-9_]{2,14}$")
+
+
+def validate_username(raw: str) -> tuple[bool, str]:
+    """اعتبارسنجی نام کاربری توییتر طبق قواعد بازی."""
+    clean = raw.strip().lstrip("@")
+    if len(clean) < 3 or len(clean) > 15:
+        return False, "طول نام کاربری باید بین ۳ تا ۱۵ کاراکتر باشد."
+    if not clean[0].isalpha() or not clean[0].isascii():
+        return False, "نام کاربری باید با یک حرف انگلیسی (A-Z) آغاز شود."
+    if not USERNAME_SAFE_REGEX.match(clean):
+        return False, "نام کاربری فقط می‌تواند شامل حروف انگلیسی، اعداد و خط زیر (_) باشد."
+    if clean.lower() in RESERVED_TWITTER_HANDLES:
+        return False, f"نام کاربری «@{clean}» یک نام رزروشده سیستمی است و قابل استفاده نمی‌باشد."
+    return True, clean.lower()
+
+
+def validate_display_name(raw: str) -> tuple[bool, str]:
+    """اعتبارسنجی نام نمایشی توییتر."""
+    cleaned = raw.strip()
+    if len(cleaned) < TWITTER_NAME_MIN_CHARS or len(cleaned) > TWITTER_NAME_MAX_CHARS:
+        return (
+            False,
+            f"طول نام نمایشی باید بین {fa_number(TWITTER_NAME_MIN_CHARS)} تا {fa_number(TWITTER_NAME_MAX_CHARS)} کاراکتر باشد.",
+        )
+    for ch in cleaned:
+        if ord(ch) < 32 or (127 <= ord(ch) <= 159):
+            return False, "نام نمایشی شامل کاراکترهای کنترلی یا نامعتبر است."
+    return True, cleaned
 
 
 def _twitter_home_kb() -> InlineKeyboardMarkup:
@@ -55,8 +95,20 @@ def _twitter_home_kb() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.button(text="✍️ ارسال توییت جدید", callback_data="tweet:new", style=STYLE_OK)
     builder.button(text="📜 توییت‌های من", callback_data="tweet:mine", style=STYLE_MAIN)
+    builder.button(text="✏️ ویرایش پروفایل", callback_data="tw:edit_profile", style=STYLE_MAIN)
     builder.button(text="🔙 بازگشت به دیپلماسی", callback_data="menu:diplomacy", style=STYLE_MAIN)
-    builder.adjust(1, 1, 1)
+    builder.adjust(1, 1, 1, 1)
+    return builder.as_markup()
+
+
+def _twitter_edit_profile_kb() -> InlineKeyboardMarkup:
+    """کیبورد زیرمنوی ویرایش پروفایل توییتر."""
+    builder = InlineKeyboardBuilder()
+    builder.button(text="📸 تغییر عکس پروفایل", callback_data="tw_edit:avatar", style=STYLE_MAIN)
+    builder.button(text="✏️ تغییر نام نمایشی", callback_data="tw_edit:name", style=STYLE_MAIN)
+    builder.button(text="🏷 تغییر نام کاربری", callback_data="tw_edit:username", style=STYLE_MAIN)
+    builder.button(text="🔙 بازگشت به توییتر", callback_data="dip:twitter", style=STYLE_MAIN)
+    builder.adjust(1, 1, 1, 1)
     return builder.as_markup()
 
 
@@ -83,6 +135,7 @@ async def cb_twitter_main(
     if not await assert_feature(call, session, country, "twitter"):
         return
 
+    await state.clear()
     profile = await twitter_repo.get_profile_by_country(session, country.id)
     if profile is None:
         # کشور هنوز حسابی ثبت نکرده است -> آغاز آنبوردینگ
@@ -92,7 +145,7 @@ async def cb_twitter_main(
             f"کشور: {country.flag} <b>{country.name_fa}</b>\n\n"
             "برای انتشار مواضع رسمی کشور خود در کانال جهانی توییتر، ابتدا باید یک <b>نام کاربری (Handle)</b> "
             "و یک <b>عکس پروفایل</b> تنظیم کنید.\n\n"
-            "⚠️ <i>توجه: نام کاربری و عکس پروفایل تا پایان فصل ثابت خواهند ماند.</i>\n\n"
+            f"ℹ️ <i>پس از ثبت‌نام، امکان ویرایش فیلدها با کول‌داون {fa_number(TWITTER_PROFILE_CHANGE_COOLDOWN_HOURS)} ساعته فراهم است.</i>\n\n"
             "لطفاً <b>نام کاربری انگلیسی</b> مد نظر خود را بدون @ ارسال کنید (مثلاً: Iran_MFA یا WhiteHouse):"
         )
         kb = InlineKeyboardMarkup(inline_keyboard=[[
@@ -103,10 +156,12 @@ async def cb_twitter_main(
 
     # حساب از قبل وجود دارد -> نمایش صفحه خانه توییتر
     t_count = await twitter_repo.count_tweets_by_country(session, country.id)
+    disp_name = profile.display_name or db_user.president_name or country.name_fa
     text = (
         "🐦 <b>شبکه اجتماعی توییتر (X) — ستاد دیپلماسی عمومی</b>\n\n"
         f"🏛 <b>کشور:</b> {country.flag} {country.name_fa}\n"
-        f"👤 <b>نام کاربری رسمی:</b> <code>@{profile.username}</code> 🔹\n"
+        f"👤 <b>نام نمایشی:</b> {html.escape(disp_name)}\n"
+        f"🏷 <b>نام کاربری رسمی:</b> <code>@{profile.username}</code> 🔹\n"
         f"📊 <b>تعداد توییت‌های فصل:</b> {fa_number(t_count)}\n\n"
         "<i>از این بخش می‌توانید پیام‌ها، بیانیه‌ها و مواضع دیپلماتیک خود را در قالب اسکرین‌شات گرافیکی رسمی در کانال توییتر جهانی منتشر کنید.</i>"
     )
@@ -131,44 +186,40 @@ async def msg_onboarding_username(
         await message.answer(NO_COUNTRY_TEXT)
         return
 
-    raw = message.text.strip().lstrip("@")
-    if not USERNAME_REGEX.match(raw):
-        await message.answer(
-            "❌ <b>نام کاربری نامعتبر است!</b>\n\n"
-            "نام کاربری باید تنها شامل حروف انگلیسی (A-Z)، اعداد (0-9) و خط زیر (_) بوده و طول آن بین ۳ تا ۳۰ کاراکتر باشد.\n"
-            "لطفاً مجدداً ارسال کنید:"
-        )
+    is_valid, res = validate_username(message.text)
+    if not is_valid:
+        await message.answer(f"❌ <b>خطا در نام کاربری:</b>\n{res}\n\nلطفاً مجدداً ارسال کنید:")
         return
 
     # بررسی عدم تکراری بودن یوزرنیم در پایگاه داده
-    existing = await twitter_repo.get_profile_by_username(session, raw)
+    existing = await twitter_repo.get_profile_by_username(session, res)
     if existing is not None:
         await message.answer(
-            f"❌ نام کاربری <code>@{raw}</code> قبلاً توسط کشور دیگری ثبت شده است!\n"
+            f"❌ نام کاربری <code>@{res}</code> قبلاً توسط کشور دیگری ثبت شده است!\n"
             "لطفاً نام کاربری متفاوتی وارد کنید:"
         )
         return
 
-    await state.update_data(username=raw)
+    await state.update_data(username=res)
     await state.set_state(TwitterOnboardingForm.uploading_avatar)
     kb = InlineKeyboardMarkup(inline_keyboard=[[
         InlineKeyboardButton(text="🔙 انصراف", callback_data="menu:diplomacy", style=STYLE_MAIN),
     ]])
     await message.answer(
-        f"✅ نام کاربری <code>@{raw}</code> با موفقیت تایید شد.\n\n"
-        "🖼 حالا لطفاً <b>تصویر پروفایل</b> مد نظر برای این حساب را ارسال نمایید (به صورت Photo):",
+        f"✅ نام کاربری <code>@{res}</code> با موفقیت تأیید شد.\n\n"
+        "🖼 حالا لطفاً <b>تصویر پروفایل</b> مد نظر برای این حساب را ارسال نمایید (عکس یا فایل تصویری):",
         reply_markup=kb,
     )
 
 
-@router.message(TwitterOnboardingForm.uploading_avatar, F.photo)
+@router.message(TwitterOnboardingForm.uploading_avatar, F.photo | F.document)
 async def msg_onboarding_avatar(
     message: Message,
     state: FSMContext,
     session: AsyncSession,
     db_user: User,
 ) -> None:
-    """دریافت بالاترین کیفیت تصویر و ایجاد پروفایل توییتر."""
+    """دریافت تصویر، کراپ مربعی ۱:۱ و ایجاد پروفایل توییتر."""
     country = await get_player_country(session, db_user)
     if country is None:
         await message.answer(NO_COUNTRY_TEXT)
@@ -181,19 +232,59 @@ async def msg_onboarding_avatar(
         await message.answer("خطا در روند ثبت‌نام. لطفاً مجدداً اقدام کنید.")
         return
 
-    photo = message.photo[-1]
-    avatar_file_id = photo.file_id
+    file_id: str | None = None
+    if message.photo:
+        file_id = message.photo[-1].file_id
+    elif message.document:
+        doc = message.document
+        mime = doc.mime_type or ""
+        if not (mime.startswith("image/") or (doc.file_name and doc.file_name.lower().endswith((".jpg", ".jpeg", ".png", ".webp")))):
+            await message.answer("⚠️ فایل ارسالی باید یک تصویر معتبر (JPEG, PNG, WEBP) باشد.")
+            return
+        if doc.file_size and doc.file_size > TWITTER_AVATAR_MAX_BYTES:
+            await message.answer("⚠️ حجم فایل تصویر نباید بیشتر از ۵ مگابایت باشد.")
+            return
+        file_id = doc.file_id
+
+    if not file_id:
+        await message.answer("⚠️ لطفاً یک تصویر معتبر ارسال کنید:")
+        return
+
+    avatar_file_id = file_id
+    try:
+        file_info = await bot.get_file(file_id)
+        if file_info.file_path:
+            buf = io.BytesIO()
+            await bot.download_file(file_info.file_path, destination=buf)
+            raw_bytes = buf.getvalue()
+            if len(raw_bytes) > TWITTER_AVATAR_MAX_BYTES:
+                await message.answer("⚠️ حجم تصویر بیش از حد مجاز (۵ مگابایت) است.")
+                return
+            cropped_bytes = await asyncio.to_thread(process_avatar_upload, raw_bytes, TWITTER_AVATAR_SIZE)
+            sent_avatar = await message.answer_photo(
+                photo=BufferedInputFile(cropped_bytes, filename="avatar.png"),
+                caption="✂️ تصویر پروفایل شما با کادر مربعی ۱:۱ از مرکز برش داده شد.",
+            )
+            if sent_avatar.photo:
+                avatar_file_id = sent_avatar.photo[-1].file_id
+    except ValueError as exc:
+        await message.answer(f"❌ خطا در پردازش تصویر: {exc}\nلطفاً تصویر دیگری ارسال کنید:")
+        return
+    except Exception as exc:
+        logger.warning("Could not process onboarding avatar: %s", exc)
 
     # ذخیره در دیتابیس
+    disp_name = db_user.president_name or country.name_fa
     profile = await twitter_repo.create_profile(
-        session, country_id=country.id, username=username, avatar_file_id=avatar_file_id
+        session, country_id=country.id, username=username, avatar_file_id=avatar_file_id, display_name=disp_name
     )
     await state.clear()
 
     await message.answer(
         "🎉 <b>حساب رسمی توییتر کشور شما با موفقیت ایجاد شد!</b>\n\n"
         f"🏛 کشور: {country.flag} <b>{country.name_fa}</b>\n"
-        f"👤 نام کاربری: <code>@{profile.username}</code> 🔹 (دارای تیک آبی تایید)\n\n"
+        f"👤 نام نمایشی: <b>{html.escape(disp_name)}</b>\n"
+        f"🏷 نام کاربری: <code>@{profile.username}</code> 🔹 (دارای تیک آبی تأیید)\n\n"
         "از هم‌اکنون می‌توانید توییت‌های رسمی خود را به کانال جهانی مخابره کنید.",
         reply_markup=_twitter_home_kb(),
     )
@@ -201,8 +292,538 @@ async def msg_onboarding_avatar(
 
 @router.message(TwitterOnboardingForm.uploading_avatar)
 async def msg_onboarding_avatar_invalid(message: Message) -> None:
-    """هشدار در صورت ارسال پیام متنی یا فایل به‌جای عکس."""
-    await message.answer("⚠️ لطفاً حتماً یک **عکس معتبر (Photo)** برای تصویر پروفایل ارسال کنید:")
+    """هشدار در صورت ارسال پیام نامعتبر به‌جای عکس."""
+    await message.answer("⚠️ لطفاً حتماً یک **عکس یا فایل تصویری معتبر** برای تصویر پروفایل ارسال کنید:")
+
+
+# ============================================================
+#  مدیریت و ویرایش پروفایل توییتر (عکس، نام نمایشی، یوزرنیم)
+# ============================================================
+
+
+@router.callback_query(F.data == "tw:edit_profile")
+async def cb_twitter_edit_profile(
+    call: CallbackQuery,
+    state: FSMContext,
+    session: AsyncSession,
+    db_user: User,
+) -> None:
+    """نمایش زیرمنوی ویرایش پروفایل توییتر."""
+    await call.answer()
+    country = await get_player_country(session, db_user)
+    if country is None:
+        await safe_edit(call, NO_COUNTRY_TEXT)
+        return
+
+    if not await assert_feature(call, session, country, "twitter_profile"):
+        return
+
+    profile = await twitter_repo.get_profile_by_country(session, country.id)
+    if profile is None:
+        await safe_edit(call, "حساب توییتر برای کشور شما یافت نشد.", reply_markup=_twitter_home_kb())
+        return
+
+    await state.clear()
+    disp_name = profile.display_name or db_user.president_name or country.name_fa
+    text = (
+        "✏️ <b>مدیریت و ویرایش پروفایل توییتر (X)</b>\n\n"
+        f"🏛 <b>کشور:</b> {country.flag} {country.name_fa}\n"
+        f"👤 <b>نام نمایشی:</b> {html.escape(disp_name)}\n"
+        f"🏷 <b>نام کاربری (Handle):</b> <code>@{profile.username}</code> 🔹\n\n"
+        f"ℹ️ <i>کول‌داون تغییر هر فیلد {fa_number(TWITTER_PROFILE_CHANGE_COOLDOWN_HOURS)} ساعت است.</i>\n\n"
+        "کدام بخش را می‌خواهید ویرایش کنید؟"
+    )
+    await safe_edit(call, text, reply_markup=_twitter_edit_profile_kb())
+
+
+# --- ۱. ویرایش نام نمایشی ---
+
+
+@router.callback_query(F.data == "tw_edit:name")
+async def cb_edit_name_prompt(
+    call: CallbackQuery,
+    state: FSMContext,
+    session: AsyncSession,
+    db_user: User,
+) -> None:
+    """ورود به مرحله تغییر نام نمایشی."""
+    await call.answer()
+    country = await get_player_country(session, db_user)
+    if country is None:
+        await safe_edit(call, NO_COUNTRY_TEXT)
+        return
+
+    if not await assert_feature(call, session, country, "twitter_profile"):
+        return
+
+    profile = await twitter_repo.get_profile_by_country(session, country.id)
+    if profile is None:
+        return
+
+    # بررسی کول‌داون
+    secs = await cd_repo.remaining_seconds(
+        session, country.id, "tw_edit_name", TWITTER_PROFILE_CHANGE_COOLDOWN_HOURS
+    )
+    mins = int((secs + 59) // 60)
+    if mins > 0:
+        await safe_edit(
+            call,
+            "⏳ <b>محدودیت زمانی تغییر نام نمایشی</b>\n\n"
+            f"تغییر نام نمایشی هر {fa_number(TWITTER_PROFILE_CHANGE_COOLDOWN_HOURS)} ساعت یک‌بار مجاز است.\n"
+            f"لطفاً حدود <b>{fa_number(mins)} دقیقه</b> دیگر دوباره تلاش کنید.",
+            reply_markup=_twitter_edit_profile_kb(),
+        )
+        return
+
+    await state.set_state(TwitterEditProfileForm.editing_name)
+    current_name = profile.display_name or db_user.president_name or country.name_fa
+    text = (
+        "✏️ <b>تغییر نام نمایشی توییتر</b>\n\n"
+        f"نام نمایشی فعلی: <b>{html.escape(current_name)}</b>\n\n"
+        f"لطفاً نام نمایشی جدید کشور خود را ارسال کنید (بین {fa_number(TWITTER_NAME_MIN_CHARS)} تا {fa_number(TWITTER_NAME_MAX_CHARS)} کاراکتر):"
+    )
+    kb = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="🔙 انصراف", callback_data="tw_edit:cancel", style=STYLE_MAIN),
+    ]])
+    await safe_edit(call, text, reply_markup=kb)
+
+
+@router.message(TwitterEditProfileForm.editing_name, F.text)
+async def msg_edit_name_process(
+    message: Message,
+    state: FSMContext,
+    session: AsyncSession,
+    db_user: User,
+) -> None:
+    """دریافت و ذخیره نام نمایشی جدید."""
+    country = await get_player_country(session, db_user)
+    if country is None:
+        await message.answer(NO_COUNTRY_TEXT)
+        return
+
+    profile = await twitter_repo.get_profile_by_country(session, country.id)
+    if profile is None:
+        await state.clear()
+        return
+
+    is_valid, res = validate_display_name(message.text)
+    if not is_valid:
+        await message.answer(f"❌ <b>خطا در نام نمایشی:</b>\n{res}\n\nلطفاً نام دیگری ارسال کنید:")
+        return
+
+    # بررسی مجدد کول‌داون
+    secs = await cd_repo.remaining_seconds(
+        session, country.id, "tw_edit_name", TWITTER_PROFILE_CHANGE_COOLDOWN_HOURS
+    )
+    mins = int((secs + 59) // 60)
+    if mins > 0:
+        await state.clear()
+        await message.answer(
+            f"⏳ محدودیت زمانی تغییر نام نمایشی فعال است ({fa_number(mins)} دقیقه مانده).",
+            reply_markup=_twitter_edit_profile_kb(),
+        )
+        return
+
+    old_name = profile.display_name or db_user.president_name or country.name_fa
+    new_name = res
+
+    await twitter_repo.update_profile_display_name(session, country.id, new_name)
+    await cd_repo.touch(session, country.id, "tw_edit_name")
+    await session.flush()
+
+    # لاگ به گروه مدیران
+    await send_log(
+        bot,
+        f"✏️ <b>تغییر نام نمایشی توییتر</b>\n\n"
+        f"🏛 کشور: {country.flag} {country.name_fa}\n"
+        f"👤 شناسه: @{profile.username}\n"
+        f"🔹 نام قدیم: {html.escape(old_name)}\n"
+        f"🔸 نام جدید: {html.escape(new_name)}",
+    )
+
+    await state.clear()
+    await message.answer(
+        "✅ <b>نام نمایشی توییتر با موفقیت به‌روزرسانی شد!</b>\n\n"
+        f"نام نمایشی جدید: <b>{html.escape(new_name)}</b>\n\n"
+        "این نام از این پس در بالای تمام کارت‌های توییت رسمی و پنل‌ها نمایش داده خواهد شد.",
+        reply_markup=_twitter_edit_profile_kb(),
+    )
+
+
+# --- ۲. ویرایش نام کاربری (Handle) ---
+
+
+@router.callback_query(F.data == "tw_edit:username")
+async def cb_edit_username_prompt(
+    call: CallbackQuery,
+    state: FSMContext,
+    session: AsyncSession,
+    db_user: User,
+) -> None:
+    """ورود به مرحله تغییر نام کاربری."""
+    await call.answer()
+    country = await get_player_country(session, db_user)
+    if country is None:
+        await safe_edit(call, NO_COUNTRY_TEXT)
+        return
+
+    if not await assert_feature(call, session, country, "twitter_profile"):
+        return
+
+    profile = await twitter_repo.get_profile_by_country(session, country.id)
+    if profile is None:
+        return
+
+    # بررسی کول‌داون
+    secs = await cd_repo.remaining_seconds(
+        session, country.id, "tw_edit_username", TWITTER_PROFILE_CHANGE_COOLDOWN_HOURS
+    )
+    mins = int((secs + 59) // 60)
+    if mins > 0:
+        await safe_edit(
+            call,
+            "⏳ <b>محدودیت زمانی تغییر نام کاربری</b>\n\n"
+            f"تغییر نام کاربری هر {fa_number(TWITTER_PROFILE_CHANGE_COOLDOWN_HOURS)} ساعت یک‌بار مجاز است.\n"
+            f"لطفاً حدود <b>{fa_number(mins)} دقیقه</b> دیگر دوباره تلاش کنید.",
+            reply_markup=_twitter_edit_profile_kb(),
+        )
+        return
+
+    await state.set_state(TwitterEditProfileForm.editing_username)
+    text = (
+        "🏷 <b>تغییر نام کاربری (Handle) توییتر</b>\n\n"
+        f"نام کاربری فعلی: <code>@{profile.username}</code>\n\n"
+        "قواعد نام کاربری:\n"
+        "• باید بین ۳ تا ۱۵ کاراکتر باشد.\n"
+        "• باید با یک حرف انگلیسی (A-Z) شروع شود.\n"
+        "• فقط شامل حروف انگلیسی، اعداد و خط زیر (_) باشد.\n"
+        "• نباید تکراری یا از شناسه‌های رزروشده سیستمی باشد.\n\n"
+        "لطفاً نام کاربری جدید را بدون @ ارسال کنید:"
+    )
+    kb = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="🔙 انصراف", callback_data="tw_edit:cancel", style=STYLE_MAIN),
+    ]])
+    await safe_edit(call, text, reply_markup=kb)
+
+
+@router.message(TwitterEditProfileForm.editing_username, F.text)
+async def msg_edit_username_process(
+    message: Message,
+    state: FSMContext,
+    session: AsyncSession,
+    db_user: User,
+) -> None:
+    """دریافت و ذخیره نام کاربری جدید."""
+    country = await get_player_country(session, db_user)
+    if country is None:
+        await message.answer(NO_COUNTRY_TEXT)
+        return
+
+    profile = await twitter_repo.get_profile_by_country(session, country.id)
+    if profile is None:
+        await state.clear()
+        return
+
+    is_valid, res = validate_username(message.text)
+    if not is_valid:
+        await message.answer(f"❌ <b>خطا در نام کاربری:</b>\n{res}\n\nلطفاً مجدداً ارسال کنید:")
+        return
+
+    new_username = res
+    if new_username == profile.username.lower():
+        await message.answer("⚠️ نام کاربری جدید با نام کاربری فعلی شما یکسان است! لطفاً نام دیگری انتخاب کنید:")
+        return
+
+    # بررسی یکتایی در دیتابیس (عدم تصاحب توسط کشور دیگر)
+    existing = await twitter_repo.get_profile_by_username(session, new_username)
+    if existing is not None and existing.country_id != country.id:
+        await message.answer(
+            f"❌ نام کاربری <code>@{new_username}</code> قبلاً توسط کشور دیگری ثبت شده است!\n"
+            "لطفاً نام کاربری دیگری انتخاب کنید:"
+        )
+        return
+
+    # بررسی مجدد کول‌داون
+    secs = await cd_repo.remaining_seconds(
+        session, country.id, "tw_edit_username", TWITTER_PROFILE_CHANGE_COOLDOWN_HOURS
+    )
+    mins = int((secs + 59) // 60)
+    if mins > 0:
+        await state.clear()
+        await message.answer(
+            f"⏳ محدودیت زمانی تغییر نام کاربری فعال است ({fa_number(mins)} دقیقه مانده).",
+            reply_markup=_twitter_edit_profile_kb(),
+        )
+        return
+
+    old_username = profile.username
+    await twitter_repo.update_profile_username(session, country.id, new_username)
+    await cd_repo.touch(session, country.id, "tw_edit_username")
+    await session.flush()
+
+    # لاگ به گروه مدیران
+    await send_log(
+        bot,
+        f"🏷 <b>تغییر نام کاربری توییتر</b>\n\n"
+        f"🏛 کشور: {country.flag} {country.name_fa}\n"
+        f"🔹 شناسه قدیم: @{old_username}\n"
+        f"🔸 شناسه جدید: @{new_username}",
+    )
+
+    await state.clear()
+    await message.answer(
+        "✅ <b>نام کاربری توییتر با موفقیت تغییر کرد!</b>\n\n"
+        f"نام کاربری جدید شما: <code>@{new_username}</code> 🔹\n\n"
+        "توییت‌های جدید شما با این شناسه منتشر خواهند شد.",
+        reply_markup=_twitter_edit_profile_kb(),
+    )
+
+
+# --- ۳. ویرایش عکس پروفایل (کراپ ۱:۱ و پیش‌نمایش) ---
+
+
+@router.callback_query(F.data == "tw_edit:avatar")
+async def cb_edit_avatar_prompt(
+    call: CallbackQuery,
+    state: FSMContext,
+    session: AsyncSession,
+    db_user: User,
+) -> None:
+    """ورود به مرحله تغییر عکس پروفایل."""
+    await call.answer()
+    country = await get_player_country(session, db_user)
+    if country is None:
+        await safe_edit(call, NO_COUNTRY_TEXT)
+        return
+
+    if not await assert_feature(call, session, country, "twitter_profile"):
+        return
+
+    profile = await twitter_repo.get_profile_by_country(session, country.id)
+    if profile is None:
+        return
+
+    # بررسی کول‌داون
+    secs = await cd_repo.remaining_seconds(
+        session, country.id, "tw_edit_avatar", TWITTER_PROFILE_CHANGE_COOLDOWN_HOURS
+    )
+    mins = int((secs + 59) // 60)
+    if mins > 0:
+        await safe_edit(
+            call,
+            "⏳ <b>محدودیت زمانی تغییر عکس پروفایل</b>\n\n"
+            f"تغییر عکس پروفایل هر {fa_number(TWITTER_PROFILE_CHANGE_COOLDOWN_HOURS)} ساعت یک‌بار مجاز است.\n"
+            f"لطفاً حدود <b>{fa_number(mins)} دقیقه</b> دیگر دوباره تلاش کنید.",
+            reply_markup=_twitter_edit_profile_kb(),
+        )
+        return
+
+    await state.set_state(TwitterEditProfileForm.uploading_avatar)
+    text = (
+        "📸 <b>تغییر تصویر پروفایل توییتر</b>\n\n"
+        "لطفاً تصویر جدید مد نظر خود را به صورت عکس (Photo) یا فایل تصویری (حداکثر ۵ مگابایت) ارسال کنید.\n\n"
+        "✂️ <i>ربات به صورت هوشمند وسط تصویر را با نسبت ۱:۱ (مربع ۵۱۲×۵۱۲) برش داده و پیش‌نمایش آن را به شما نشان خواهد داد.</i>"
+    )
+    kb = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="🔙 انصراف", callback_data="tw_edit:cancel", style=STYLE_MAIN),
+    ]])
+    await safe_edit(call, text, reply_markup=kb)
+
+
+@router.message(TwitterEditProfileForm.uploading_avatar, F.photo | F.document)
+async def msg_edit_avatar_upload(
+    message: Message,
+    state: FSMContext,
+    session: AsyncSession,
+    db_user: User,
+) -> None:
+    """دریافت تصویر، پردازش و کراپ ۱:۱، و ارسال پیش‌نمایش جهت تأیید."""
+    country = await get_player_country(session, db_user)
+    if country is None:
+        await message.answer(NO_COUNTRY_TEXT)
+        return
+
+    profile = await twitter_repo.get_profile_by_country(session, country.id)
+    if profile is None:
+        await state.clear()
+        return
+
+    file_id: str | None = None
+    if message.photo:
+        file_id = message.photo[-1].file_id
+    elif message.document:
+        doc = message.document
+        mime = doc.mime_type or ""
+        if not (mime.startswith("image/") or (doc.file_name and doc.file_name.lower().endswith((".jpg", ".jpeg", ".png", ".webp")))):
+            await message.answer("⚠️ فایل ارسالی باید یک تصویر معتبر (JPEG, PNG, WEBP) باشد.")
+            return
+        if doc.file_size and doc.file_size > TWITTER_AVATAR_MAX_BYTES:
+            await message.answer("⚠️ حجم فایل تصویر نباید بیشتر از ۵ مگابایت باشد.")
+            return
+        file_id = doc.file_id
+
+    if not file_id:
+        await message.answer("⚠️ لطفاً یک تصویر معتبر ارسال کنید:")
+        return
+
+    # دانلود و پردازش با Pillow در ThreadPool
+    try:
+        file_info = await bot.get_file(file_id)
+        if not file_info.file_path:
+            await message.answer("❌ امکان دانلود تصویر از تلگرام فراهم نشد. لطفاً دوباره ارسال کنید.")
+            return
+        buf = io.BytesIO()
+        await bot.download_file(file_info.file_path, destination=buf)
+        raw_bytes = buf.getvalue()
+        if len(raw_bytes) > TWITTER_AVATAR_MAX_BYTES:
+            await message.answer("⚠️ حجم تصویر بیش از حد مجاز (۵ مگابایت) است.")
+            return
+
+        cropped_bytes = await asyncio.to_thread(process_avatar_upload, raw_bytes, TWITTER_AVATAR_SIZE)
+    except ValueError as exc:
+        await message.answer(f"❌ خطا در پردازش تصویر: {exc}\nلطفاً تصویر معتبر دیگری ارسال کنید:")
+        return
+    except Exception as exc:
+        logger.exception("Error processing avatar upload: %s", exc)
+        await message.answer("❌ خطای غیرمنتظره در پردازش تصویر. لطفاً تصویر دیگری ارسال فرمایید:")
+        return
+
+    # ارسال پیش‌نمایش به کاربر
+    preview_file = BufferedInputFile(cropped_bytes, filename="avatar_preview.png")
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ تأیید و ذخیره آواتار", callback_data="tw_edit:avatar_confirm", style=STYLE_OK)],
+        [InlineKeyboardButton(text="🔄 ارسال عکس دیگر", callback_data="tw_edit:avatar_retry", style=STYLE_MAIN)],
+        [InlineKeyboardButton(text="❌ انصراف", callback_data="tw_edit:cancel", style=STYLE_NO)],
+    ])
+
+    sent_msg = await message.answer_photo(
+        photo=preview_file,
+        caption=(
+            "🖼 <b>پیش‌نمایش تصویر جدید پروفایل:</b>\n\n"
+            "تصویر شما با موفقیت از مرکز کادر با نسبت ۱:۱ (مربع ۵۱۲×۵۱۲) برش داده شد.\n\n"
+            "آیا مایلید این تصویر به عنوان عکس پروفایل توییتر رسمی شما ثبت شود؟"
+        ),
+        reply_markup=kb,
+    )
+
+    # شناسه فایل تصویر جدید در تلگرام را برای ذخیره نهایی در state نگه می‌داریم
+    new_avatar_file_id = sent_msg.photo[-1].file_id if sent_msg.photo else file_id
+    await state.update_data(pending_avatar_file_id=new_avatar_file_id)
+    await state.set_state(TwitterEditProfileForm.confirming_avatar)
+
+
+@router.message(TwitterEditProfileForm.uploading_avatar)
+async def msg_edit_avatar_invalid(message: Message) -> None:
+    """هشدار در صورت ارسال پیام نامعتبر."""
+    await message.answer("⚠️ لطفاً حتماً یک **عکس یا فایل تصویری معتبر** ارسال فرمایید:")
+
+
+@router.callback_query(TwitterEditProfileForm.confirming_avatar, F.data == "tw_edit:avatar_confirm")
+async def cb_edit_avatar_confirm(
+    call: CallbackQuery,
+    state: FSMContext,
+    session: AsyncSession,
+    db_user: User,
+) -> None:
+    """تأیید نهایی و ذخیره آواتار جدید."""
+    await call.answer()
+    country = await get_player_country(session, db_user)
+    if country is None:
+        await safe_edit(call, NO_COUNTRY_TEXT)
+        return
+
+    if not await assert_feature(call, session, country, "twitter_profile"):
+        return
+
+    profile = await twitter_repo.get_profile_by_country(session, country.id)
+    if profile is None:
+        await state.clear()
+        return
+
+    # بررسی مجدد کول‌داون
+    secs = await cd_repo.remaining_seconds(
+        session, country.id, "tw_edit_avatar", TWITTER_PROFILE_CHANGE_COOLDOWN_HOURS
+    )
+    mins = int((secs + 59) // 60)
+    if mins > 0:
+        await state.clear()
+        await safe_edit(
+            call,
+            f"⏳ محدودیت زمانی تغییر عکس پروفایل فعال است ({fa_number(mins)} دقیقه مانده).",
+            reply_markup=_twitter_edit_profile_kb(),
+        )
+        return
+
+    data = await state.get_data()
+    pending_file_id = data.get("pending_avatar_file_id")
+    if not pending_file_id:
+        await state.clear()
+        await safe_edit(call, "اطلاعات تصویر یافت نشد. لطفاً مجدداً تلاش فرمایید.", reply_markup=_twitter_edit_profile_kb())
+        return
+
+    await twitter_repo.update_profile_avatar(session, country.id, pending_file_id)
+    await cd_repo.touch(session, country.id, "tw_edit_avatar")
+    await session.flush()
+
+    # لاگ به گروه مدیران
+    await send_log(
+        bot,
+        f"🖼 <b>تغییر عکس پروفایل توییتر</b>\n\n"
+        f"🏛 کشور: {country.flag} {country.name_fa}\n"
+        f"👤 شناسه: @{profile.username}\n"
+        "عکس پروفایل با موفقیت تغییر کرد و برش ۱:۱ اعمال شد.",
+    )
+
+    await state.clear()
+    await safe_edit(
+        call,
+        "✅ <b>عکس پروفایل توییتر با موفقیت به‌روزرسانی شد!</b>\n\n"
+        "تصویر جدید شما در توییت‌های بعدی و کارت‌های گرافیکی به صورت دایره‌ای بدون کشیدگی درج خواهد شد.",
+        reply_markup=_twitter_edit_profile_kb(),
+    )
+
+
+@router.callback_query(TwitterEditProfileForm.confirming_avatar, F.data == "tw_edit:avatar_retry")
+async def cb_edit_avatar_retry(call: CallbackQuery, state: FSMContext) -> None:
+    """درخواست ارسال مجدد عکس دیگر."""
+    await call.answer()
+    await state.set_state(TwitterEditProfileForm.uploading_avatar)
+    text = "🔄 لطفاً تصویر جدید دیگری را ارسال فرمایید (به صورت عکس یا فایل تصویری):"
+    kb = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="🔙 انصراف", callback_data="tw_edit:cancel", style=STYLE_MAIN),
+    ]])
+    await safe_edit(call, text, reply_markup=kb)
+
+
+@router.callback_query(F.data == "tw_edit:cancel")
+async def cb_edit_cancel(
+    call: CallbackQuery,
+    state: FSMContext,
+    session: AsyncSession,
+    db_user: User,
+) -> None:
+    """انصراف از ویرایش و بازگشت به زیرمنوی مدیریت پروفایل."""
+    await call.answer("انصراف داده شد.")
+    await state.clear()
+    country = await get_player_country(session, db_user)
+    if country is None:
+        await safe_edit(call, NO_COUNTRY_TEXT)
+        return
+    profile = await twitter_repo.get_profile_by_country(session, country.id)
+    if profile is None:
+        await safe_edit(call, "حساب توییتر یافت نشد.", reply_markup=_twitter_home_kb())
+        return
+
+    disp_name = profile.display_name or db_user.president_name or country.name_fa
+    text = (
+        "✏️ <b>مدیریت و ویرایش پروفایل توییتر (X)</b>\n\n"
+        f"🏛 <b>کشور:</b> {country.flag} {country.name_fa}\n"
+        f"👤 <b>نام نمایشی:</b> {html.escape(disp_name)}\n"
+        f"🏷 <b>نام کاربری (Handle):</b> <code>@{profile.username}</code> 🔹\n\n"
+        f"ℹ️ <i>کول‌داون تغییر هر فیلد {fa_number(TWITTER_PROFILE_CHANGE_COOLDOWN_HOURS)} ساعت است.</i>\n\n"
+        "کدام بخش را می‌خواهید ویرایش کنید؟"
+    )
+    await safe_edit(call, text, reply_markup=_twitter_edit_profile_kb())
 
 
 # ============================================================
@@ -238,8 +859,8 @@ async def cb_tweet_new(
     if mins > 0:
         await safe_edit(
             call,
-            f"⏳ <b>محدودیت زمانی ارسال توییت</b>\n\n"
-            f"ارسال توییت رسمی هر ۱ ساعت یک‌بار امکان‌پذیر است.\n"
+            "⏳ <b>محدودیت زمانی ارسال توییت</b>\n\n"
+            "ارسال توییت رسمی هر ۱ ساعت یک‌بار امکان‌پذیر است.\n"
             f"لطفاً حدود <b>{fa_number(mins)} دقیقه</b> دیگر دوباره تلاش کنید.",
             reply_markup=_twitter_home_kb(),
         )
@@ -321,8 +942,8 @@ async def cb_tweet_confirm(
         await state.clear()
         await safe_edit(
             call,
-            f"⏳ <b>محدودیت زمانی ارسال توییت</b>\n\n"
-            f"ارسال توییت رسمی هر ۱ ساعت یک‌بار امکان‌پذیر است.\n"
+            "⏳ <b>محدودیت زمانی ارسال توییت</b>\n\n"
+            "ارسال توییت رسمی هر ۱ ساعت یک‌بار امکان‌پذیر است.\n"
             f"لطفاً حدود <b>{fa_number(mins)} دقیقه</b> دیگر دوباره تلاش کنید.",
             reply_markup=_twitter_home_kb(),
         )
@@ -347,7 +968,7 @@ async def cb_tweet_confirm(
 
     # ۳. تولید تصویر گرافیکی توییت با Pillow در رم
     now = datetime.now(timezone.utc)
-    pres_name = db_user.president_name or country.name_fa
+    pres_name = profile.display_name or db_user.president_name or country.name_fa
     try:
         tweet_bytes = render_tweet_image(
             country_name=country.name_fa,

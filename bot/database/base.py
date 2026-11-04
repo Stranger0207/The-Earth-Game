@@ -129,6 +129,8 @@ _COLUMN_MIGRATIONS = [
     # v2.11 — چرخه‌های موازی تولید سانتریفیوژ در سالن‌های غنی‌سازی
     ("nuclear_facilities", "centrifuge_batch_started_at", "TIMESTAMP WITH TIME ZONE"),
     ("nuclear_facilities", "centrifuge_batch_done_at", "TIMESTAMP WITH TIME ZONE"),
+    # v2.11 — نام نمایشی در پروفایل توییتر
+    ("twitter_profiles", "display_name", "VARCHAR(64)"),
 ]
 
 

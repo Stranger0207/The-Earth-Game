@@ -238,7 +238,7 @@ async def run_all_checks() -> None:
     )
 
     # ۵.۲ بررسی تعداد دقیق ویژگی‌های یکتا
-    check(f"تعداد ویژگی‌های یکتا در LOCKABLE_FEATURES دقیقا ۳۷ است (فعلی: {len(LOCKABLE_FEATURES)})", len(LOCKABLE_FEATURES) == 37)
+    check(f"تعداد ویژگی‌های یکتا در LOCKABLE_FEATURES دقیقا ۳۹ است (فعلی: {len(LOCKABLE_FEATURES)})", len(LOCKABLE_FEATURES) == 39)
 
     # ۵.۳ بررسی اینکه کلیدهای تکراری سابق در FEATURE_KEY_ALIASES نگاشت شده‌اند
     expected_aliases = [
@@ -288,6 +288,8 @@ async def run_all_checks() -> None:
     async with session_factory() as session:
         mock_god_call = MagicMock()
         mock_god_call.message = MagicMock()
+        mock_god_call.message.photo = None
+        mock_god_call.message.document = None
         mock_god_call.message.edit_text = AsyncMock()
 
         for cat_idx, category in enumerate(FEATURE_CATEGORIES):

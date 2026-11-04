@@ -34,6 +34,7 @@ async def create_profile(
     country_id: int,
     username: str,
     avatar_file_id: str,
+    display_name: str | None = None,
 ) -> TwitterProfile:
     """ایجاد و ذخیره پروفایل توییتر جدید برای کشور."""
     clean_username = username.strip().lstrip("@").lower()
@@ -41,8 +42,45 @@ async def create_profile(
         country_id=country_id,
         username=clean_username,
         avatar_file_id=avatar_file_id,
+        display_name=display_name.strip() if display_name else None,
     )
     session.add(profile)
+    await session.flush()
+    return profile
+
+
+async def update_profile_username(
+    session: AsyncSession, country_id: int, new_username: str
+) -> TwitterProfile | None:
+    """به‌روزرسانی نام کاربری پروفایل توییتر."""
+    profile = await get_profile_by_country(session, country_id)
+    if profile is None:
+        return None
+    profile.username = new_username.strip().lstrip("@").lower()
+    await session.flush()
+    return profile
+
+
+async def update_profile_display_name(
+    session: AsyncSession, country_id: int, new_display_name: str | None
+) -> TwitterProfile | None:
+    """به‌روزرسانی نام نمایشی پروفایل توییتر."""
+    profile = await get_profile_by_country(session, country_id)
+    if profile is None:
+        return None
+    profile.display_name = new_display_name.strip() if new_display_name else None
+    await session.flush()
+    return profile
+
+
+async def update_profile_avatar(
+    session: AsyncSession, country_id: int, new_avatar_file_id: str
+) -> TwitterProfile | None:
+    """به‌روزرسانی فایل آیدی آواتار پروفایل توییتر."""
+    profile = await get_profile_by_country(session, country_id)
+    if profile is None:
+        return None
+    profile.avatar_file_id = new_avatar_file_id
     await session.flush()
     return profile
 

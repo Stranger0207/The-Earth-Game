@@ -250,6 +250,26 @@ SPEECH_COOLDOWN_MINUTES = 10         # بیانیه (سخنرانی): هر ۱۰ 
 STATEMENT_MAX_CHARS = 850            # حداکثر طول متن بیانیه با احتساب سقف ۱۰۲۴ کاراکتری کپشن تلگرام
 PHONE_CALL_COOLDOWN_MINUTES = 30     # تماس تلفنی: هر ۳۰ دقیقه ۱
 TWEET_COOLDOWN_HOURS = 1             # انتشار توییت در توییتر جهانی: هر ۱ ساعت ۱ توییت
+TWITTER_PROFILE_CHANGE_COOLDOWN_HOURS = 2  # کول‌داون تغییر فیلدهای پروفایل توییتر (۲ ساعت)
+TWITTER_NAME_MIN_CHARS = 3                 # حداقل طول نام نمایشی توییتر
+TWITTER_NAME_MAX_CHARS = 35                # حداکثر طول نام نمایشی توییتر
+TWITTER_AVATAR_SIZE = 512                  # سایز برش مربعی ۱:۱ آواتار توییتر (پیکسل)
+TWITTER_AVATAR_MAX_BYTES = 5 * 1024 * 1024 # سقف حجم فایل تصویر آواتار (۵ مگابایت)
+RESERVED_TWITTER_HANDLES: set[str] = {
+    "admin",
+    "administrator",
+    "god",
+    "root",
+    "system",
+    "support",
+    "telegram",
+    "earthgame",
+    "moderator",
+    "bot",
+    "official",
+    "un",
+    "unitednations",
+}
 
 # ============================================================
 #  زمان‌بندی کنش‌های دیپلماتیک
@@ -687,6 +707,7 @@ LOCKABLE_FEATURES: dict[str, tuple[str, str]] = {
     "dip.alliance": ("🤝 اتحاد", FEATURE_CAT_DIPLOMACY),
     "dip.speech": ("🎤 سخنرانی", FEATURE_CAT_DIPLOMACY),
     "twitter": ("🐦 توییتر (X)", FEATURE_CAT_DIPLOMACY),
+    "twitter_profile": ("✏️ ویرایش پروفایل توییتر", FEATURE_CAT_DIPLOMACY),
     # 🏛 حاکمیت
     "gov.system": ("🏛 تغییر نظام حاکمیتی", FEATURE_CAT_GOVERNANCE),
     "gov.tax": ("💵 مالیات", FEATURE_CAT_GOVERNANCE),

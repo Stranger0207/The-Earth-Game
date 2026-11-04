@@ -273,6 +273,16 @@ class TwitterOnboardingForm(StatesGroup):
 
     entering_username = State()     # نام کاربری (انگلیسی، ارقام، آندرلاین)
     uploading_avatar = State()      # ارسال تصویر پروفایل
+    confirming_avatar = State()     # پیش‌نمایش و تایید آواتار کراپ‌شده
+
+
+class TwitterEditProfileForm(StatesGroup):
+    """فرم ویرایش پروفایل توییتر (عکس، نام نمایشی، یوزرنیم)."""
+
+    editing_name = State()          # وارد کردن نام نمایشی جدید
+    editing_username = State()      # وارد کردن یوزرنیم جدید
+    uploading_avatar = State()      # آپلود تصویر جدید
+    confirming_avatar = State()     # پیش‌نمایش و تأیید نهایی آواتار کراپ‌شده
 
 
 class TweetForm(StatesGroup):

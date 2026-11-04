@@ -14,7 +14,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Any
 
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, ImageOps
 
 from .letter_image_service import (
     _ensure_fonts,
@@ -48,10 +48,52 @@ def _draw_verified_badge(
     draw.line([p2, p3], fill=COLOR_WHITE, width=2)
 
 
+def process_avatar_upload(image_bytes: bytes, target_size: int = 512) -> bytes:
+    """
+    پردازش و اعتبارسنجی تصویر آواتار آپلودشده:
+    - تصحیح جهت EXIF
+    - تبدیل مودهای رنگی به RGB با پس‌زمینه سفید
+    - کراپ مربعی دقیق ۱:۱ از مرکز به اندازه target_size
+    - بازگرداندن بایت‌های PNG
+    """
+    if not image_bytes:
+        raise ValueError("فایل تصویر خالی است.")
+
+    Image.MAX_IMAGE_PIXELS = 25_000_000
+    try:
+        raw_img = Image.open(io.BytesIO(image_bytes))
+    except Exception as exc:
+        raise ValueError("فرمت فایل نامعتبر است یا تصویر آسیب دیده است.") from exc
+
+    w, h = raw_img.size
+    if w < 16 or h < 16:
+        raise ValueError("ابعاد تصویر بسیار کوچک است (حداقل ۱۶×۱۶ پیکسل).")
+    if w > 8000 or h > 8000:
+        raise ValueError("ابعاد تصویر بیش از حد بزرگ است (حداکثر ۸۰۰۰×۸۰۰۰ پیکسل).")
+
+    img = ImageOps.exif_transpose(raw_img)
+
+    if img.mode in ("RGBA", "LA") or (img.mode == "P" and "transparency" in img.info):
+        bg = Image.new("RGB", img.size, (255, 255, 255))
+        rgba = img.convert("RGBA")
+        bg.paste(rgba, mask=rgba.split()[3])
+        img = bg
+    else:
+        img = img.convert("RGB")
+
+    cropped = ImageOps.fit(
+        img, (target_size, target_size), method=Image.Resampling.LANCZOS, centering=(0.5, 0.5)
+    )
+
+    out_buf = io.BytesIO()
+    cropped.save(out_buf, format="PNG", optimize=True)
+    return out_buf.getvalue()
+
+
 def _draw_circular_avatar(
     avatar_image: Image.Image | None, size: int = 80
 ) -> Image.Image:
-    """برش تصویر آواتار به صورت کاملاً دایره‌ای با ماسک شفافیت."""
+    """برش تصویر آواتار به صورت کاملاً دایره‌ای با ماسک شفافیت و supersampling بدون دندانه."""
     if avatar_image is None:
         # فالبک به آواتار پیش‌فرض خاکستری
         im = Image.new("RGBA", (size, size), (47, 51, 54, 255))
@@ -61,14 +103,30 @@ def _draw_circular_avatar(
         draw.ellipse([size * 0.12, size * 0.62, size * 0.88, size * 1.15], fill="#71767B")
         return im
 
-    # تغییر اندازه با حفظ تناسب
-    resized = avatar_image.convert("RGBA").resize((size, size), Image.Resampling.LANCZOS)
-    mask = Image.new("L", (size, size), 0)
+    # اصلاح چرخش EXIF و کراپ مربعی ۱:۱ از مرکز برای جلوگیری از کشیدگی تصاویر مستطیلی قدیمی
+    img = ImageOps.exif_transpose(avatar_image)
+    if img.mode in ("RGBA", "LA") or (img.mode == "P" and "transparency" in img.info):
+        bg = Image.new("RGBA", img.size, (255, 255, 255, 255))
+        bg.paste(img.convert("RGBA"), mask=img.convert("RGBA").split()[3])
+        img = bg
+    else:
+        img = img.convert("RGBA")
+
+    # کراپ دقیق ۱:۱ از مرکز
+    square_img = ImageOps.fit(
+        img, (size, size), method=Image.Resampling.LANCZOS, centering=(0.5, 0.5)
+    )
+
+    # ماسک دایره‌ای با ابرنمونه‌برداری (supersampling 4x) برای لبه‌های کاملاً نرم و صیقلی
+    scale = 4
+    large_size = size * scale
+    mask = Image.new("L", (large_size, large_size), 0)
     mask_draw = ImageDraw.Draw(mask)
-    mask_draw.ellipse([0, 0, size, size], fill=255)
+    mask_draw.ellipse([0, 0, large_size - 1, large_size - 1], fill=255)
+    mask = mask.resize((size, size), Image.Resampling.LANCZOS)
 
     output = Image.new("RGBA", (size, size), (0, 0, 0, 0))
-    output.paste(resized, (0, 0), mask=mask)
+    output.paste(square_img, (0, 0), mask=mask)
     return output
 
 

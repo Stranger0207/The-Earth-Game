@@ -38,6 +38,8 @@ class TwitterProfile(Base):
     username: Mapped[str] = mapped_column(
         String(64), nullable=False, unique=True, index=True
     )
+    # نام نمایشی رسمی کشور / مسئول در توییتر
+    display_name: Mapped[str | None] = mapped_column(String(64), nullable=True)
     # فایل آیدی تصویر پروفایل در تلگرام
     avatar_file_id: Mapped[str] = mapped_column(String(256), nullable=False)
     created_at: Mapped[datetime] = mapped_column(

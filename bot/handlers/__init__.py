@@ -23,6 +23,7 @@ from . import (
     god_locks,
     godmode,
     governance,
+    group_guard,
     investment,
     joint,
     kick,
@@ -78,6 +79,7 @@ def register_all_routers(dp: Dispatcher) -> None:
     dp.errors.register(global_error_handler)
 
     dp.include_router(start.router)
+    dp.include_router(group_guard.router)
     dp.include_router(claim.router)
     dp.include_router(admin.router)
     dp.include_router(admin_report.router)

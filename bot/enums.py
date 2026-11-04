@@ -359,6 +359,32 @@ GOVERNMENT_EMOJI: dict[GovernmentType, str] = {
     GovernmentType.FEDERAL: "🏢",
 }
 
+# عنوان رسمی رهبر بر اساس نوع نظام حاکمیتی
+GOVERNMENT_LEADER_TITLE: dict[GovernmentType, str] = {
+    GovernmentType.REPUBLIC: "رئیس‌جمهور",
+    GovernmentType.DEMOCRACY: "رئیس‌جمهور",
+    GovernmentType.MONARCHY: "پادشاه",
+    GovernmentType.CONSTITUTIONAL_MONARCHY: "نخست‌وزیر",
+    GovernmentType.COMMUNISM: "دبیرکل",
+    GovernmentType.THEOCRACY: "رهبر عالی",
+    GovernmentType.DICTATORSHIP: "رهبر",
+    GovernmentType.FEDERAL: "رئیس‌جمهور",
+}
+
+
+def get_leader_title(government_type: str | GovernmentType | None) -> str:
+    """دریافت عنوان رسمی رهبر متناسب با نوع نظام حاکمیتی کشور."""
+    if not government_type:
+        return "رئیس‌جمهور"
+    if isinstance(government_type, str):
+        try:
+            gt = GovernmentType(government_type)
+        except ValueError:
+            return "رئیس‌جمهور"
+    else:
+        gt = government_type
+    return GOVERNMENT_LEADER_TITLE.get(gt, "رئیس‌جمهور")
+
 
 class ProtestType(str, enum.Enum):
     """انواع اعتراضات داخلی (v1.10.2)."""

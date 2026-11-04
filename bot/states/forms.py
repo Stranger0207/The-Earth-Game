@@ -125,6 +125,7 @@ class SpeechForm(StatesGroup):
 
     entering_text = State()
     entering_photo = State()
+    confirming = State()
     quoting = State()
 
 

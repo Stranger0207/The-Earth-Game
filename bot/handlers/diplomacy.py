@@ -4,10 +4,12 @@
 
 from __future__ import annotations
 
+import html
 import logging
 from datetime import datetime, timedelta, timezone
 
 from aiogram import F, Router
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.types import (
@@ -30,6 +32,7 @@ from ..constants import (
     PHONE_CALL_COOLDOWN_MINUTES,
     PHONE_CALL_DURATION_MINUTES,
     SPEECH_COOLDOWN_MINUTES,
+    STATEMENT_MAX_CHARS,
     VISA_WAIVER_ADMIN_COST,
     VISA_WAIVER_SATISFACTION_PENALTY,
     VISA_WAIVER_STABILITY_PENALTY,
@@ -49,7 +52,14 @@ from ..database.repositories import cooldowns as cd_repo
 from ..database.repositories import countries as countries_repo
 from ..database.repositories import diplomacy as dip_repo
 from ..database.repositories import governance as gov_repo
-from ..enums import AdminGroupType, SANCTION_FA, DiplomacyStatus, NewsCategory, SanctionType
+from ..enums import (
+    SANCTION_FA,
+    AdminGroupType,
+    DiplomacyStatus,
+    NewsCategory,
+    SanctionType,
+    get_leader_title,
+)
 from ..keyboards.common import countries_kb
 from ..keyboards.diplomacy import (
     diplomacy_menu_kb,
@@ -74,7 +84,7 @@ from ..database.repositories import users as users_repo
 from ..states import CallForm, ContractForm, MeetingForm, SanctionForm, SpeechForm
 from ..utils.numbers import fa_number
 from ..utils.screens import safe_edit, show_menu
-from ..utils.ui import STYLE_MAIN, STYLE_NO, STYLE_OK, header
+from ..utils.ui import DIVIDER, STYLE_MAIN, STYLE_NO, STYLE_OK, header
 from .deps import NO_COUNTRY_TEXT, assert_feature, get_player_country
 
 logger = logging.getLogger(__name__)
@@ -87,8 +97,11 @@ async def _get_bot_username() -> str:
     """نام کاربری ربات را یک‌بار می‌گیرد و کش می‌کند."""
     global _bot_username
     if _bot_username is None:
-        me = await bot.get_me()
-        _bot_username = me.username
+        try:
+            me = await bot.get_me()
+            _bot_username = me.username or "EarthGameBot"
+        except Exception:
+            _bot_username = "EarthGameBot"
     return _bot_username
 
 async def _president_name(session: AsyncSession, country) -> str:
@@ -2609,102 +2622,240 @@ async def cb_sanction_reject(call: CallbackQuery, session: AsyncSession) -> None
 
 
 # ============================================================
-#  🎤 سیستم سخنرانی و نقل قول (v1.5)
+#  🎤 سیستم سخنرانی و بیانیه رسمی (v1.5 / ارتقا به v2.11)
 # ============================================================
+
+
+def format_statement_message(leader_title: str, leader_name: str, speech_text: str) -> str:
+    """
+    فرمت دقیق بیانیه طبق قواعد v2.11:
+    دو خط اول (🎙| یک بیانیه از طرف ... منتشر شد! و متن سخنرانی:) باید دقیقاً Bold باشند.
+    متن خودِ بیانیه کاربر نباید Bold باشد و به صورت متن معمولی نمایش داده می‌شود.
+    کاراکترهای خاص HTML پالایش می‌شوند.
+    """
+    escaped_title = html.escape((leader_title or "رئیس‌جمهور").strip())
+    escaped_name = html.escape((leader_name or "—").strip())
+    escaped_text = html.escape((speech_text or "").strip())
+
+    return (
+        f"<b>🎙| یک بیانیه از طرف {escaped_title} {escaped_name} منتشر شد!</b>\n\n"
+        f"<b>متن سخنرانی:</b>\n"
+        f"{escaped_text}"
+    )
+
+
 @router.callback_query(F.data == "dip:speech")
 async def cb_speech(call: CallbackQuery, state: FSMContext, session: AsyncSession, db_user: User) -> None:
-    """شروع سخنرانی: درخواست متن."""
+    """شروع سخنرانی: نمایش راهنما و درخواست متن."""
     await call.answer()
     country = await get_player_country(session, db_user)
     if country is None:
-        await safe_edit(call,NO_COUNTRY_TEXT)
+        await safe_edit(call, NO_COUNTRY_TEXT)
         return
     if not await assert_feature(call, session, country, "dip.speech"):
         return
+
     # کول‌داون بیانیه: هر ۱۰ دقیقه ۱ بیانیه (v1.9)
     mins = await _cooldown_remaining_min(
         session, country.id, "speech", SPEECH_COOLDOWN_MINUTES / 60
     )
     if mins > 0:
-        await safe_edit(call,
+        await safe_edit(
+            call,
             _cooldown_text("ارسال بیانیه", f"{fa_number(SPEECH_COOLDOWN_MINUTES)} دقیقه", mins),
             reply_markup=diplomacy_menu_kb(),
         )
         return
+
     await state.set_state(SpeechForm.entering_text)
-    await safe_edit(call,
-        "🎤 متن سخنرانی/بیانیه‌ی خود را وارد کنید:",
-        reply_markup=_back_kb("menu:diplomacy"),
+    text = (
+        header("سخنرانی و بیانیه رسمی", "🎙") + "\n\n"
+        "متن سخنرانی یا بیانیه‌ی رسمی کشور خود را ارسال کنید:\n\n"
+        f"📌 <b>حداکثر سقف مجاز:</b> {fa_number(STATEMENT_MAX_CHARS)} کاراکتر\n"
+        "<i>پس از ارسال متن، تصویر بیانیه را ارسال کرده و پیش‌نمایش نهایی را قبل از انتشار مشاهده خواهید کرد.</i>"
     )
+    kb = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="❌ انصراف", callback_data="speech:cancel", style=STYLE_NO)
+    ]])
+    await safe_edit(call, text, reply_markup=kb)
+
+
+@router.callback_query(StateFilter(SpeechForm), F.data == "speech:cancel")
+async def cb_speech_cancel(call: CallbackQuery, state: FSMContext, session: AsyncSession, db_user: User) -> None:
+    """انصراف از ارسال سخنرانی و بازگشت به منوی دیپلماسی."""
+    await call.answer("عملیات ارسال بیانیه لغو شد.")
+    await state.clear()
+    country = await get_player_country(session, db_user)
+    from ..keyboards.united_nations import un_main_menu_kb
+    kb = un_main_menu_kb() if (country and country.name_en == "UN") else diplomacy_menu_kb()
+    await safe_edit(call, "🕊 <b>بخش دیپلماسی بین‌المللی</b>\nیکی از گزینه‌ها را انتخاب کنید:", reply_markup=kb)
 
 
 @router.message(SpeechForm.entering_text, F.text)
 async def msg_speech_text(message: Message, state: FSMContext) -> None:
-    """ثبت متن سخنرانی و درخواست عکس."""
-    await state.update_data(speech_text=message.text)
+    """دریافت و اعتبارسنجی پیش‌دستانه متن بیانیه."""
+    raw_text = (message.text or "").strip()
+    if not raw_text:
+        await message.answer("⚠️ متن بیانیه نمی‌تواند خالی باشد. لطفاً متن بیانیه‌ی خود را ارسال کنید:")
+        return
+
+    text_len = len(raw_text)
+    if text_len > STATEMENT_MAX_CHARS:
+        diff = text_len - STATEMENT_MAX_CHARS
+        kb = InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="❌ انصراف", callback_data="speech:cancel", style=STYLE_NO)
+        ]])
+        await message.answer(
+            f"⚠️ <b>طول متن بیانیه بیش از حد مجاز است!</b>\n\n"
+            f"📏 طول متن ارسالی شما: <b>{fa_number(text_len)}</b> کاراکتر\n"
+            f"📌 حداکثر سقف مجاز: <b>{fa_number(STATEMENT_MAX_CHARS)}</b> کاراکتر\n"
+            f"✂️ لطفاً متن خود را حداقل <b>{fa_number(diff)}</b> کاراکتر کوتاه‌تر کرده و مجدداً ارسال نمایید.",
+            reply_markup=kb,
+        )
+        return
+
+    await state.update_data(speech_text=raw_text)
     await state.set_state(SpeechForm.entering_photo)
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✏️ ویرایش متن", callback_data="speechback:text", style=STYLE_MAIN)],
+        [InlineKeyboardButton(text="❌ انصراف", callback_data="speech:cancel", style=STYLE_NO)],
+    ])
     await message.answer(
-        "📸 حالا عکس رئیس‌جمهور را ارسال کنید:",
-        reply_markup=_back_kb("speechback:text"),
+        f"✅ متن بیانیه با موفقیت ثبت شد ({fa_number(text_len)} کاراکتر).\n\n"
+        "📸 حالا لطفاً <b>عکس رهبر یا تصویر مربوطه</b> را برای ضمیمه‌شدن به این بیانیه ارسال فرمایید (Photo):",
+        reply_markup=kb,
     )
 
 
 @router.callback_query(StateFilter(SpeechForm), F.data == "speechback:text")
 async def cb_speech_back_text(call: CallbackQuery, state: FSMContext) -> None:
-    """بازگشت به وارد کردن متن سخنرانی."""
+    """بازگشت به وارد کردن مجدد متن سخنرانی."""
     await call.answer()
     await state.set_state(SpeechForm.entering_text)
-    await safe_edit(call,
-        "🎤 متن سخنرانی/بیانیه‌ی خود را وارد کنید:",
-        reply_markup=_back_kb("menu:diplomacy"),
+    text = (
+        header("ویرایش متن بیانیه", "✏️") + "\n\n"
+        "متن جدید سخنرانی یا بیانیه‌ی رسمی کشور خود را ارسال کنید:\n\n"
+        f"📌 <b>سقف مجاز:</b> حداکثر {fa_number(STATEMENT_MAX_CHARS)} کاراکتر"
     )
+    kb = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="❌ انصراف", callback_data="speech:cancel", style=STYLE_NO)
+    ]])
+    await safe_edit(call, text, reply_markup=kb)
 
 
 @router.message(SpeechForm.entering_photo, F.photo)
 async def msg_speech_photo(message: Message, state: FSMContext, session: AsyncSession, db_user: User) -> None:
-    """انتشار سخنرانی (عکس + متن) در کانال دیپلماسی به‌همراه دکمه‌ی نقل قول."""
-    data = await state.get_data()
-    speech_text = data.get("speech_text", "")
+    """دریافت تصویر بیانیه و نمایش پیش‌نمایش نهایی قبل از انتشار."""
     country = await get_player_country(session, db_user)
-    await state.clear()
     if country is None:
+        await state.clear()
         await message.answer(NO_COUNTRY_TEXT)
         return
 
-    if settings.news_diplomacy_channel_id is None:
-        await message.answer("کانال دیپلماسی تنظیم نشده است.")
+    data = await state.get_data()
+    speech_text = data.get("speech_text", "")
+    if not speech_text:
+        await state.set_state(SpeechForm.entering_text)
+        await message.answer("⚠️ متن بیانیه یافت نشد. لطفاً ابتدا متن بیانیه را ارسال کنید:")
         return
 
-    president = db_user.president_name or country.name_fa
-    photo_id = message.photo[-1].file_id  # بزرگ‌ترین نسخه‌ی عکس
+    photo_id = message.photo[-1].file_id
+    await state.update_data(photo_id=photo_id)
+    await state.set_state(SpeechForm.confirming)
 
-    # ابتدا رکورد سخنرانی ساخته می‌شود تا آی‌دی برای دکمه‌ی نقل قول داشته باشیم
+    is_un = (country.name_en == "UN")
+    if is_un:
+        leader_title = "دبیرکل"
+        leader_name = "سازمان ملل متحد 🇺🇳"
+    else:
+        leader_title = get_leader_title(country.government_type)
+        leader_name = db_user.president_name or country.name_fa
+
+    formatted = format_statement_message(leader_title, leader_name, speech_text)
+
+    preview_caption = (
+        f"👁 <b>پیش‌نمایش بیانیه قبل از انتشار</b>\n"
+        f"{DIVIDER}\n\n"
+        f"{formatted}\n\n"
+        f"{DIVIDER}\n"
+        "آیا برای انتشار رسمی این بیانیه در کانال دیپلماسی مطمئنید؟"
+    )
+
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ انتشار بیانیه", callback_data="speech:publish", style=STYLE_OK)],
+        [
+            InlineKeyboardButton(text="✏️ ویرایش متن", callback_data="speechback:text", style=STYLE_MAIN),
+            InlineKeyboardButton(text="❌ انصراف", callback_data="speech:cancel", style=STYLE_NO),
+        ],
+    ])
+
+    await message.answer_photo(
+        photo=photo_id,
+        caption=preview_caption,
+        parse_mode="HTML",
+        reply_markup=kb,
+    )
+
+
+@router.message(SpeechForm.entering_photo)
+async def msg_speech_photo_invalid(message: Message) -> None:
+    """راهنمایی در صورت ارسال پیام نامعتبر به جای عکس."""
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✏️ ویرایش متن", callback_data="speechback:text", style=STYLE_MAIN)],
+        [InlineKeyboardButton(text="❌ انصراف", callback_data="speech:cancel", style=STYLE_NO)],
+    ])
+    await message.answer("⚠️ لطفاً حتماً یک **عکس (Photo)** ارسال کنید:", reply_markup=kb)
+
+
+@router.callback_query(StateFilter(SpeechForm), F.data == "speech:publish")
+async def cb_speech_publish(call: CallbackQuery, state: FSMContext, session: AsyncSession, db_user: User) -> None:
+    """انتشار نهایی بیانیه در کانال دیپلماسی، ثبت ممیزی و فعال‌سازی کول‌داون."""
+    country = await get_player_country(session, db_user)
+    if country is None:
+        await state.clear()
+        await safe_edit(call, NO_COUNTRY_TEXT)
+        return
+
+    # بررسی مجدد کول‌داون
+    mins = await _cooldown_remaining_min(
+        session, country.id, "speech", SPEECH_COOLDOWN_MINUTES / 60
+    )
+    if mins > 0:
+        await call.answer(
+            _cooldown_text("ارسال بیانیه", f"{fa_number(SPEECH_COOLDOWN_MINUTES)} دقیقه", mins),
+            show_alert=True,
+        )
+        await state.clear()
+        return
+
+    data = await state.get_data()
+    speech_text = data.get("speech_text", "")
+    photo_id = data.get("photo_id")
+    if not speech_text or not photo_id:
+        await call.answer("اطلاعات بیانیه منقضی شده است. لطفاً مجدداً اقدام کنید.", show_alert=True)
+        await state.clear()
+        return
+
+    if settings.news_diplomacy_channel_id is None:
+        await call.answer("کانال دیپلماسی در تنظیمات ربات تعریف نشده است.", show_alert=True)
+        return
+
+    is_un = (country.name_en == "UN")
+    if is_un:
+        leader_title = "دبیرکل"
+        leader_name = "سازمان ملل متحد 🇺🇳"
+    else:
+        leader_title = get_leader_title(country.government_type)
+        leader_name = db_user.president_name or country.name_fa
+
+    formatted_caption = format_statement_message(leader_title, leader_name, speech_text)
+
+    # ایجاد رکورد اولیه سخنرانی جهت لینک نقل‌قول
     speech = Speech(speaker_country=country.id)
     session.add(speech)
     await session.flush()
 
     username = await _get_bot_username()
-    is_un = (country.name_en == "UN")
-    if is_un:
-        caption = (
-            "🎙 <b>بیانیه رسمی دبیرکل سازمان ملل متحد 🇺🇳</b>\n\n"
-            f"متن بیانیه:\n{speech_text}"
-        )
-        log_text = (
-            "🎙 <b>بیانیه رسمی دبیرکل سازمان ملل متحد 🇺🇳</b>\n\n"
-            f"📝 متن:\n{speech_text}"
-        )
-    else:
-        caption = (
-            f"📢 یک بیانیه از طرف رئیس‌جمهور <b>{president}</b> —- منتشر شد!\n\n"
-            f"متن سخنرانی:\n{speech_text}"
-        )
-        log_text = (
-            f"📢 <b>بیانیه</b>\n"
-            f"کشور: {country.flag} {country.name_fa} (رئیس‌جمهور {president})\n\n"
-            f"📝 متن:\n{speech_text}"
-        )
-
     quote_kb = InlineKeyboardMarkup(inline_keyboard=[[
         InlineKeyboardButton(
             text="💬 نقل قول",
@@ -2712,24 +2863,56 @@ async def msg_speech_photo(message: Message, state: FSMContext, session: AsyncSe
             style=STYLE_MAIN,
         )
     ]])
-    sent = await bot.send_photo(
-        settings.news_diplomacy_channel_id,
-        photo=photo_id,
-        caption=caption,
-        reply_markup=quote_kb,
-    )
-    # ذخیره‌ی آی‌دی پیام کانال برای ریپلای نقل قول‌ها
-    speech.channel_message_id = sent.message_id
 
-    # ثبت کول‌داون بیانیه: هر ۱۰ دقیقه ۱ بیانیه (v1.9)
+    try:
+        sent = await bot.send_photo(
+            settings.news_diplomacy_channel_id,
+            photo=photo_id,
+            caption=formatted_caption,
+            parse_mode="HTML",
+            reply_markup=quote_kb,
+        )
+    except TelegramBadRequest as exc:
+        logger.warning("TelegramBadRequest while sending speech: %s", exc)
+        err_lower = str(exc).lower()
+        if "too long" in err_lower or "caption" in err_lower:
+            fa_error = "طول متن بیانیه فراتر از سقف کپشن تلگرام است. لطفاً متن را کوتاه‌تر کنید."
+        else:
+            fa_error = f"خطای تلگرام در ارسال بیانیه: {exc}"
+        await call.answer(fa_error, show_alert=True)
+        return
+    except Exception as exc:
+        logger.exception("Unexpected error while sending speech: %s", exc)
+        await call.answer("خطای غیرمنتظره در ارسال بیانیه به کانال دیپلماسی.", show_alert=True)
+        return
+
+    # پس از ارسال موفقیت‌آمیز: ثبت آیدی پیام، کول‌داون و لاگ ممیزی
+    speech.channel_message_id = sent.message_id
     await cd_repo.touch(session, country.id, "speech")
 
-    # لاگ بیانیه به گروه لاگ مدیران (v1.9)
-    await send_log(bot, log_text)
+    log_text = (
+        "📢 <b>ممیزی انتشار بیانیه رسمی</b>\n"
+        f"🏴 کشور: {country.flag} {country.name_fa}\n"
+        f"👤 صادرکننده: {leader_title} {html.escape(leader_name)}\n\n"
+        f"{formatted_caption}"
+    )
+    try:
+        await send_log(bot, log_text)
+    except Exception as exc:
+        logger.warning("Failed to send speech audit log: %s", exc)
+
+    await session.commit()
+    await state.clear()
+    await call.answer("بیانیه رسمی با موفقیت منتشر شد ✅")
 
     from ..keyboards.united_nations import un_main_menu_kb
     resp_kb = un_main_menu_kb() if is_un else diplomacy_menu_kb()
-    await message.answer("✅ سخنرانی شما در کانال دیپلماسی منتشر شد.", reply_markup=resp_kb)
+    success_text = (
+        header("انتشار موفق بیانیه", "✅") + "\n\n"
+        "بیانیه‌ی رسمی شما با موفقیت در کانال دیپلماسی مخابره شد.\n\n"
+        f"⏳ <b>کول‌داون ارسال بیانیه‌ی بعدی:</b> {fa_number(SPEECH_COOLDOWN_MINUTES)} دقیقه"
+    )
+    await safe_edit(call, success_text, reply_markup=resp_kb)
 
 
 @router.message(SpeechForm.quoting, F.text)

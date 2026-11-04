@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,6 +14,7 @@ from ..models import (
     GroupMeeting,
     GroupMeetingParticipant,
     Meeting,
+    MeetingLogRelay,
     PhoneCall,
     PhoneCallMessage,
     Sanction,
@@ -717,4 +718,54 @@ async def list_recent_un_sideline_group_meetings_for_country(
         .limit(limit)
     )
     return list(result.scalars().all())
+
+
+# ------------------------- نگاشت پیام لاگ به نشست (v2.12.0) -------------------------
+
+
+async def record_meeting_log_relay(
+    session: AsyncSession,
+    log_chat_id: int,
+    log_message_id: int,
+    meeting_kind: str,
+    meeting_id: int,
+    sender_country_id: int | None = None,
+    sender_user_id: int | None = None,
+    preview_text: str = "",
+) -> MeetingLogRelay:
+    """ثبت نگاشت یک پیام رله‌شده در گروه لاگ به نشست مربوطه."""
+    relay = MeetingLogRelay(
+        log_chat_id=log_chat_id,
+        log_message_id=log_message_id,
+        meeting_kind=meeting_kind,
+        meeting_id=meeting_id,
+        sender_country_id=sender_country_id,
+        sender_user_id=sender_user_id,
+        preview_text=preview_text[:255],
+    )
+    session.add(relay)
+    await session.flush()
+    return relay
+
+
+async def get_meeting_log_relay(
+    session: AsyncSession, log_chat_id: int, log_message_id: int
+) -> MeetingLogRelay | None:
+    """یافتن نگاشت پیام لاگ به نشست بر اساس آی‌دی گروه لاگ و آی‌دی پیام."""
+    stmt = select(MeetingLogRelay).where(
+        MeetingLogRelay.log_chat_id == log_chat_id,
+        MeetingLogRelay.log_message_id == log_message_id,
+    )
+    return (await session.execute(stmt)).scalar_one_or_none()
+
+
+async def cleanup_meeting_log_relays(
+    session: AsyncSession, max_age_hours: int = 48
+) -> int:
+    """حذف رکوردهای نگاشت پیام لاگ قدیمی‌تر از بازه مشخص (پیش‌فرض ۴۸ ساعت)."""
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=max_age_hours)
+    stmt = delete(MeetingLogRelay).where(MeetingLogRelay.created_at < cutoff)
+    res = await session.execute(stmt)
+    return res.rowcount or 0
+
 

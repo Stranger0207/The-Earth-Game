@@ -1687,6 +1687,21 @@ async def process_un_assembly(bot: Bot) -> None:
                 pass
 
 
+async def process_meeting_log_relays_cleanup() -> None:
+    """پاک‌سازی دوره‌ای نگاشت‌های قدیمی پیام لاگ به نشست (v2.12.0)."""
+    from ..constants import MEETING_LOG_RELAY_RETENTION_HOURS
+    from ..database.base import async_session_factory
+    from ..database.repositories import diplomacy as dip_repo
+
+    async with async_session_factory() as session:
+        deleted = await dip_repo.cleanup_meeting_log_relays(
+            session, max_age_hours=MEETING_LOG_RELAY_RETENTION_HOURS
+        )
+        if deleted > 0:
+            await session.commit()
+            logger.info("Cleaned up %d expired meeting log relay mapping(s).", deleted)
+
+
 async def _tick(bot: Bot) -> None:
     """جاب اصلی که هر دقیقه همه‌ی پردازش‌های زمان‌دار را اجرا می‌کند.
 
@@ -1712,6 +1727,7 @@ async def _tick(bot: Bot) -> None:
         ("process_timed_suspensions", lambda: process_timed_suspensions(bot)),
         ("process_market_decay", lambda: process_market_decay()),
         ("process_un_assembly", lambda: process_un_assembly(bot)),
+        ("process_meeting_log_relays_cleanup", lambda: process_meeting_log_relays_cleanup()),
     )
     for name, run in jobs:
         try:

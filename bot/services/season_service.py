@@ -42,6 +42,7 @@ from ..database.models import (
     GroupMeeting,
     GroupMeetingParticipant,
     Meeting,
+    MeetingLogRelay,
     MilitaryAsset,
     MilitaryFactory,
     MilitarySale,
@@ -134,6 +135,7 @@ async def reset_season(session: AsyncSession) -> dict[str, int]:
     await session.execute(delete(Contract))
     await session.execute(delete(PhoneCallMessage))
     await session.execute(delete(PhoneCall))
+    await session.execute(delete(MeetingLogRelay))
     await session.execute(delete(GroupMeetingParticipant))
     await session.execute(delete(GroupMeeting))
     await session.execute(delete(Meeting))

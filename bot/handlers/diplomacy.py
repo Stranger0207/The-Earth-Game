@@ -2968,15 +2968,33 @@ async def msg_speech_quote(message: Message, state: FSMContext, session: AsyncSe
 # ============================================================
 def _reply_prefix(message: Message) -> str:
     """
-    اگر این پیام ریپلای به یک پیامِ نشست باشد، یک سرخط «در پاسخ به ...» می‌سازد (v1.10.1).
-    این کار باعث می‌شود ریپلای‌کردن روی پیام طرف مقابل، برای او معنادار رله شود.
+    اگر این پیام ریپلای به یک پیامِ نشست باشد، یک سرخط «در پاسخ به ...» می‌سازد (v1.10.1 / v2.12.0).
+    این کار باعث می‌شود ریپلای‌کردن روی پیام طرف مقابل یا پیام ادمین، به درستی رله شود.
     """
     replied = message.reply_to_message
     if replied is None:
         return ""
-    quoted = (replied.text or replied.caption or "").strip()
-    if not quoted:
+    raw_quoted = (replied.text or replied.caption or "").strip()
+    if not raw_quoted:
         return ""
+
+    # اگر ریپلای روی پیام ادمین است
+    for line in raw_quoted.split("\n"):
+        line_clean = line.strip()
+        if "👮‍♂️ ادمین" in line_clean:
+            if ": " in line_clean:
+                admin_part, msg_part = line_clean.split(": ", 1)
+                snippet = msg_part[:50] + ("…" if len(msg_part) > 50 else "")
+                return f"↩️ در پاسخ به «{admin_part}: {snippet}»:\n"
+            snippet = line_clean[:50] + ("…" if len(line_clean) > 50 else "")
+            return f"↩️ در پاسخ به «{snippet}»:\n"
+
+    # حذف سرخط ریپلای قبلی در صورت وجود (جلوگیری از انباشت سرخط‌ها)
+    lines = [ln.strip() for ln in raw_quoted.split("\n") if ln.strip()]
+    if lines and lines[0].startswith("↩️ در پاسخ به"):
+        lines = lines[1:]
+    quoted = " ".join(lines).strip() if lines else raw_quoted
+
     # حذف پیشوند رله‌ی قبلی (مثل «🤝 پرچم نام: ») برای خلاصه‌ی تمیزتر
     if ": " in quoted[:60]:
         quoted = quoted.split(": ", 1)[1]
@@ -3049,10 +3067,25 @@ async def relay_chat_message(message: Message, session: AsyncSession, db_user: U
                     pass
             # لاگ صحبت‌های دیدار دوجانبه به گروه لاگ (v1.6)
             log_tag = "🏛 [نشست حاشیه UN]" if is_un else "🤝"
-            await send_log(
+            log_msg = await send_log(
                 bot,
                 f"{log_tag} [{country.name_fa} → {partner.name_fa if partner else '?'}]: {text}",
             )
+            if log_msg and getattr(log_msg, "chat", None) and getattr(log_msg, "message_id", None):
+                try:
+                    await dip_repo.record_meeting_log_relay(
+                        session=session,
+                        log_chat_id=log_msg.chat.id,
+                        log_message_id=log_msg.message_id,
+                        meeting_kind="bilateral",
+                        meeting_id=meeting.id,
+                        sender_country_id=country.id,
+                        sender_user_id=getattr(db_user, "telegram_id", None),
+                        preview_text=f"{country.flag} {country.name_fa}: {text}"[:200],
+                    )
+                    await session.commit()
+                except Exception as exc:
+                    logger.warning("Could not record bilateral meeting log relay: %s", exc)
             return
 
     # ۳) نشست چندجانبه‌ی فعال → چت با همه‌ی کشورهای حاضر
@@ -3078,10 +3111,25 @@ async def relay_chat_message(message: Message, session: AsyncSession, db_user: U
                         pass
             # لاگ صحبت‌های نشست چندجانبه به گروه لاگ (v1.6)
             log_tag = "🏛 [نشست حاشیه UN]" if is_un else "👥"
-            await send_log(
+            log_msg = await send_log(
                 bot,
                 f"{log_tag} [{group.title}] {country.name_fa}: {text}",
             )
+            if log_msg and getattr(log_msg, "chat", None) and getattr(log_msg, "message_id", None):
+                try:
+                    await dip_repo.record_meeting_log_relay(
+                        session=session,
+                        log_chat_id=log_msg.chat.id,
+                        log_message_id=log_msg.message_id,
+                        meeting_kind="group",
+                        meeting_id=group.id,
+                        sender_country_id=country.id,
+                        sender_user_id=getattr(db_user, "telegram_id", None),
+                        preview_text=f"{country.flag} {country.name_fa}: {text}"[:200],
+                    )
+                    await session.commit()
+                except Exception as exc:
+                    logger.warning("Could not record group meeting log relay: %s", exc)
             return
 
     # ۴) مجمع عمومی سازمان ملل متحد (صحن علنی تالار نیویورک)

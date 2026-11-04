@@ -320,3 +320,38 @@ class VisaWaiver(Base):
     def __repr__(self) -> str:
         return f"<VisaWaiver {self.country_id}->{self.target_country_id}>"
 
+
+class MeetingLogRelay(Base):
+    """
+    نگاشت پیام‌های رله‌شده‌ی نشست در گروه لاگ به نشست مربوطه (v2.12.0).
+    امکان ریپلای ادمین/مالک روی پیام در گروه لاگ و ارسال مستقیم به تمام حاضران نشست.
+    """
+
+    __tablename__ = "meeting_log_relays"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    log_chat_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    log_message_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+
+    # نوع نشست: "bilateral" (دوجانبه) یا "group" (چندجانبه)
+    meeting_kind: Mapped[str] = mapped_column(String(32), nullable=False)
+    meeting_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+
+    # اطلاعات فرستنده اصلی پیام
+    sender_country_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    sender_user_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+
+    # خلاصه‌ی پیام اصلی یا برچسب نوع محتوا
+    preview_text: Mapped[str] = mapped_column(String(256), default="", nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+
+    __table_args__ = (
+        UniqueConstraint("log_chat_id", "log_message_id", name="uq_meeting_log_relays_chat_msg"),
+    )
+
+    def __repr__(self) -> str:
+        return f"<MeetingLogRelay log={self.log_chat_id}:{self.log_message_id} -> {self.meeting_kind}:{self.meeting_id}>"
+
+

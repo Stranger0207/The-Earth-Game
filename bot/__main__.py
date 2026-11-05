@@ -75,12 +75,26 @@ async def main() -> None:
     except Exception as exc:  # noqa: BLE001
         logger.warning("Could not start Live Radar WebApp: %s", exc)
 
+    from .services.rank_sync_service import start_rank_api_server
+
+    rank_api_runner = None
+    try:
+        logger.info("Starting Rank Internal API on 127.0.0.1:%d...", settings.rank_api_port)
+        rank_api_runner = await start_rank_api_server(
+            host="127.0.0.1", port=settings.rank_api_port
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Could not start Rank Internal API: %s", exc)
+
     logger.info("Bot is starting (polling)...")
     # حذف آپدیت‌های معوق هنگام شروع
     await bot.delete_webhook(drop_pending_updates=True)
     try:
         await dp.start_polling(bot)
     finally:
+        if rank_api_runner:
+            logger.info("Stopping Rank Internal API...")
+            await rank_api_runner.cleanup()
         if webapp_runner:
             logger.info("Stopping Live Radar WebApp...")
             await webapp_runner.cleanup()

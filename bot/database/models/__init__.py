@@ -50,6 +50,7 @@ from .nuclear import (
     NuclearWarhead,
 )
 from .profanity import ProfanityWord
+from .rank_sync import RankSyncOutbox
 from .reserves import Reserve
 from .satellite import Satellite
 from .strait import BlockedCargo, StraitBlockRule, StraitConfig
@@ -114,6 +115,7 @@ __all__ = [
     "PhoneCallMessage",
     "ProfanityWord",
     "Protest",
+    "RankSyncOutbox",
     "Reserve",
     "ResourceSale",
     "Sanction",

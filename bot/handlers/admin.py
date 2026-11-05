@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import uuid
 
 from aiogram import F, Router
 from aiogram.filters import Command
@@ -581,6 +582,15 @@ async def cb_season_confirm(
     await call.answer("در حال ریست فصل...")
     await safe_edit(call, "⏳ در حال ریست کامل بازی... لطفاً صبر کنید.")
 
+    # ۱. تولید event_id و استخراج پیشاپیش لیست بازیکنان فصل جاری پیش از پاک‌شدن در ریست
+    event_id = str(uuid.uuid4())
+    season_players: list[dict] = []
+    try:
+        from ..services.rank_sync_service import collect_season_players
+        season_players = await collect_season_players(session)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Could not collect season players before reset: %s", exc)
+
     try:
         result = await reset_season(session)
     except Exception as exc:  # noqa: BLE001 — خطا باید به مالک نمایش داده شود، نه اینکه پیام روی «⏳» بماند
@@ -598,10 +608,40 @@ async def cb_season_confirm(
             pass
         return
 
+    # ۲. فقط در صورت موفقیت ریست: ارسال لیست بازیکنان به ربات مقام (Push)
+    rank_sync_line = ""
+    settings = get_settings()
+    if settings.rank_sync_enabled and season_players:
+        try:
+            from ..services.rank_sync_service import push_season_ended, save_to_outbox
+            push_ok, push_err = await push_season_ended(event_id, season_players)
+            if push_ok:
+                rank_sync_line = f"\n🎖 لیست {fa_number(len(season_players))} بازیکن برای ارتقای مقام به ربات مقام ارسال شد."
+            else:
+                # ذخیره در Outbox جهت تلاش مجدد توسط زمان‌بند
+                await save_to_outbox(session, event_id, season_players, last_error=push_err)
+                await session.commit()
+                rank_sync_line = "\n⚠️ ارسال لیست به ربات مقام ناموفق بود؛ در صف تلاش مجدد است."
+                try:
+                    await send_log(
+                        bot,
+                        "⚠️ <b>همگام‌سازی با ربات مقام</b>\n"
+                        f"ارسال لیست {len(season_players)} بازیکن ناموفق بود؛ در صف تلاش مجدد است.\n"
+                        f"<b>خطا:</b> <code>{push_err}</code>",
+                    )
+                except Exception:
+                    pass
+        except Exception as rank_err:  # noqa: BLE001 — خطای همگام‌سازی هرگز نباید ریست فصل را خراب کند
+            logger.exception("Rank sync push or outbox failed: %s", rank_err)
+            rank_sync_line = "\n⚠️ خطا در ارتباط با ربات مقام (در صف یا بررسی دستی)."
+    elif settings.rank_sync_enabled and not season_players:
+        rank_sync_line = "\nℹ️ هیچ بازیکنی برای ارسال به ربات مقام در این فصل وجود نداشت."
+
     success_msg = (
         "🎉 <b>فصل با موفقیت به پایان رسید و بازی ریست شد.</b>\n\n"
         f"✅ {fa_number(result['countries_reset'])} کشور به حالت اولیه بازگشتند.\n"
-        f"🎖 {fa_number(result['commanders_created'])} فرمانده بازسازی شد.\n"
+        f"🎖 {fa_number(result['commanders_created'])} فرمانده بازسازی شد."
+        f"{rank_sync_line}\n\n"
         "همه‌ی کشورها اکنون آزاد هستند و بازیکن‌ها می‌توانند برای فصل جدید "
         "کشورگیری کنند. (/claim)"
     )
@@ -611,7 +651,8 @@ async def cb_season_confirm(
             bot,
             "♻️ <b>پایان فصل (مالک)</b>\n"
             f"کشورهای ریست‌شده: {result['countries_reset']} | "
-            f"فرماندهان بازسازی‌شده: {result['commanders_created']}",
+            f"فرماندهان بازسازی‌شده: {result['commanders_created']} | "
+            f"بازیکنان مقام: {len(season_players)}",
         )
     except Exception:
         pass

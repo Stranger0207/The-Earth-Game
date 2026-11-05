@@ -86,6 +86,12 @@ class Settings(BaseSettings):
     force_join_invite_link: str | None = None
     game_folder_link: str | None = None
 
+    # --- اتصال به ربات مقام (Rank Bot Integration) ---
+    rank_sync_enabled: bool = True
+    rank_sync_secret: str = ""                    # سکرت مشترک HMAC (حداقل ۳۲ بایت)
+    rank_bot_api_url: str = "http://127.0.0.1:8091"  # آدرس سرور ربات مقام
+    rank_api_port: int = 8090                     # پورت وب‌سرور داخلی ربات اصلی برای Pull
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

@@ -1702,6 +1702,12 @@ async def process_meeting_log_relays_cleanup() -> None:
             logger.info("Cleaned up %d expired meeting log relay mapping(s).", deleted)
 
 
+async def process_rank_sync_outbox(bot: Bot) -> None:
+    """تلاش مجدد برای ارسال رویدادهای معلق در صف همگام‌سازی ربات مقام."""
+    from ..services.rank_sync_service import process_outbox
+    await process_outbox(bot)
+
+
 async def _tick(bot: Bot) -> None:
     """جاب اصلی که هر دقیقه همه‌ی پردازش‌های زمان‌دار را اجرا می‌کند.
 
@@ -1728,6 +1734,7 @@ async def _tick(bot: Bot) -> None:
         ("process_market_decay", lambda: process_market_decay()),
         ("process_un_assembly", lambda: process_un_assembly(bot)),
         ("process_meeting_log_relays_cleanup", lambda: process_meeting_log_relays_cleanup()),
+        ("process_rank_sync_outbox", lambda: process_rank_sync_outbox(bot)),
     )
     for name, run in jobs:
         try:
